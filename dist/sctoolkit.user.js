@@ -116,21 +116,14 @@
     maxPages: 200
   };
   var DEFAULT_CONFIG = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     modules: {
       inputOptimization: { enabled: true, urlMatch: [], actions: {} },
-      cardNameFormatter: {
-        enabled: true,
-        urlMatch: [
-          { pattern: "/checklist\\.cfm", exclude: false },
-          { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
-          { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
-          { pattern: "/collectionaddmultiples", exclude: false }
-        ],
-        actions: {}
-      },
       checklistEnhancer: {
         enabled: true,
+        // These patterns are the only gate on where the filter appears. The
+        // module does not re-check the route; editing this list in Settings is
+        // what moves the feature.
         urlMatch: [
           { pattern: "/checklist\\.cfm", exclude: false },
           { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
@@ -138,8 +131,7 @@
           { pattern: "/collectionaddmultiples", exclude: false }
         ],
         actions: {
-          realtimeFilter: true,
-          inlineActionCells: false
+          realtimeFilter: true
         }
       },
       setListEnhancer: {
@@ -197,31 +189,41 @@
     /**
      * Bring a stored config up to the current schema.
      *
-     * v1 -> v2 was additive only, so it is handled by the same merge as a
-     * same-version load. Any other version has no migration path and resets, on
-     * the principle that a wrong config is worse than a default one.
+     * Every schema change so far has been expressible as a merge onto fresh
+     * defaults: new keys arrive with their default value, removed modules are
+     * dropped, and the user's own choices survive. So any older version upgrades
+     * by merging, rather than each bump needing its own hardcoded branch — the
+     * previous shape of this function knew only about v1 -> v2, which meant the
+     * next bump would silently have reset everyone's settings.
+     *
+     * A version *newer* than this build, or one that is missing or not a
+     * positive integer, has no safe interpretation and resets: a wrong config is
+     * worse than a default one.
      *
      * @param {object} stored
      * @returns {object} a config conforming to the current schema
      */
     migrate: (stored) => {
-      if (stored.schemaVersion === DEFAULT_CONFIG.schemaVersion) {
+      const current = DEFAULT_CONFIG.schemaVersion;
+      const version = stored?.schemaVersion;
+      if (version === current) {
         return SettingsStore.mergeWithDefaults(stored);
       }
-      if (stored.schemaVersion === 1 && DEFAULT_CONFIG.schemaVersion === 2) {
-        Log("Migrating stored config from schema v1 to v2 (additive fields only).", "info");
+      if (Number.isInteger(version) && version >= 1 && version < current) {
+        Log(`Migrating stored config from schema v${version} to v${current}.`, "info");
         return SettingsStore.mergeWithDefaults(stored);
       }
       Log(
-        `Stored config schema v${stored.schemaVersion} has no migration path to v${DEFAULT_CONFIG.schemaVersion}. Resetting to defaults.`,
+        `Stored config schema v${version} has no migration path to v${current}. Resetting to defaults.`,
         "warn"
       );
       return SettingsStore.cloneDefaults();
     },
     /**
-     * Overlay stored values onto a fresh default config. Modules the current
-     * build does not know about are dropped with a warning rather than carried
-     * forward, so a downgrade cannot resurrect a removed module's config.
+     * Overlay stored values onto a fresh default config. Modules and action
+     * toggles the current build does not know about are dropped rather than
+     * carried forward, so a removed feature's config cannot linger in storage
+     * indefinitely, invisible and unreachable from the settings UI.
      *
      * @param {object} stored
      * @returns {object}
@@ -229,15 +231,17 @@
     mergeWithDefaults: (stored) => {
       const merged = SettingsStore.cloneDefaults();
       Object.keys(stored.modules || {}).forEach((id) => {
-        if (merged.modules[id]) {
-          merged.modules[id] = {
-            ...merged.modules[id],
-            ...stored.modules[id],
-            actions: { ...merged.modules[id].actions, ...stored.modules[id].actions || {} }
-          };
-        } else {
+        const defaults = merged.modules[id];
+        if (!defaults) {
           Log(`Stored config references unknown module '${id}' — dropped.`, "warn");
+          return;
         }
+        const storedActions = stored.modules[id].actions || {};
+        const actions = { ...defaults.actions };
+        Object.keys(actions).forEach((key) => {
+          if (key in storedActions) actions[key] = storedActions[key];
+        });
+        merged.modules[id] = { ...defaults, ...stored.modules[id], actions };
       });
       merged.global = { ...merged.global, ...stored.global || {} };
       return merged;
@@ -312,21 +316,6 @@
     InputIndex.getValidInputs = getValidInputs;
   }
 
-  // src/ui/icons.js
-  var Icons = {
-    bolt: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-    gem: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3 8 9l3 12"/><path d="M13 3l3 6-3 12"/><path d="M2 9h20"/></svg>`,
-    tag: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>`,
-    layers: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
-    star: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
-    download: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
-    pin: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
-    x: () => `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
-    chevronUp: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
-    plus: () => `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-    gear: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
-  };
-
   // src/ui/dom.js
   function injectStyle(css) {
     const style = document.createElement("style");
@@ -334,14 +323,12 @@
     document.head.appendChild(style);
     return style;
   }
-  function createBtn(id, text, onClick, disabled = false, icon = "") {
+  function createBtn(id, text, onClick, disabled = false) {
     const btn = document.createElement("button");
     btn.id = id;
     btn.type = "button";
-    const iconSvg = icon && Icons[icon] ? Icons[icon]() : "";
-    btn.innerHTML = `${iconSvg}<span></span>`;
-    btn.querySelector("span").textContent = text;
     btn.className = "sctk-btn";
+    btn.textContent = text;
     btn.disabled = disabled;
     btn.addEventListener("click", onClick);
     return btn;
@@ -378,57 +365,7 @@
     return true;
   }
 
-  // src/modules/cardNameFormatter.js
-  var CARD_NAME_SELECTOR = ".card-name-selector";
-  function initCardNameFormatter() {
-    assertContract("cardNameFormatter", [
-      { selector: CARD_NAME_SELECTOR, label: `${CARD_NAME_SELECTOR} (card name nodes)` }
-    ]);
-    document.querySelectorAll(CARD_NAME_SELECTOR).forEach((node) => {
-      node.textContent = node.textContent.replace(/(\w+)\s-\s(\w+)/g, "$1 $2").trim();
-    });
-  }
-
-  // src/core/routes.js
-  var path = () => window.location.pathname.toLowerCase();
-  var SET_PAGE_PREDICATES = [
-    "isChecklist",
-    "isViewSet",
-    "isViewAll",
-    "isInserts",
-    "isForSaleTrade",
-    "isWantlist",
-    "isAddMultiples"
-  ];
-  var Routes = {
-    isCollection: () => path().includes("/collection") && !path().includes("addmultiples"),
-    isPlayerCollection: () => path().includes("/person") && window.location.search.toLowerCase().includes("collection"),
-    isPlayerPage: () => path().includes("/person.cfm"),
-    isCardPage: () => path().includes("/viewcard.cfm"),
-    isChecklist: () => path().includes("/checklist.cfm"),
-    isViewSet: () => path().includes("/viewset.cfm"),
-    isInserts: () => path().includes("/inserts.cfm"),
-    isPrintPDF: () => path().includes("/print.cfm"),
-    isViewAll: () => path().includes("/viewall.cfm") || path().includes("/inserts.cfm"),
-    isForSaleTrade: () => path().includes("/viewcollectionforsaletrade.cfm"),
-    isWantlist: () => path().includes("/viewcollectionwantlist.cfm"),
-    isAddMultiples: () => path().includes("/collectionaddmultiples"),
-    /**
-     * True on any page scoped to one set. Composed from the individual
-     * predicates rather than re-listing the same seven path fragments, so adding
-     * a set-scoped route cannot leave this out of date.
-     */
-    isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()),
-    hasPagination: () => !!document.querySelector(".pagination") && !path().includes("addmultiples")
-  };
-
   // src/modules/checklistEnhancer.js
-  var INLINE_ACTION_CONTRACT = [
-    { selector: ".action-wantlist-selector", label: ".action-wantlist-selector (wantlist action to relocate)" },
-    { selector: ".top-bar-selector", label: ".top-bar-selector (relocation target)" },
-    { selector: "tr.checklist-row", label: "tr.checklist-row (inline action cell rows)" }
-  ];
-  var INLINE_ACTIONS = ["+1 FS", "+1 W", "FS", "FT", "W", "I", "P"];
   function installFilter(mainContent) {
     const targetTable = mainContent.querySelector("table");
     if (!targetTable) return;
@@ -450,28 +387,16 @@
     input.addEventListener("input", (e) => applyFilter(e.target.value.toLowerCase().trim()));
   }
   function initChecklistEnhancer() {
-    const actionCfg = Config.modules.checklistEnhancer.actions;
+    if (!Config.modules.checklistEnhancer.actions.realtimeFilter) return;
+    if (document.getElementById("tk-checklist-filter-wrap")) return;
     const mainContent = document.getElementById("main-content-area");
-    const onFilterableRoute = Routes.isChecklist() || Routes.isForSaleTrade() || Routes.isWantlist() || Routes.isAddMultiples();
-    if (actionCfg.realtimeFilter && mainContent && onFilterableRoute && !document.getElementById("tk-checklist-filter-wrap")) {
-      installFilter(mainContent);
+    if (!mainContent) {
+      assertContract("checklistEnhancer", [
+        { selector: "#main-content-area", label: "#main-content-area (filter mount point)" }
+      ]);
+      return;
     }
-    if (!actionCfg.inlineActionCells) return;
-    assertContract("checklistEnhancer", INLINE_ACTION_CONTRACT);
-    const wantlistAction = document.querySelector(".action-wantlist-selector");
-    const topBar = document.querySelector(".top-bar-selector");
-    if (wantlistAction && topBar) topBar.prepend(wantlistAction);
-    document.querySelectorAll("tr.checklist-row").forEach((row, index) => {
-      const actionCell = row.querySelector(".action-cell-selector") || row.insertCell();
-      INLINE_ACTIONS.forEach((action) => {
-        const span = document.createElement("span");
-        span.className = "tk-inline-action";
-        span.textContent = `[${action}]`;
-        span.title = `Perform ${action} action`;
-        span.addEventListener("click", () => Log(`Triggered [${action}] on row index ${index}`));
-        actionCell.appendChild(span);
-      });
-    });
+    installFilter(mainContent);
   }
 
   // src/core/sid.js
@@ -840,12 +765,6 @@
   };
 
   // src/net/setExport.js
-  function currentPageKind() {
-    if (Routes.isForSaleTrade()) return "forSale";
-    if (Routes.isWantlist()) return "wantlist";
-    if (Routes.isAddMultiples()) return "addMultiples";
-    return "checklist";
-  }
   function cooldownRemainingMinutes(now = Date.now()) {
     const cooldownMs = (Config.global.exportBlockCooldownMinutes || 0) * 6e4;
     if (cooldownMs <= 0) return 0;
@@ -869,7 +788,7 @@
       });
       return;
     }
-    Log(`Starting checklist fetch for set ID ${setId} (${setName})`, "info", "server");
+    Log(`Starting checklist fetch for set ID ${setId} (${setName})`, "info");
     setStatus(`Fetching ${setName}...`);
     try {
       let pageIndex = 1;
@@ -900,32 +819,47 @@
               `Discovered page count (${totalPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Likely a pagination-parsing regression — export aborted before fetching.`
             );
           }
-          Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, "info", "server");
+          Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, "info");
         }
         allRows.push(...parsed.rows);
-        Log(`Page ${pageIndex}/${totalPages} parsed successfully. ${parsed.rows.length} rows retrieved.`, "info", "server");
+        Log(`Page ${pageIndex}/${totalPages} parsed successfully. ${parsed.rows.length} rows retrieved.`, "info");
         pageIndex++;
       } while (pageIndex <= totalPages);
       if (allRows.length === 0) throw new Error("No valid checklist rows identified within tables.");
       let setLogLabel = identity.baseSet;
       if (identity.setName) setLogLabel += ` - ${identity.setName}`;
-      Log(`Export complete for: ${setLogLabel} (${allRows.length} cards across ${totalPages} page(s))`, "info", "server");
+      Log(`Export complete for: ${setLogLabel} (${allRows.length} cards across ${totalPages} page(s))`, "info");
       const filename = buildExportFilename({
         year: identity.year,
         baseSet: identity.baseSet,
         setName: identity.setName,
         fallbackLabel: setName,
-        kind: currentPageKind()
+        kind: "checklist"
       });
       CSV.download(CSV.toCSV(toChecklistTable(identity, allRows)), filename);
       setStatus("Export Complete");
       showToast({ message: `Exported <b>${allRows.length}</b> cards for ${escapeHtml(setLogLabel)}` });
     } catch (error) {
-      Log(`CSV Export Failed: ${error.message}`, "error", "server");
+      Log(`CSV Export Failed: ${error.message}`, "error");
       setStatus("Export Failed");
       showToast({ message: `Export Failed: ${escapeHtml(error.message)}`, accent: "var(--tk-red)" });
     }
   }
+
+  // src/ui/icons.js
+  var Icons = {
+    bolt: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+    gem: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3 8 9l3 12"/><path d="M13 3l3 6-3 12"/><path d="M2 9h20"/></svg>`,
+    tag: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>`,
+    layers: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+    star: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+    download: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+    pin: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
+    x: () => `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    chevronUp: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
+    plus: () => `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+    gear: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
+  };
 
   // src/ui/badges.js
   var BADGES = {
@@ -983,7 +917,8 @@
       title: "Remove Pin"
     }
   };
-  var SHORTCUT_ORDER = ["INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
+  var TOOLBAR_BADGES = ["INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST", "CSV"];
+  var SET_LINK_BADGES = ["PIN", "CSV", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
   function createBadge(badgeKey, sid = null, onClickOverride = null) {
     const config = BADGES[badgeKey];
     if (!config) return null;
@@ -1015,6 +950,53 @@
     }
     return btn;
   }
+  function renderBadgeSet(container, sid, {
+    include = TOOLBAR_BADGES,
+    onExport = null,
+    onPin = null
+  } = {}) {
+    const handlers = { CSV: onExport, PIN: onPin };
+    include.forEach((key) => {
+      const isAction = key in handlers;
+      if (isAction && !handlers[key]) return;
+      const badge = createBadge(key, sid, isAction ? handlers[key] : null);
+      if (badge) container.appendChild(badge);
+    });
+    return container;
+  }
+
+  // src/core/routes.js
+  var path = () => window.location.pathname.toLowerCase();
+  var SET_PAGE_PREDICATES = [
+    "isChecklist",
+    "isViewSet",
+    "isViewAll",
+    "isInserts",
+    "isForSaleTrade",
+    "isWantlist",
+    "isAddMultiples"
+  ];
+  var Routes = {
+    isCollection: () => path().includes("/collection") && !path().includes("addmultiples"),
+    isPlayerCollection: () => path().includes("/person") && window.location.search.toLowerCase().includes("collection"),
+    isPlayerPage: () => path().includes("/person.cfm"),
+    isCardPage: () => path().includes("/viewcard.cfm"),
+    isChecklist: () => path().includes("/checklist.cfm"),
+    isViewSet: () => path().includes("/viewset.cfm"),
+    isInserts: () => path().includes("/inserts.cfm"),
+    isPrintPDF: () => path().includes("/print.cfm"),
+    isViewAll: () => path().includes("/viewall.cfm") || path().includes("/inserts.cfm"),
+    isForSaleTrade: () => path().includes("/viewcollectionforsaletrade.cfm"),
+    isWantlist: () => path().includes("/viewcollectionwantlist.cfm"),
+    isAddMultiples: () => path().includes("/collectionaddmultiples"),
+    /**
+     * True on any page scoped to one set. Composed from the individual
+     * predicates rather than re-listing the same seven path fragments, so adding
+     * a set-scoped route cannot leave this out of date.
+     */
+    isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()),
+    hasPagination: () => !!document.querySelector(".pagination") && !path().includes("addmultiples")
+  };
 
   // src/ui/styles.js
   var TOOLBAR_CSS = `
@@ -1221,11 +1203,13 @@ body { padding-top: 38px !important; }
 
   // src/ui/toolbar.js
   function appendShortcutBadges(container, sid, label = "Set") {
-    SHORTCUT_ORDER.forEach((key) => container.appendChild(createBadge(key, sid)));
-    container.appendChild(createBadge("CSV", sid, (e) => {
-      e.preventDefault();
-      exportSetCSV(sid, label);
-    }));
+    renderBadgeSet(container, sid, {
+      include: TOOLBAR_BADGES,
+      onExport: (e) => {
+        e.preventDefault();
+        exportSetCSV(sid, label);
+      }
+    });
   }
   function cleanDocTitle() {
     let t = document.title || "";
@@ -1419,36 +1403,46 @@ body { padding-top: 38px !important; }
       const container = document.createElement("span");
       container.style.display = "inline-flex";
       container.style.alignItems = "center";
-      container.appendChild(createBadge("PIN", setId, (e) => {
-        e.preventDefault();
-        const added = Pins.add({
-          id: setId,
-          name: setName,
-          url: link.href,
-          year: deriveSetYear(setName, link.href)
-        });
-        if (!added) return;
-        Toolbar.renderPins();
-        showToast({ message: `Pinned: <b>${escapeHtml(setName)}</b>` });
-      }));
-      container.appendChild(createBadge("CSV", setId, (e) => {
-        e.preventDefault();
-        exportSetCSV(setId, setName);
-      }));
-      if (isExpandableParent(link)) {
-        container.appendChild(createBadge("INSERTS", setId));
-        container.appendChild(createBadge("PARALLELS", setId));
-      }
-      container.appendChild(createBadge("FOR_SALE", setId));
-      container.appendChild(createBadge("MULTI", setId));
-      container.appendChild(createBadge("WANTLIST", setId));
+      const expandable = isExpandableParent(link);
+      const include = SET_LINK_BADGES.filter(
+        (key) => expandable || key !== "INSERTS" && key !== "PARALLELS"
+      );
+      renderBadgeSet(container, setId, {
+        include,
+        onPin: (e) => {
+          e.preventDefault();
+          const added = Pins.add({
+            id: setId,
+            name: setName,
+            url: link.href,
+            year: deriveSetYear(setName, link.href)
+          });
+          if (!added) return;
+          Toolbar.renderPins();
+          showToast({ message: `Pinned: <b>${escapeHtml(setName)}</b>` });
+        },
+        onExport: (e) => {
+          e.preventDefault();
+          exportSetCSV(setId, setName);
+        }
+      });
       link.after(container);
     });
   }
   function initSetListEnhancer() {
     const setLinks = findSetLinks();
     if (setLinks.length === 0) {
-      setTimeout(() => injectSetActions(findSetLinks()), LATE_RENDER_DELAY_MS);
+      setTimeout(() => {
+        const late = findSetLinks();
+        if (late.length === 0) {
+          assertContract("setListEnhancer", [
+            { selector: SET_LINK_SELECTOR, label: "set links (pin/export badge anchors)" }
+          ]);
+          return;
+        }
+        injectSetActions(late);
+        Log(`Set List Enhancer: badges injected for ${late.length} late-rendered link(s).`, "debug");
+      }, LATE_RENDER_DELAY_MS);
       return;
     }
     injectSetActions(setLinks);
@@ -1528,21 +1522,13 @@ body { padding-top: 38px !important; }
       isAsync: false
     },
     {
-      id: "cardNameFormatter",
-      name: "Card Name Formatter",
-      description: "Normalizes spaced hyphens in card name nodes on checklist-family pages.",
-      init: initCardNameFormatter,
-      isAsync: false
-    },
-    {
       id: "checklistEnhancer",
       name: "Checklist Enhancer",
-      description: "Real-time table filter bar, plus (disabled by default) inline action-cell stubs.",
+      description: "Real-time table filter bar on listing pages.",
       init: initChecklistEnhancer,
       isAsync: false,
       actionLabels: {
-        realtimeFilter: "Real-time table filter bar",
-        inlineActionCells: "Inline action-cell stubs (non-functional placeholders — off by default)"
+        realtimeFilter: "Real-time table filter bar"
       }
     },
     {

@@ -96,7 +96,7 @@ test('the settings modal opens and closes', async () => {
   doc.getElementById('tk-settings-trigger').click();
   const panel = doc.getElementById('tk-settings-panel');
   assert.ok(panel, 'settings panel should open');
-  assert.equal(doc.querySelectorAll('.tk-settings-module-row').length, 7);
+  assert.equal(doc.querySelectorAll('.tk-settings-module-row').length, 6);
 
   doc.getElementById('tk-settings-close').click();
   assert.equal(doc.getElementById('tk-settings-overlay'), null);

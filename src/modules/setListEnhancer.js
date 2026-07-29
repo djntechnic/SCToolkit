@@ -7,8 +7,8 @@ import { Log } from '../core/log.js';
 import { extractSid } from '../core/sid.js';
 import { Pins, deriveSetYear } from '../core/storage.js';
 import { exportSetCSV } from '../net/setExport.js';
-import { createBadge } from '../ui/badges.js';
-import { escapeHtml } from '../ui/dom.js';
+import { SET_LINK_BADGES, renderBadgeSet } from '../ui/badges.js';
+import { assertContract, escapeHtml } from '../ui/dom.js';
 import { showToast } from '../ui/toast.js';
 import { Toolbar } from '../ui/toolbar.js';
 
@@ -80,32 +80,32 @@ export function injectSetActions(setLinks) {
     container.style.display = 'inline-flex';
     container.style.alignItems = 'center';
 
-    container.appendChild(createBadge('PIN', setId, (e) => {
-      e.preventDefault();
-      const added = Pins.add({
-        id: setId,
-        name: setName,
-        url: link.href,
-        year: deriveSetYear(setName, link.href)
-      });
-      if (!added) return;
-      Toolbar.renderPins();
-      showToast({ message: `Pinned: <b>${escapeHtml(setName)}</b>` });
-    }));
+    // Inserts and Parallels only mean something for a link that heads a group
+    // of sub-sets; on a leaf set they would point at empty pages.
+    const expandable = isExpandableParent(link);
+    const include = SET_LINK_BADGES.filter(
+      (key) => expandable || (key !== 'INSERTS' && key !== 'PARALLELS')
+    );
 
-    container.appendChild(createBadge('CSV', setId, (e) => {
-      e.preventDefault();
-      exportSetCSV(setId, setName);
-    }));
-
-    if (isExpandableParent(link)) {
-      container.appendChild(createBadge('INSERTS', setId));
-      container.appendChild(createBadge('PARALLELS', setId));
-    }
-
-    container.appendChild(createBadge('FOR_SALE', setId));
-    container.appendChild(createBadge('MULTI', setId));
-    container.appendChild(createBadge('WANTLIST', setId));
+    renderBadgeSet(container, setId, {
+      include,
+      onPin: (e) => {
+        e.preventDefault();
+        const added = Pins.add({
+          id: setId,
+          name: setName,
+          url: link.href,
+          year: deriveSetYear(setName, link.href)
+        });
+        if (!added) return;
+        Toolbar.renderPins();
+        showToast({ message: `Pinned: <b>${escapeHtml(setName)}</b>` });
+      },
+      onExport: (e) => {
+        e.preventDefault();
+        exportSetCSV(setId, setName);
+      }
+    });
 
     link.after(container);
   });
@@ -117,7 +117,20 @@ export function initSetListEnhancer() {
   if (setLinks.length === 0) {
     // Some listings render their links after page load. Replacing this timeout
     // with a MutationObserver is Phase 3 work.
-    setTimeout(() => injectSetActions(findSetLinks()), LATE_RENDER_DELAY_MS);
+    setTimeout(() => {
+      const late = findSetLinks();
+      // Still nothing after the grace period: either this page genuinely has no
+      // set links, or the selectors no longer match the site's markup. Say so,
+      // because the failure is otherwise completely silent.
+      if (late.length === 0) {
+        assertContract('setListEnhancer', [
+          { selector: SET_LINK_SELECTOR, label: 'set links (pin/export badge anchors)' }
+        ]);
+        return;
+      }
+      injectSetActions(late);
+      Log(`Set List Enhancer: badges injected for ${late.length} late-rendered link(s).`, 'debug');
+    }, LATE_RENDER_DELAY_MS);
     return;
   }
 

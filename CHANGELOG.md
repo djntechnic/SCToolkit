@@ -58,12 +58,43 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `EXPORT_CONFIG.blockCooldownMs`. Each is recorded verbatim in
   [docs/REMOVED.md](docs/REMOVED.md) with revival notes.
 
+### Phase 2 — dead code, deduplication, correctness
+
+**Added**
+- `renderBadgeSet()` replaces three hand-rolled badge blocks that appended the
+  same badges in different orders with different handler wiring. An action badge
+  with no handler is now skipped rather than rendered dead.
+- `test/registry.test.js` and `test/badges.test.js`: every registry entry has a
+  config block and vice versa, `actionLabels` name only real toggles, and route
+  rules are proven to be the only gate on where a module runs.
+- Contract checks moved onto selectors that are actually load-bearing — the
+  filter mount point, and set links after the late-render grace period.
+
+**Changed**
+- Config `schemaVersion` 2 → 3. `migrate()` now upgrades from *any* older
+  version by merging onto fresh defaults, instead of a hardcoded v1 → v2 branch
+  that would have silently reset every user's settings on this bump.
+- `mergeWithDefaults()` drops action toggles the build no longer defines, the
+  same way it already dropped unknown modules.
+- `'server'` log tags now mark only lines about an HTTP request. Counting SERVER
+  lines during an export gives the number of requests made.
+
+**Fixed**
+- Export filenames describe what was fetched. Exporting a set from a wantlist
+  page wrote a full checklist to `..._Wantlist.csv`.
+- Editing `checklistEnhancer`'s route patterns in Settings now takes effect. The
+  module re-checked routes itself and overrode the registry, making the editor
+  inert for the one module most worth moving.
+
+**Removed** — each recorded verbatim with revival notes in
+[docs/REMOVED.md](docs/REMOVED.md):
+- `cardNameFormatter`, a registered and enabled module whose only selector never
+  matched anything in any shipped release.
+- The `inlineActionCells` sub-feature: four selectors that do not exist, a CSS
+  class with no rule, and handlers that only logged.
+- The unreachable `icon` parameter of `createBtn`.
+
 ### Known issues
-- `cardNameFormatter` and the `inlineActionCells` sub-feature target selectors
-  that do not exist and no-op. Both are ported unchanged and flagged in source;
-  deleting them is Phase 2.
-- `checklistEnhancer` re-checks routes inside `init`, so editing its route
-  patterns in Settings has no effect. Phase 2.
 - Test fixtures are synthetic rather than sanitized real captures.
 
 ## [2.42.0] — prior single-file releases

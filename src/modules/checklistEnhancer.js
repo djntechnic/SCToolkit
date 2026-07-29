@@ -1,21 +1,14 @@
 /**
- * Real-time table filter for checklist-family pages, plus a disabled-by-default
- * inline-action-cell experiment.
+ * Real-time table filter for listing pages.
+ *
+ * Where this runs is decided entirely by the module's `urlMatch` rules in
+ * Settings. v2.42.0 also re-checked `Routes` here, which meant editing those
+ * rules had no effect — the registry would admit the page and the module would
+ * then refuse it. The route check is gone; the registry is the only gate.
  */
 
 import { Config } from '../core/config.js';
-import { Log } from '../core/log.js';
-import { Routes } from '../core/routes.js';
 import { assertContract, debounce } from '../ui/dom.js';
-
-/** Selectors the inline-action experiment expects. None exist on the site. */
-const INLINE_ACTION_CONTRACT = [
-  { selector: '.action-wantlist-selector', label: '.action-wantlist-selector (wantlist action to relocate)' },
-  { selector: '.top-bar-selector', label: '.top-bar-selector (relocation target)' },
-  { selector: 'tr.checklist-row', label: 'tr.checklist-row (inline action cell rows)' }
-];
-
-const INLINE_ACTIONS = ['+1 FS', '+1 W', 'FS', 'FT', 'W', 'I', 'P'];
 
 /**
  * Insert the filter box above the first content table and wire it up.
@@ -51,34 +44,16 @@ function installFilter(mainContent) {
 }
 
 export function initChecklistEnhancer() {
-  const actionCfg = Config.modules.checklistEnhancer.actions;
+  if (!Config.modules.checklistEnhancer.actions.realtimeFilter) return;
+  if (document.getElementById('tk-checklist-filter-wrap')) return;
+
   const mainContent = document.getElementById('main-content-area');
-
-  const onFilterableRoute = Routes.isChecklist() || Routes.isForSaleTrade()
-    || Routes.isWantlist() || Routes.isAddMultiples();
-
-  if (actionCfg.realtimeFilter && mainContent && onFilterableRoute
-      && !document.getElementById('tk-checklist-filter-wrap')) {
-    installFilter(mainContent);
+  if (!mainContent) {
+    assertContract('checklistEnhancer', [
+      { selector: '#main-content-area', label: '#main-content-area (filter mount point)' }
+    ]);
+    return;
   }
 
-  if (!actionCfg.inlineActionCells) return;
-
-  assertContract('checklistEnhancer', INLINE_ACTION_CONTRACT);
-
-  const wantlistAction = document.querySelector('.action-wantlist-selector');
-  const topBar = document.querySelector('.top-bar-selector');
-  if (wantlistAction && topBar) topBar.prepend(wantlistAction);
-
-  document.querySelectorAll('tr.checklist-row').forEach((row, index) => {
-    const actionCell = row.querySelector('.action-cell-selector') || row.insertCell();
-    INLINE_ACTIONS.forEach((action) => {
-      const span = document.createElement('span');
-      span.className = 'tk-inline-action';
-      span.textContent = `[${action}]`;
-      span.title = `Perform ${action} action`;
-      span.addEventListener('click', () => Log(`Triggered [${action}] on row index ${index}`));
-      actionCell.appendChild(span);
-    });
-  });
+  installFilter(mainContent);
 }

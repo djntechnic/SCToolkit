@@ -27,6 +27,9 @@ both order the steps `lint → build → test → verify-dist`.
 | Block detection vs. a challenge-page fixture | `net.test.js` | ✅ Phase 1 |
 | Backoff math, incl. `Retry-After` in seconds and HTTP-date form | `net.test.js` | ✅ Phase 1 |
 | Bundle boots in jsdom; toolbar, filter, and settings mount | `bootstrap.test.js` | ✅ Phase 1 |
+| Registry/config symmetry; route rules are the only gate on a module | `registry.test.js` | ✅ Phase 2 |
+| Badge set rendering: order, handler wiring, no dead action badges | `badges.test.js` | ✅ Phase 2 |
+| Schema upgrade from every older version preserves user settings | `config.test.js` | ✅ Phase 2 |
 | Block detection vs. captured *real* challenge pages | — | Phase 4 |
 | Cross-tab throttle timing, faked clock | — | Phase 4 |
 
@@ -54,7 +57,9 @@ testable yet.
 | Checklist (multi-page) | Filter is instant on a 1,000-row set; export matches the golden CSV; progress toast counts pages; **Cancel** aborts mid-run. |
 | Set index / inserts listing | Badges on every set link; **no badge group on links lacking a set id**; no jank on a long list. |
 | Add-multiples entry | Sale-type defaults applied; first zero-quantity input focused; Enter tabs through hundreds of inputs without lag; typing immediately is not stolen by the focus retry. |
-| For-sale / wantlist views | Filter present; export filename reflects the *fetched* content, not the current page. |
+| For-sale / wantlist views | Filter present; a set export started here is named `..._Checklist.csv`, because a checklist is what was fetched. |
+| Settings → Modules & Routes | Add a route pattern to Checklist Enhancer, reload, and confirm the filter appears on the newly matched page. |
+| Upgrade from an earlier install | Existing module toggles, route patterns, and thresholds survive the schema bump; a stored `inlineActionCells` key is gone from storage. |
 | Single card / person pages | Context label and shortcut badges correct. |
 | Any page | Ctrl+K palette; Settings tabs incl. Diagnostics; theme follows system and manual override; toolbar wrapping never covers page content; full keyboard traversal with visible focus; screen-reader labels on icon-only controls. |
 | Two tabs at once | Simultaneous exports interleave at the configured global rate, not double rate. |
