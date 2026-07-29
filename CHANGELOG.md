@@ -265,6 +265,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Pagination is real on the collection routes, where the truncated numbered list
   and last-page link behaviour matters.
 
+### Phase 6 — documentation & supportability
+
+**Added**
+- `core/contracts.js`: DOM contract checks are recorded, not just logged, and
+  every result is listed in Settings → Diagnostics with the selector that failed.
+  A report of "the feature didn't appear" is now answerable without asking the
+  user to open a console.
+- Contract coverage extended from two modules to all six, including runtime
+  assumptions that are not a single selector — "the filter indexed zero rows",
+  "badges went on zero of 40 links" — which are exactly the silent-no-op cases
+  the checks exist for.
+- README gains a full settings reference and a troubleshooting section keyed to
+  what the UI actually reports.
+
+**Changed**
+- `assertContract` moved from `ui/dom.js` to `core/`, where the layering puts
+  it; `ui/dom.js` re-exports it so UI code keeps one import surface.
+- A contract failure now points the user at Diagnostics rather than only
+  printing to the console.
+
 ### Known issues
 - `Inserts.cfm` expandable-parent detection (the Inserts/Parallels badge logic)
   is exercised against real markup but its two branches are not individually

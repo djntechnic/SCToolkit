@@ -148,3 +148,60 @@ test('dropdown: Escape closes it and returns focus to the trigger', async () => 
   assert.equal(dropdown.classList.contains('tk-show'), false);
   assert.equal(dom.window.document.activeElement, trigger, 'focus must not be stranded');
 });
+
+// --- contract checks --------------------------------------------------------
+
+test('assertContract records a result for every selector, pass or fail', async () => {
+  const dom = new JSDOM('<!doctype html><body><div id="here"></div></body>');
+  globalThis.document = dom.window.document;
+
+  const { assertContract, getContractResults, resetContracts } =
+    await import('../src/core/contracts.js');
+  resetContracts();
+
+  const ok = assertContract('demo', [
+    { selector: '#here', label: 'the present one' },
+    { selector: '#missing', label: 'the absent one' }
+  ]);
+
+  assert.equal(ok, false);
+  const results = getContractResults();
+  assert.equal(results.length, 2);
+  assert.deepEqual(results.map((r) => r.ok), [true, false]);
+  assert.equal(results[1].label, 'the absent one');
+});
+
+test('assertContract survives an invalid selector instead of throwing', async () => {
+  const dom = new JSDOM('<!doctype html><body></body>');
+  globalThis.document = dom.window.document;
+
+  const { assertContract, resetContracts } = await import('../src/core/contracts.js');
+  resetContracts();
+
+  // A bug in this script must degrade a feature, not take the toolbar down.
+  assert.equal(assertContract('demo', [{ selector: ':::not valid:::' }]), false);
+});
+
+test('an optional check is recorded without failing the contract', async () => {
+  const dom = new JSDOM('<!doctype html><body></body>');
+  globalThis.document = dom.window.document;
+
+  const { assertContract, getContractResults, resetContracts } =
+    await import('../src/core/contracts.js');
+  resetContracts();
+
+  assert.equal(assertContract('demo', [{ selector: '#nope', optional: true }]), true);
+  assert.equal(getContractResults().length, 1);
+});
+
+test('recordContract captures non-selector assumptions', async () => {
+  const { recordContract, getContractResults, resetContracts } =
+    await import('../src/core/contracts.js');
+  resetContracts();
+
+  recordContract('demo', 'indexed 0 rows', false);
+  const [result] = getContractResults();
+
+  assert.equal(result.ok, false);
+  assert.equal(result.moduleId, 'demo');
+});

@@ -28,6 +28,71 @@ A userscript toolkit for sports card database browsing: instant table filtering,
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed and what is still outstanding.
 
+## Settings
+
+Open with the gear icon in the toolbar, or `Ctrl+K` → "Open Settings".
+
+### Global
+
+| Setting | Default | What it does |
+|---|---|---|
+| Theme | auto | `auto` follows your OS. The site itself has no theme to follow. |
+| Export base delay | 500 ms | Minimum wait between requests. Shared across every open tab. |
+| Export jitter | 0–700 ms | Random amount added, so timing is not a fixed interval. |
+| Max retries per page | 3 | Attempts on HTTP 429/503 before the export fails. |
+| Retry backoff base / cap | 1 s / 15 s | Doubling backoff between retries. |
+| Pagination safety ceiling | 200 | Hard stop on discovered page count. |
+| Request timeout | 30 s | Abandons a request that never answers. |
+| Anti-scraping cooldown | 5 min | After a detected block, refuse new exports for this long. |
+| Export cache lifetime | 24 h | Re-exporting within this window makes **no requests**. 0 disables. |
+| Toast duration | 4 s | How long notifications stay visible. |
+| Filter debounce | 150 ms | Delay after typing before the table filter re-runs. |
+| Settings save debounce | 400 ms | Delay before writing changes to storage. |
+| Console log level | info | `debug` includes per-module lifecycle lines. |
+
+Threshold and module changes apply on the next page load. Theme and log level
+apply immediately.
+
+### Modules & Routes
+
+Each module can be switched off, and its route patterns edited. The patterns are
+regular expressions matched against the full URL, and they are the **only** gate
+on where a module runs — so adding a pattern genuinely moves a feature to a new
+page.
+
+### Diagnostics
+
+What the script thinks about the current page: active modules, matched routes,
+the resolved theme, the last detected block, cached-export occupancy with a
+purge button, and every DOM contract check with its result.
+
+## Troubleshooting
+
+**A feature didn't appear.** Open Settings → Diagnostics. If a contract check
+shows `MISSING`, the site's markup no longer matches what the script expects —
+that is a selector-drift issue, and pasting those lines into a report is enough
+to act on. If the module is not listed under "Active modules", its route
+patterns did not match this URL.
+
+**An export stopped partway.** The toolbar and the progress toast both report
+why. `Export blocked` means the site returned a challenge or refused the
+request; the script stops and will refuse new exports for the cooldown period,
+which is deliberate — see [docs/POLITE-USE.md](docs/POLITE-USE.md). `Export
+timed out` means a single request never answered.
+
+**An export was suspiciously fast and made no requests.** It was served from the
+cache. Diagnostics shows what is cached; purge there to force a refetch.
+
+**Exports feel slower than they used to.** Adaptive pacing raises the delay when
+the site is slow or rate-limits, and decays it only after sustained success. The
+current penalty is shown in the toolbar status.
+
+**`Ctrl+K` does nothing.** It stands down while you are typing in a page field,
+so it cannot swallow input during bulk data entry. Click outside the field first.
+
+**Nothing works at all.** Check the browser console for lines prefixed
+`[SCToolkit`. Set the log level to `debug` in Settings for per-module detail.
+
 ## Development
 
 ```bash

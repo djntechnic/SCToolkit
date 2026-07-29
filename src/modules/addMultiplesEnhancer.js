@@ -4,6 +4,7 @@
  * on arrival.
  */
 
+import { recordContract } from '../core/contracts.js';
 import { Log } from '../core/log.js';
 import { InputIndex } from './inputOptimization.js';
 
@@ -80,5 +81,13 @@ function focusFirstQuantityField() {
 export function initAddMultiplesEnhancer() {
   const changed = applySaleTypeDefaults();
   if (changed > 0) Log(`Add Multiples: defaulted ${changed} sale-type select(s).`, 'debug');
+
+  // Finding no sale-type option at all means the form changed shape.
+  recordContract(
+    'addMultiplesEnhancer',
+    `${changed} sale-type select(s) defaulted`,
+    document.querySelectorAll('select').length > 0
+  );
+
   focusFirstQuantityField();
 }

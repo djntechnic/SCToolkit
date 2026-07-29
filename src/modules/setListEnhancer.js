@@ -13,7 +13,8 @@ import { extractSid } from '../core/sid.js';
 import { Pins, deriveSetYear } from '../core/storage.js';
 import { exportSetCSV } from '../net/setExport.js';
 import { SET_LINK_BADGES, renderBadgeSet } from '../ui/badges.js';
-import { assertContract, escapeHtml } from '../ui/dom.js';
+import { assertContract, recordContract } from '../core/contracts.js';
+import { escapeHtml } from '../ui/dom.js';
 import { showToast } from '../ui/toast.js';
 import { Toolbar } from '../ui/toolbar.js';
 
@@ -230,5 +231,7 @@ export function initSetListEnhancer() {
 
   injectInChunks(setLinks, (n) => {
     Log(`Set List Enhancer: badges injected for ${n} of ${setLinks.length} link(s).`, 'debug');
+    // Links found but none carrying a set id means the URL shape changed.
+    recordContract('setListEnhancer', `badges on ${n} of ${setLinks.length} link(s)`, n > 0);
   });
 }

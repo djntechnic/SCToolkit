@@ -6,6 +6,7 @@
  * `net/setExport.js`.
  */
 
+import { recordContract } from '../core/contracts.js';
 import { Log } from '../core/log.js';
 import { Routes } from '../core/routes.js';
 import { CSV } from '../data/csv.js';
@@ -80,6 +81,10 @@ function generateCSV(type) {
 }
 
 export function initCsvExportEngine() {
+  // The export button is added before the user clicks it, so whether the page
+  // actually has anything to export is worth knowing up front.
+  recordContract('csvExportEngine', `${collectRows().length} exportable row(s)`, collectRows().length > 0);
+
   // Disabled at creation; the bootstrap enables them once the pagination gate
   // resolves, so a partially loaded table cannot be exported.
   if (Routes.isCollection()) {
