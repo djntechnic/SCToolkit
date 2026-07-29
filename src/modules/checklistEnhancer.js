@@ -9,7 +9,8 @@
 
 import { Config } from '../core/config.js';
 import { Log } from '../core/log.js';
-import { assertContract, debounce } from '../ui/dom.js';
+import { assertContract, recordContract } from '../core/contracts.js';
+import { debounce } from '../ui/dom.js';
 
 /**
  * Containers that hold a listing table, most specific first.
@@ -98,6 +99,9 @@ function installFilter(mainContent) {
 
   const index = buildRowIndex(mainContent);
   Log(`Checklist filter indexed ${index.length} data row(s).`, 'debug');
+  // A filter over zero rows is a filter that does nothing. That is a markup
+  // change, not an empty page — the module only runs where a table was found.
+  recordContract('checklistEnhancer', `indexed ${index.length} data row(s)`, index.length > 0);
 
   const filterWrap = document.createElement('div');
   filterWrap.id = 'tk-checklist-filter-wrap';

@@ -14,6 +14,7 @@ import { THEMES, applyTheme } from './theme.js';
 import { Routes } from '../core/routes.js';
 import { resolveModules } from '../core/registry.js';
 import { BLOCK_TS_KEY, getValue } from '../core/storage.js';
+import { getContractResults } from '../core/contracts.js';
 import { showToast } from './toast.js';
 
 export const SettingsUI = {
@@ -502,8 +503,55 @@ export const SettingsUI = {
     });
     pane.appendChild(table);
 
+    pane.appendChild(SettingsUI._buildContractPanel());
     pane.appendChild(SettingsUI._buildCachePanel());
     return pane;
+  },
+
+  /**
+   * Every DOM assumption checked on this page, and whether it held.
+   *
+   * This is the answer to "the feature didn't appear". A failing row names the
+   * selector that did not match, which turns a vague report into a
+   * selector-drift issue someone can act on.
+   */
+  _buildContractPanel: () => {
+    const field = document.createElement('div');
+    field.className = 'tk-settings-field';
+
+    const label = document.createElement('label');
+    label.textContent = 'Page contract checks';
+    field.appendChild(label);
+
+    const checks = getContractResults();
+    if (checks.length === 0) {
+      const none = document.createElement('div');
+      none.className = 'tk-settings-hint';
+      none.textContent = 'No checks ran — no modules are active on this page.';
+      field.appendChild(none);
+      return field;
+    }
+
+    const list = document.createElement('ul');
+    list.className = 'tk-contract-list';
+    checks.forEach(({ moduleId, label: text, ok }) => {
+      const item = document.createElement('li');
+      item.className = ok ? 'ok' : 'bad';
+      item.textContent = `${ok ? 'OK' : 'MISSING'} · ${moduleId} · ${text}`;
+      list.appendChild(item);
+    });
+    field.appendChild(list);
+
+    const failed = checks.filter((c) => !c.ok).length;
+    if (failed > 0) {
+      const hint = document.createElement('div');
+      hint.className = 'tk-settings-hint';
+      hint.textContent =
+        `${failed} check(s) failed. If a feature is missing, this is why — ` +
+        'please open a selector-drift issue and paste these lines.';
+      field.appendChild(hint);
+    }
+    return field;
   },
 
   /**

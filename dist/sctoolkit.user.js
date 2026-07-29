@@ -289,6 +289,32 @@
     return included && !excluded;
   }
 
+  // src/core/contracts.js
+  var results = [];
+  var getContractResults = () => results.slice();
+  function assertContract(moduleId, checks) {
+    const failures = [];
+    checks.forEach(({ selector, context = document, label, optional = false }) => {
+      let found;
+      try {
+        found = context.querySelector(selector);
+      } catch {
+        found = null;
+      }
+      results.push({ moduleId, label: label || selector, selector, ok: !!found });
+      if (!found && !optional) failures.push(label || selector);
+    });
+    if (failures.length === 0) return true;
+    Log(
+      `[Contract] '${moduleId}' — selector(s) not found: ${failures.join("; ")}. Site markup may have changed; affected functionality may silently no-op. Settings → Diagnostics lists every check.`,
+      "warn"
+    );
+    return false;
+  }
+  function recordContract(moduleId, label, ok) {
+    results.push({ moduleId, label, selector: "(runtime check)", ok });
+  }
+
   // src/modules/inputOptimization.js
   var InputIndex = {
     /** @type {() => HTMLInputElement[]} */
@@ -311,6 +337,11 @@
     return cache.inputs;
   }
   function initInputOptimization() {
+    recordContract(
+      "inputOptimization",
+      `${getValidInputs().length} eligible input(s)`,
+      true
+    );
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.code !== "NumpadEnter") return;
       const active = document.activeElement;
@@ -359,26 +390,6 @@
     if (str === null || str === void 0) return "";
     return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
-  function assertContract(moduleId, checks) {
-    const failures = [];
-    checks.forEach(({ selector, context = document, label }) => {
-      let found;
-      try {
-        found = context.querySelector(selector);
-      } catch {
-        found = null;
-      }
-      if (!found) failures.push(label || selector);
-    });
-    if (failures.length > 0) {
-      Log(
-        `[Contract Check] Module '${moduleId}' — expected selector(s) not found: ${failures.join("; ")}. Site markup may have changed; affected functionality may silently no-op.`,
-        "warn"
-      );
-      return false;
-    }
-    return true;
-  }
 
   // src/modules/checklistEnhancer.js
   var FILTER_SCOPES = ["#main-content-area", "#content"];
@@ -413,6 +424,7 @@
     if (!targetTable) return;
     const index = buildRowIndex(mainContent);
     Log(`Checklist filter indexed ${index.length} data row(s).`, "debug");
+    recordContract("checklistEnhancer", `indexed ${index.length} data row(s)`, index.length > 0);
     const filterWrap = document.createElement("div");
     filterWrap.id = "tk-checklist-filter-wrap";
     filterWrap.innerHTML = `
@@ -1682,6 +1694,9 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
 .tk-settings-field select:focus-visible,
 #tk-settings-panel input[type="checkbox"]:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
 #tk-settings-panel input[type="checkbox"] { accent-color: var(--tk-accent); }
+.tk-contract-list { list-style: none; margin: 4px 0 0 0; padding: 0; font-family: var(--tk-font-mono); font-size: 10px; line-height: 1.5; }
+.tk-contract-list li.ok { color: var(--tk-text-muted); }
+.tk-contract-list li.bad { color: var(--tk-red); font-weight: 700; }
 .tk-diag-list { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 12px 0; font-size: 11px; }
 .tk-diag-list dt { font-family: var(--tk-font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tk-text-muted); }
 .tk-diag-list dd { margin: 0; word-break: break-word; }
@@ -2091,6 +2106,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     }
     injectInChunks(setLinks, (n) => {
       Log(`Set List Enhancer: badges injected for ${n} of ${setLinks.length} link(s).`, "debug");
+      recordContract("setListEnhancer", `badges on ${n} of ${setLinks.length} link(s)`, n > 0);
     });
   }
 
@@ -2138,6 +2154,11 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   function initAddMultiplesEnhancer() {
     const changed = applySaleTypeDefaults();
     if (changed > 0) Log(`Add Multiples: defaulted ${changed} sale-type select(s).`, "debug");
+    recordContract(
+      "addMultiplesEnhancer",
+      `${changed} sale-type select(s) defaulted`,
+      document.querySelectorAll("select").length > 0
+    );
     focusFirstQuantityField();
   }
 
@@ -2175,6 +2196,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     showToast({ message: `Exported ${type} CSV successfully.` });
   }
   function initCsvExportEngine() {
+    recordContract("csvExportEngine", `${collectRows().length} exportable row(s)`, collectRows().length > 0);
     if (Routes.isCollection()) {
       Toolbar.addAction("btn-csv-coll", "Export Collection", () => generateCSV("Collection"), true);
     } else if (Routes.isPlayerCollection()) {
@@ -2681,8 +2703,48 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         table.append(dt, dd);
       });
       pane.appendChild(table);
+      pane.appendChild(SettingsUI._buildContractPanel());
       pane.appendChild(SettingsUI._buildCachePanel());
       return pane;
+    },
+    /**
+     * Every DOM assumption checked on this page, and whether it held.
+     *
+     * This is the answer to "the feature didn't appear". A failing row names the
+     * selector that did not match, which turns a vague report into a
+     * selector-drift issue someone can act on.
+     */
+    _buildContractPanel: () => {
+      const field = document.createElement("div");
+      field.className = "tk-settings-field";
+      const label = document.createElement("label");
+      label.textContent = "Page contract checks";
+      field.appendChild(label);
+      const checks = getContractResults();
+      if (checks.length === 0) {
+        const none = document.createElement("div");
+        none.className = "tk-settings-hint";
+        none.textContent = "No checks ran — no modules are active on this page.";
+        field.appendChild(none);
+        return field;
+      }
+      const list = document.createElement("ul");
+      list.className = "tk-contract-list";
+      checks.forEach(({ moduleId, label: text, ok }) => {
+        const item = document.createElement("li");
+        item.className = ok ? "ok" : "bad";
+        item.textContent = `${ok ? "OK" : "MISSING"} · ${moduleId} · ${text}`;
+        list.appendChild(item);
+      });
+      field.appendChild(list);
+      const failed = checks.filter((c) => !c.ok).length;
+      if (failed > 0) {
+        const hint = document.createElement("div");
+        hint.className = "tk-settings-hint";
+        hint.textContent = `${failed} check(s) failed. If a feature is missing, this is why — please open a selector-drift issue and paste these lines.`;
+        field.appendChild(hint);
+      }
+      return field;
     },
     /**
      * Cache occupancy plus a purge control.

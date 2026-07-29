@@ -2,7 +2,11 @@
  * Small DOM helpers shared across the UI layer.
  */
 
-import { Log } from '../core/log.js';
+
+
+// Re-exported so UI code keeps a single import surface; the implementation and
+// its result log live in core/, which the DOM layer sits above.
+export { assertContract } from '../core/contracts.js';
 
 /**
  * Append a `<style>` element to the document head.
@@ -75,37 +79,3 @@ export function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-/**
- * Verify that the selectors a module depends on actually exist, and warn when
- * they do not.
- *
- * This is the early-warning system for the project's main failure mode: the
- * site changes its markup and a feature stops working without erroring. A
- * failed check is informational — the module still runs and simply no-ops.
- *
- * @param {string} moduleId
- * @param {Array<{selector: string, context?: ParentNode, label?: string}>} checks
- * @returns {boolean} true when every selector resolved
- */
-export function assertContract(moduleId, checks) {
-  const failures = [];
-  checks.forEach(({ selector, context = document, label }) => {
-    let found;
-    try {
-      found = context.querySelector(selector);
-    } catch {
-      found = null;
-    }
-    if (!found) failures.push(label || selector);
-  });
-
-  if (failures.length > 0) {
-    Log(
-      `[Contract Check] Module '${moduleId}' — expected selector(s) not found: ${failures.join('; ')}. ` +
-      'Site markup may have changed; affected functionality may silently no-op.',
-      'warn'
-    );
-    return false;
-  }
-  return true;
-}

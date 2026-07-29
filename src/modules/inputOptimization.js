@@ -3,6 +3,8 @@
  * one, so bulk data entry never needs the mouse or the Tab key.
  */
 
+import { recordContract } from '../core/contracts.js';
+
 /** Shared with the Add Multiples module, which focuses the first empty field. */
 export const InputIndex = {
   /** @type {() => HTMLInputElement[]} */
@@ -55,6 +57,14 @@ export function getValidInputs() {
 }
 
 export function initInputOptimization() {
+  // Not a failure on most pages — most pages have no data-entry fields — so
+  // this is recorded rather than warned about.
+  recordContract(
+    'inputOptimization',
+    `${getValidInputs().length} eligible input(s)`,
+    true
+  );
+
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.code !== 'NumpadEnter') return;
 

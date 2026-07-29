@@ -39,6 +39,7 @@ module importing from `ui/` is a bug.
 | `core/routes.js` | Page-shape predicates for the current URL |
 | `core/sid.js` | Set-ID extraction from either URL form |
 | `core/registry.js` | Module definitions and URL-gated resolution |
+| `core/contracts.js` | DOM assumption checks, recorded for Diagnostics |
 | `net/fetcher.js` | Timeout, retry loop, backoff, `Retry-After`; the only caller of `fetch` |
 | `net/throttle.js` | Cross-tab request slot, shared through userscript storage |
 | `net/pacing.js` | Adaptive delay penalty from observed latency and throttle signals |
@@ -180,6 +181,21 @@ toggle sits in storage forever, invisible to Settings and read by nothing.
   `dist/sctoolkit.user.js` in jsdom with stubbed `GM_*` globals. It is the only
   check that can catch an import cycle or a load-order fault, so **build before
   test**: `npm run check` and CI both do.
+
+## Contract checks
+
+The main failure mode is not a crash. It is the site changing its markup so a
+selector stops matching and a feature quietly does nothing — which is precisely
+what happened to the checklist filter on three of its four routes, undetected
+for the life of v2.x.
+
+Every module records what it assumed about the page through
+`assertContract` (selector-based) or `recordContract` (a runtime outcome such as
+"indexed zero rows"). Results are listed in Settings → Diagnostics, so a user
+report becomes a named selector rather than a description of absence.
+
+A check never throws and never blocks a module. A markup change should degrade
+one feature, not take the toolbar down with it.
 
 ## Performance rules
 
