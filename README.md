@@ -12,6 +12,11 @@ A userscript toolkit for sports card database browsing: instant table filtering,
 2. Open **[dist/sctoolkit.user.js](https://raw.githubusercontent.com/djntechnic/SCToolkit/main/dist/sctoolkit.user.js)** — Tampermonkey will offer to install it.
 3. Updates arrive automatically; the script declares `@updateURL` against `main`.
 
+> While this repository is private, the raw install and update URLs are not
+> reachable without a token — install by loading `dist/sctoolkit.user.js` from
+> a local clone instead. Auto-update begins working the moment the repository
+> is made public; no change to the script is needed.
+
 ## Features
 
 Documented per module as each lands. See [CHANGELOG.md](CHANGELOG.md) for what is shipping now.
