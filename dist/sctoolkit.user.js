@@ -523,8 +523,9 @@
   var PRINT_RUN = /^SN\d+$/i;
   var CAPTION_PREFIX = /^(VAR|ERR|UER):\s*/i;
   var DESCRIBABLE_TAG = /^(VAR|ERR|UER)$/i;
+  var VARIATION_CARD_NO = /\d+[a-z]$/i;
   var norm = (node) => node ? node.textContent.replace(/\s+/g, " ").trim() : "";
-  function parseSubjectCell(rawSubject, captionDesc = "") {
+  function parseSubjectCell(rawSubject, captionDesc = "", caption = {}) {
     const tokens = String(rawSubject || "").split(" ");
     const subjectParts = [];
     let tagParts = [];
@@ -547,8 +548,10 @@
       }
     }
     if (captionDesc) {
+      const attached = tagParts.some((t) => DESCRIBABLE_TAG.test(t));
       tagParts = tagParts.map((tag) => DESCRIBABLE_TAG.test(tag) ? `${tag} (${captionDesc})` : tag);
-      if (!tagParts.some((t) => t.includes(captionDesc))) {
+      const isVariation = caption.prefixed || attached || caption.variantCardNo;
+      if (isVariation && !tagParts.some((t) => t.includes(captionDesc))) {
         tagParts.push(`VAR (${captionDesc})`);
       }
     }
@@ -574,20 +577,27 @@
     if (!cardNoLink) return null;
     const teamLink = row.querySelector('a[href*="Team.cfm"]');
     const subjectTd = findSubjectCell(row, cardNoLink);
+    const cardNo = cardNoLink.textContent.trim();
     let rawSubject = "";
     let captionDesc = "";
+    let prefixed = false;
     if (subjectTd) {
       const figcaptionEl = subjectTd.querySelector("figcaption, .figure-caption");
       if (figcaptionEl) {
-        captionDesc = norm(figcaptionEl).replace(CAPTION_PREFIX, "").trim();
+        const raw = norm(figcaptionEl);
+        prefixed = CAPTION_PREFIX.test(raw);
+        captionDesc = raw.replace(CAPTION_PREFIX, "").trim();
       }
       const cloneTd = subjectTd.cloneNode(true);
       cloneTd.querySelectorAll("figcaption, .figure-caption").forEach((el) => el.remove());
       rawSubject = norm(cloneTd);
     }
-    const { subject, tags, printRun } = parseSubjectCell(rawSubject, captionDesc);
+    const { subject, tags, printRun } = parseSubjectCell(rawSubject, captionDesc, {
+      prefixed,
+      variantCardNo: VARIATION_CARD_NO.test(cardNo)
+    });
     return {
-      cardNo: cardNoLink.textContent.trim(),
+      cardNo,
       subject,
       tags,
       printRun,

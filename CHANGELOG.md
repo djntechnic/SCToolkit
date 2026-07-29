@@ -240,9 +240,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 **Notes**
 - No schema bump: `theme` is additive.
 
+### Second fixture round
+
+**Fixed**
+- **Figcaptions are no longer assumed to be variations.** Real checklist cards
+  caption themselves with the card range they cover — `Checklist: 211-245` — and
+  every one became a fabricated `VAR (Checklist: 211-245)` tag. Twenty wrong
+  rows in a single real set, in a column people filter and sort on. A caption
+  now becomes a variation only on evidence: a `VAR:`/`ERR:`/`UER:` prefix, an
+  existing variation tag on the row, or a letter-suffixed card number such as
+  `126b`. All 27 genuine variations in that set are still captured.
+
+**Added**
+- Seven more captures: a 727-row set with real variations and print runs, a
+  non-sport set with no team links, two `Inserts.cfm` indexes across two sports,
+  a single card page, and two paginated player-collection routes (one with 163
+  pages).
+
+**Confirmed**
+- **`Checklist.cfm` does not paginate** — every set renders on one page,
+  verified up to 727 rows. The export's page loop makes exactly one request per
+  set today. It stays because the loop and its safety ceiling cost nothing and
+  the site may change, but it is no longer described as load-bearing.
+- Pagination is real on the collection routes, where the truncated numbered list
+  and last-page link behaviour matters.
+
 ### Known issues
-- No capture of a **multi-page `Checklist.cfm`** yet; pagination on that exact
-  route is proven by the shared control markup, not directly.
+- `Inserts.cfm` expandable-parent detection (the Inserts/Parallels badge logic)
+  is exercised against real markup but its two branches are not individually
+  pinned.
 
 ## [2.42.0] — prior single-file releases
 

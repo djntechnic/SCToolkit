@@ -32,6 +32,13 @@ const CAPTION_PREFIX = /^(VAR|ERR|UER):\s*/i;
 /** Tags whose meaning is completed by a figcaption description. */
 const DESCRIBABLE_TAG = /^(VAR|ERR|UER)$/i;
 
+/**
+ * A card number ending in a letter marks a variation of the base card — `50b`
+ * is a variant of `50`. This is the site's own convention and is the strongest
+ * available signal that an unprefixed caption describes a variation.
+ */
+const VARIATION_CARD_NO = /\d+[a-z]$/i;
+
 const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
 
 /**
@@ -60,9 +67,12 @@ const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
  *
  * @param {string} rawSubject subject-cell text with the figcaption removed
  * @param {string} [captionDesc] figcaption text, prefix already stripped
+ * @param {object} [caption] what the caption was before stripping
+ * @param {boolean} [caption.prefixed] whether it began `VAR:`/`ERR:`/`UER:`
+ * @param {boolean} [caption.variantCardNo] whether the card number ends in a letter
  * @returns {{subject: string, tags: string, printRun: string}}
  */
-export function parseSubjectCell(rawSubject, captionDesc = '') {
+export function parseSubjectCell(rawSubject, captionDesc = '', caption = {}) {
   const tokens = String(rawSubject || '').split(' ');
   const subjectParts = [];
   let tagParts = [];
@@ -88,12 +98,20 @@ export function parseSubjectCell(rawSubject, captionDesc = '') {
     }
   }
 
-  // A figcaption describes the variation. Attach it to the matching tag if one
-  // is present; otherwise the caption is itself the evidence of a variation and
-  // becomes a synthesised VAR tag.
+  // A figcaption in the subject cell is not automatically a variation. Real
+  // checklists caption their checklist cards with the range they cover —
+  // "Checklist: 211-245" — and v2.42.0 turned every one of those into a
+  // fabricated `VAR (Checklist: 211-245)` tag. Twenty rows of a single real set
+  // were wrong this way.
+  //
+  // A caption is treated as a variation only on evidence: it said so itself,
+  // the row already carries a variation tag, or the card number is suffixed.
   if (captionDesc) {
+    const attached = tagParts.some((t) => DESCRIBABLE_TAG.test(t));
     tagParts = tagParts.map((tag) => (DESCRIBABLE_TAG.test(tag) ? `${tag} (${captionDesc})` : tag));
-    if (!tagParts.some((t) => t.includes(captionDesc))) {
+
+    const isVariation = caption.prefixed || attached || caption.variantCardNo;
+    if (isVariation && !tagParts.some((t) => t.includes(captionDesc))) {
       tagParts.push(`VAR (${captionDesc})`);
     }
   }
@@ -144,13 +162,17 @@ export function parseChecklistRow(row) {
   const teamLink = row.querySelector('a[href*="Team.cfm"]');
   const subjectTd = findSubjectCell(row, cardNoLink);
 
+  const cardNo = cardNoLink.textContent.trim();
   let rawSubject = '';
   let captionDesc = '';
+  let prefixed = false;
 
   if (subjectTd) {
     const figcaptionEl = subjectTd.querySelector('figcaption, .figure-caption');
     if (figcaptionEl) {
-      captionDesc = norm(figcaptionEl).replace(CAPTION_PREFIX, '').trim();
+      const raw = norm(figcaptionEl);
+      prefixed = CAPTION_PREFIX.test(raw);
+      captionDesc = raw.replace(CAPTION_PREFIX, '').trim();
     }
 
     // Clone so the figcaption can be removed without mutating the source
@@ -160,10 +182,13 @@ export function parseChecklistRow(row) {
     rawSubject = norm(cloneTd);
   }
 
-  const { subject, tags, printRun } = parseSubjectCell(rawSubject, captionDesc);
+  const { subject, tags, printRun } = parseSubjectCell(rawSubject, captionDesc, {
+    prefixed,
+    variantCardNo: VARIATION_CARD_NO.test(cardNo)
+  });
 
   return {
-    cardNo: cardNoLink.textContent.trim(),
+    cardNo,
     subject,
     tags,
     printRun,
