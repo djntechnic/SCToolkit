@@ -7,7 +7,7 @@ import { Routes } from '../core/routes.js';
 import { extractSid } from '../core/sid.js';
 import { Log } from '../core/log.js';
 import { Pins, deriveSetYear } from '../core/storage.js';
-import { exportSetCSV } from '../net/setExport.js';
+import { CurrentRun, cancelCurrentExport, exportSetCSV } from '../net/setExport.js';
 import { TOOLBAR_BADGES, createBadge, renderBadgeSet } from './badges.js';
 import { createBtn, injectStyle } from './dom.js';
 import { icon, installIconSprite } from './icons.js';
@@ -79,6 +79,34 @@ export const Toolbar = {
 
     Toolbar.renderPins();
     Toolbar.renderCenterContext();
+    Toolbar.installCancelControl();
+  },
+
+  /**
+   * Wire a Cancel button that appears only while an export is running.
+   *
+   * A 200-page run is three minutes or more of requests. Until now the only way
+   * to stop one was to close the tab, which is not a control — it is a
+   * workaround for the absence of one.
+   */
+  installCancelControl: () => {
+    const container = document.getElementById('tk-actions');
+    if (!container) return;
+
+    const btn = createBtn('tk-cancel-export', 'Cancel Export', () => {
+      if (cancelCurrentExport()) btn.disabled = true;
+    });
+    btn.hidden = true;
+    btn.classList.add('sctk-btn-danger');
+    container.appendChild(btn);
+
+    CurrentRun.onStart = () => {
+      btn.hidden = false;
+      btn.disabled = false;
+    };
+    CurrentRun.onEnd = () => {
+      btn.hidden = true;
+    };
   },
 
   /**

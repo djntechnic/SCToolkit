@@ -21,7 +21,8 @@ export const EXPORT_CONFIG = {
   maxRetries: 3,
   backoffBaseMs: 1000,
   backoffCapMs: 15000,
-  maxPages: 200
+  maxPages: 200,
+  requestTimeoutMs: 30000
 };
 
 export const DEFAULT_CONFIG = {
@@ -79,7 +80,9 @@ export const DEFAULT_CONFIG = {
     exportBackoffBaseMs: EXPORT_CONFIG.backoffBaseMs,
     exportBackoffCapMs: EXPORT_CONFIG.backoffCapMs,
     exportMaxPages: EXPORT_CONFIG.maxPages,
+    exportRequestTimeoutMs: EXPORT_CONFIG.requestTimeoutMs,
     exportBlockCooldownMinutes: 5,
+    exportCacheTtlHours: 24,
     toastDurationMs: 4000,
     checklistFilterDebounceMs: 150,
     paginationLoaderDelayMs: 1000,
@@ -190,6 +193,7 @@ export function syncExportConfig() {
   EXPORT_CONFIG.backoffBaseMs = Config.global.exportBackoffBaseMs;
   EXPORT_CONFIG.backoffCapMs = Config.global.exportBackoffCapMs;
   EXPORT_CONFIG.maxPages = Config.global.exportMaxPages;
+  EXPORT_CONFIG.requestTimeoutMs = Config.global.exportRequestTimeoutMs;
 }
 
 /**

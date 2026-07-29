@@ -152,3 +152,27 @@ test('the bundle boots on a page it has no modules for', async () => {
   assert.ok(dom.window.document.getElementById('sctk-toolbar'));
   dom.window.close();
 });
+
+test('the cancel control exists but stays hidden until an export runs', async () => {
+  // A 200-page run is minutes of requests; before Phase 4 the only way to stop
+  // one was to close the tab.
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const btn = dom.window.document.getElementById('tk-cancel-export');
+
+  assert.ok(btn, 'cancel button should be mounted');
+  assert.equal(btn.hidden, true);
+  dom.window.close();
+});
+
+test('the settings pane exposes the cache and timeout controls', async () => {
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const doc = dom.window.document;
+  doc.getElementById('tk-settings-trigger').click();
+
+  const labels = Array.from(doc.querySelectorAll('#tk-settings-global label'), (l) => l.textContent);
+  assert.ok(labels.some((t) => t.startsWith('Request timeout')), 'timeout slider missing');
+  assert.ok(labels.some((t) => t.startsWith('Export cache lifetime')), 'cache TTL slider missing');
+  assert.ok(doc.getElementById('tk-cache-purge'), 'cache purge button missing');
+
+  dom.window.close();
+});
