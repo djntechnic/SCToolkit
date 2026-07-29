@@ -5,8 +5,13 @@ Two sets, with different jobs.
 ## `real/` — sanitized captures of live pages
 
 These are the authority. They prove the parser and the module selectors handle
-the markup the site actually returns, and they have already overturned two
+the markup the site actually returns, and they have already overturned three
 assumptions the synthetic fixtures could not.
+
+One of those is worth stating plainly: **`Checklist.cfm` does not paginate.**
+Confirmed across three captures including a 727-row set. The export's page loop
+therefore issues exactly one request per set today; it remains because the
+safety ceiling and the loop cost nothing, and the site could change.
 
 | File | Route | What it pins |
 |---|---|---|
@@ -18,6 +23,12 @@ assumptions the synthetic fixtures could not.
 | `collection-browse.html` | `CollectionBrowse.cfm` | another paginated listing shape |
 | `view-all.html` | `ViewAll.cfm` | set links for badge injection; image-only links excluded |
 | `print-collection.html` | `PrintYourCollectionPDF.cfm` | **a card grid with no table at all** |
+| `checklist-variations.html` | `Checklist.cfm` | **real `VAR:` captions, and checklist-range captions that are not variations**; real `SN` print runs |
+| `checklist-non-sport.html` | `Checklist.cfm` | a non-Baseball set: no team links |
+| `inserts.html`, `inserts-basketball.html` | `Inserts.cfm` | set links on an inserts index; two sports |
+| `view-card.html` | `ViewCard.cfm` | a single card page — no rows to parse |
+| `player-collection.html` | `CollectionBrowseP.cfm` | a paginated player collection |
+| `player-wantlist.html` | `ViewCollectionPWantlist.cfm` | a 163-page control |
 | `homepage.html` | `/` | negative control: card links present, but no checklist to parse |
 
 ### Adding one

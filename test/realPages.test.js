@@ -36,8 +36,10 @@ const real = (name) =>
 const doc = (name) => new JSDOM(real(name)).window.document;
 
 const ALL = [
-  'checklist', 'view-all', 'for-sale-trade', 'wantlist', 'add-multiples-text',
-  'collection-browse', 'collection-mode', 'print-collection', 'homepage'
+  'checklist', 'checklist-variations', 'checklist-non-sport', 'view-all',
+  'inserts', 'inserts-basketball', 'view-card', 'for-sale-trade', 'wantlist',
+  'add-multiples-text', 'collection-browse', 'collection-mode',
+  'player-collection', 'player-wantlist', 'print-collection', 'homepage'
 ];
 
 // --- the captures themselves ------------------------------------------------
@@ -227,4 +229,126 @@ test('real homepage: the checklist parser finds no card rows', () => {
   // parser must still yield nothing, because there is no checklist here.
   const parsed = parseChecklistDocument(doc('homepage'));
   assert.equal(parsed.rows.length, 0);
+});
+
+// --- variations, and the captions that are not variations -------------------
+
+test('real variations: a genuine VAR caption is attached to the tag', () => {
+  const parsed = parseChecklistDocument(doc('checklist-variations'));
+  const soto = parsed.rows.find((r) => r.cardNo === '50b');
+
+  assert.equal(soto.subject, 'Juan Soto');
+  assert.match(soto.tags, /VAR \(In Yankees uniform with team designation\)/);
+});
+
+test('real variations: a checklist-range caption is NOT turned into a variation', () => {
+  // The bug this capture found. Checklist cards caption themselves with the
+  // range they cover — "Checklist: 211-245". v2.42.0 fabricated a
+  // `VAR (Checklist: 211-245)` tag for every one of them: 20 wrong rows in a
+  // single real set, in a column people filter on.
+  const parsed = parseChecklistDocument(doc('checklist-variations'));
+
+  const fabricated = parsed.rows.filter((r) => /VAR \(Checklist:/.test(r.tags));
+  assert.deepEqual(fabricated, [], 'a card-range caption is metadata, not a variation');
+
+  const card38 = parsed.rows.find((r) => r.cardNo === '38');
+  assert.equal(card38.tags, 'CL, CPC');
+});
+
+test('real variations: an unprefixed caption on a suffixed card still counts', () => {
+  // `126b` is a variant of `126` by the site's own numbering convention, so an
+  // unprefixed caption there is describing the variation.
+  const parsed = parseChecklistDocument(doc('checklist-variations'));
+  const card = parsed.rows.find((r) => r.cardNo === '126b');
+
+  assert.match(card.tags, /VAR \(Kevin Hart image variation\)/);
+});
+
+test('real variations: print runs are extracted from real SN tokens', () => {
+  const parsed = parseChecklistDocument(doc('checklist-variations'));
+  const numbered = parsed.rows.filter((r) => r.printRun);
+
+  assert.ok(numbered.length > 0, 'expected serial-numbered cards');
+  numbered.forEach((r) => {
+    assert.match(r.printRun, /^\d+$/, `bad print run ${r.printRun}`);
+    assert.equal(/\bSN\d+/.test(r.subject), false, 'SN token leaked into the subject');
+  });
+});
+
+test('real variations: no row ends up with an empty subject', () => {
+  const parsed = parseChecklistDocument(doc('checklist-variations'));
+  assert.deepEqual(parsed.rows.filter((r) => !r.subject), []);
+});
+
+// --- a non-sport set --------------------------------------------------------
+
+test('real non-sport set: parses without team links', () => {
+  // Every other capture is Baseball. Non-sport cards have no team, which the
+  // parser must treat as an empty column rather than a failure.
+  const parsed = parseChecklistDocument(doc('checklist-non-sport'));
+
+  assert.equal(parsed.year, '2025');
+  assert.ok(parsed.rows.length > 10);
+  assert.ok(parsed.rows.every((r) => r.cardNo && r.subject));
+  assert.ok(parsed.rows.some((r) => r.team === ''), 'expected rows with no team');
+});
+
+// --- checklists do not paginate --------------------------------------------
+
+test('real checklists render in full on one page', () => {
+  // Confirmed across three captures, including a 727-row set: Checklist.cfm
+  // has no pagination control at all. The export's page loop therefore makes
+  // exactly one request per set today — it exists for the case where that
+  // changes, and the safety ceiling still bounds it.
+  ['checklist', 'checklist-variations', 'checklist-non-sport'].forEach((name) => {
+    const d = doc(name);
+    assert.equal(d.querySelectorAll('.pagination').length, 0, `${name} grew a pagination control`);
+    assert.equal(parseTotalPages(d), 1);
+  });
+});
+
+test('real collection views do paginate, and the total comes from the last link', () => {
+  // These are the routes where pagination is real, and where a truncated
+  // numbered list would silently cost pages.
+  assert.equal(parseTotalPages(doc('collection-mode')), 18);
+  assert.ok(parseTotalPages(doc('player-collection')) > 1);
+  assert.ok(parseTotalPages(doc('player-wantlist')) > 100);
+});
+
+// --- inserts pages ----------------------------------------------------------
+
+test('real inserts pages: set links are found for badge injection', () => {
+  // A configured setListEnhancer route that had no coverage at all.
+  ['inserts', 'inserts-basketball'].forEach((name) => {
+    const links = findSetLinks(doc(name));
+    assert.ok(links.length > 10, `${name} yielded ${links.length} set links`);
+    links.forEach((l) => assert.ok(extractSid(l.getAttribute('href')), `no sid on ${l.getAttribute('href')}`));
+  });
+});
+
+test('real inserts pages: the parser finds no card rows there', () => {
+  // An inserts index lists sets, not cards. It must not produce an export.
+  ['inserts', 'inserts-basketball'].forEach((name) => {
+    assert.equal(parseChecklistDocument(doc(name)).rows.length, 0, name);
+  });
+});
+
+// --- single card ------------------------------------------------------------
+
+test('real card page: no card rows, and a sid is available for the toolbar', () => {
+  const d = doc('view-card');
+  assert.equal(parseChecklistDocument(d).rows.length, 0);
+
+  const sid = extractSid('https://www.tcdb.com/ViewCard.cfm/sid/410117/cid/23854627/x');
+  assert.equal(sid, '410117');
+});
+
+// --- player collection routes ----------------------------------------------
+
+test('real player collection views expose a filterable table', () => {
+  ['player-collection', 'player-wantlist'].forEach((name) => {
+    const scope = findFilterScope(doc(name));
+    assert.ok(scope, `no filter container on ${name}`);
+    assert.ok(buildRowIndex(scope).length > 5, `too few rows indexed on ${name}`);
+  });
 });

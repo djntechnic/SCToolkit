@@ -58,9 +58,28 @@ test('parseSubjectCell: caption annotates a matching tag in place', () => {
   assert.equal(result.tags, 'VAR (Batting stance)');
 });
 
-test('parseSubjectCell: caption with no matching tag synthesises VAR', () => {
+test('parseSubjectCell: a caption with no evidence of a variation adds no tag', () => {
+  // Real checklist cards caption themselves with the card range they cover.
+  // Treating every caption as a variation fabricated tags on 20 rows of one
+  // real set — see test/realPages.test.js.
   const result = parseSubjectCell('Derek Jeter', 'Sunglasses on cap');
   assert.equal(result.subject, 'Derek Jeter');
+  assert.equal(result.tags, '');
+});
+
+test('parseSubjectCell: a VAR-prefixed caption synthesises the tag', () => {
+  const result = parseSubjectCell('Derek Jeter', 'Sunglasses on cap', { prefixed: true });
+  assert.equal(result.tags, 'VAR (Sunglasses on cap)');
+});
+
+test('parseSubjectCell: a suffixed card number is evidence of a variation', () => {
+  // `50b` is a variant of `50` by the site's own numbering convention.
+  const result = parseSubjectCell('Derek Jeter', 'Sunglasses on cap', { variantCardNo: true });
+  assert.equal(result.tags, 'VAR (Sunglasses on cap)');
+});
+
+test('parseSubjectCell: an existing variation tag absorbs the caption', () => {
+  const result = parseSubjectCell('Derek Jeter VAR', 'Sunglasses on cap');
   assert.equal(result.tags, 'VAR (Sunglasses on cap)');
 });
 
