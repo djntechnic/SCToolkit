@@ -285,6 +285,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A contract failure now points the user at Diagnostics rather than only
   printing to the console.
 
+### Phase 7 — GitHub integration
+
+**Added**
+- Project board [SCToolkit v3.0](https://github.com/users/djntechnic/projects/3)
+  with one issue per outstanding item, so the findings from this review stay
+  traceable now that the phases have landed.
+- `type:chore` label.
+
+**Already in place from earlier phases**
+- `ci.yml` (lint → build → test → stale-dist guard) on every push and PR.
+- `release.yml` on `v*` tags: verifies the tag matches `package.json`, extracts
+  the matching changelog section as the release body, attaches the built
+  userscript.
+- Bug, feature, and selector-drift issue templates; blank issues disabled.
+- Branch protection on `main`: CI must pass, no force-push, no deletion, no
+  bypass — added once the repository went public in Phase 1.
+
 ### Known issues
 - `Inserts.cfm` expandable-parent detection (the Inserts/Parallels badge logic)
   is exercised against real markup but its two branches are not individually

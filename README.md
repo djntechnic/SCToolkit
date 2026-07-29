@@ -127,6 +127,23 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 Export features issue real HTTP requests to a third-party site. Pacing, caching, and hard-stop behaviour are described in [docs/POLITE-USE.md](docs/POLITE-USE.md) and are not user-disableable below their floors.
 
+## Contributing
+
+Issues and pull requests are welcome. Two things worth knowing:
+
+- **`main` is protected.** CI — lint, build, tests, and a check that the
+  committed `dist/` matches a fresh build — must pass before a merge.
+- **`dist/sctoolkit.user.js` is committed on purpose**, because it is what users
+  install from. Run `npm run build` and include the result in your PR, or CI
+  will reject it as stale.
+
+If a feature stopped working, open a **selector-drift** issue and paste the
+contract-check lines from Settings → Diagnostics. That turns "it didn't appear"
+into a named selector.
+
+Open work is tracked on the
+[project board](https://github.com/users/djntechnic/projects/3).
+
 ## License
 
 [MIT](LICENSE)
