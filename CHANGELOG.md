@@ -204,6 +204,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Scoping page discovery to `.pagination` is what keeps the `?PageIndex=1` on
   every card link out of the page count.
 
+### Phase 5 — UI/UX redesign
+
+**Added**
+- **Dark mode**, with a `Theme` setting of auto / light / dark. `auto` follows
+  the OS and updates live. The plan called for detecting the site's own theme as
+  a middle source — the real captures carry no theme signal of any kind, so that
+  branch is not implemented rather than guessed at.
+- **Ctrl+K command palette** with fuzzy search over pinned sets, the shortcut
+  actions for the current set, export, and settings. Ignored while typing in a
+  page field, so it cannot swallow a keystroke on a data-entry page.
+- **Diagnostics tab** in Settings: version, matched routes, active-module
+  resolution for the current URL, last block timestamp, resolved theme, and
+  cache occupancy. All of this previously reached only the console, so a report
+  of "the filter didn't appear" could not be answered.
+- **Progress toasts** that update in place with page *n* of *N* and carry their
+  own Cancel button, next to the thing they cancel.
+
+**Changed**
+- **The page offset is measured.** `body { padding-top: 38px }` was a fixed
+  compensation for a `flex-wrap: wrap` toolbar — the moment it wrapped to two
+  rows it covered the top of the page. The toolbar no longer wraps, and a
+  `ResizeObserver` publishes its real height.
+- **Dropdowns are click-only**, with `aria-expanded`, Escape-to-close that
+  returns focus to the trigger, and arrow-key/Home/End navigation. Hover-open
+  cannot be dismissed on a touch device and fires by accident on desktop.
+- **Toast variants are named** (`success`/`warn`/`error`/`progress`/`muted`)
+  rather than each call site passing a raw colour, and every variant resolves
+  through a theme token — a hardcoded colour would have stayed light in dark
+  mode. Stacking is capped so a long export cannot bury the page.
+- **The settings modal is a real dialog**: `role="dialog"`, `aria-modal`, a
+  focus trap, Escape to close, and focus returned to wherever it came from.
+- Toasts are announced via `aria-live="polite"`.
+
+**Notes**
+- No schema bump: `theme` is additive.
+
 ### Known issues
 - No capture of a **multi-page `Checklist.cfm`** yet; pagination on that exact
   route is proven by the shared control markup, not directly.

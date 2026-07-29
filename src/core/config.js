@@ -87,6 +87,7 @@ export const DEFAULT_CONFIG = {
     checklistFilterDebounceMs: 150,
     paginationLoaderDelayMs: 1000,
     settingsSaveDebounceMs: 400,
+    theme: 'auto',
     logLevel: 'info'
   }
 };

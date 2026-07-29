@@ -28,7 +28,7 @@ export const ExportQueue = {
       Log(`Export queued behind ${position - 1} pending job(s): ${label}`, 'info');
       showToast({
         message: `Queued: <b>${escapeHtml(label)}</b> (position ${position})`,
-        accent: 'var(--tk-text-muted)'
+        variant: 'muted'
       });
       return;
     }

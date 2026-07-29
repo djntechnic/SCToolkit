@@ -12,6 +12,7 @@ import { TOOLBAR_BADGES, createBadge, renderBadgeSet } from './badges.js';
 import { createBtn, injectStyle } from './dom.js';
 import { icon, installIconSprite } from './icons.js';
 import { TOOLBAR_CSS } from './styles.js';
+import { initDropdown, initDropdownDismissal } from './dropdown.js';
 
 /**
  * Append the shortcut links plus a CSV action for a set.
@@ -71,11 +72,8 @@ export const Toolbar = {
     `;
     document.body.prepend(bar);
 
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('.tk-dropdown')) {
-        document.querySelectorAll('.tk-dropdown.tk-show').forEach((d) => d.classList.remove('tk-show'));
-      }
-    });
+    initDropdownDismissal();
+    Toolbar.observeHeight(bar);
 
     Toolbar.renderPins();
     Toolbar.renderCenterContext();
@@ -107,6 +105,28 @@ export const Toolbar = {
     CurrentRun.onEnd = () => {
       btn.hidden = true;
     };
+  },
+
+  /**
+   * Publish the toolbar's real height so the page can be offset by exactly it.
+   *
+   * The old rule was a fixed `body { padding-top: 38px }`. The toolbar was
+   * `flex-wrap: wrap`, so the moment it wrapped to a second row it covered the
+   * top of the page — the compensation and the thing it compensated for were
+   * free to disagree. The toolbar no longer wraps, and the offset is measured
+   * rather than assumed.
+   *
+   * @param {HTMLElement} bar
+   */
+  observeHeight: (bar) => {
+    const publish = () => {
+      const height = Math.ceil(bar.getBoundingClientRect().height);
+      if (height > 0) document.documentElement.style.setProperty('--tk-toolbar-height', `${height}px`);
+    };
+
+    publish();
+    if (typeof ResizeObserver === 'function') new ResizeObserver(publish).observe(bar);
+    else window.addEventListener('resize', publish, { passive: true });
   },
 
   /**
@@ -144,13 +164,8 @@ export const Toolbar = {
       dropBtn.className = 'tk-dropbtn';
       dropBtn.textContent = `${year} ▾`;
       dropBtn.title = `View pinned sets for ${year}`;
-      dropBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        const isShowing = dropDiv.classList.contains('tk-show');
-        document.querySelectorAll('.tk-dropdown.tk-show').forEach((d) => d.classList.remove('tk-show'));
-        if (!isShowing) dropDiv.classList.add('tk-show');
-      });
       dropDiv.appendChild(dropBtn);
+      initDropdown(dropDiv, dropBtn);
 
       const dropContent = document.createElement('div');
       dropContent.className = 'tk-dropdown-content';

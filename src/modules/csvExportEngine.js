@@ -53,7 +53,7 @@ function generateCSV(type) {
   const csvRows = collectRows();
   if (csvRows.length === 0) {
     setStatus('Nothing to export');
-    showToast({ message: 'Nothing to export — no rows found on this page.', accent: 'var(--tk-red)' });
+    showToast({ message: 'Nothing to export — no rows found on this page.', variant: 'error' });
     Log(`Export aborted: no rows found for ${type}.`, 'warn');
     return;
   }

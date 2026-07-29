@@ -42,6 +42,12 @@ both order the steps `lint → build → test → verify-dist`.
 | Filter container resolution across all four listing routes | `realPages.test.js` | ✅ |
 | Print-view export is non-empty | `realPages.test.js` | ✅ |
 | Fixtures carry no account handle, script tag, or inline handler | `realPages.test.js` | ✅ |
+| Theme resolution: explicit, auto, and unknown preferences | `ui.test.js` | ✅ Phase 5 |
+| Palette fuzzy ranking, ordering, and result cap | `ui.test.js` | ✅ Phase 5 |
+| Dropdown `aria-expanded`, Escape, and focus return | `ui.test.js` | ✅ Phase 5 |
+| Ctrl+K opens/closes; ignored while typing in a page field | `bootstrap.test.js` | ✅ Phase 5 |
+| Settings dialog semantics and focus trap | `bootstrap.test.js` | ✅ Phase 5 |
+| Page offset uses the measured variable; toolbar does not wrap | `bootstrap.test.js` | ✅ Phase 5 |
 | Block detection vs. captured *real* challenge pages | — | needs a real capture |
 
 ### Fixture status
@@ -75,7 +81,9 @@ testable yet.
 | Settings → Modules & Routes | Add a route pattern to Checklist Enhancer, reload, and confirm the filter appears on the newly matched page. |
 | Upgrade from an earlier install | Existing module toggles, route patterns, and thresholds survive the schema bump; a stored `inlineActionCells` key is gone from storage. |
 | Single card / person pages | Context label and shortcut badges correct. |
-| Any page | Ctrl+K palette; Settings tabs incl. Diagnostics; theme follows system and manual override; toolbar wrapping never covers page content; full keyboard traversal with visible focus; screen-reader labels on icon-only controls. |
+| Any page | Ctrl+K palette opens, filters, and runs a command; Settings tabs incl. Diagnostics; theme follows the system and the manual override applies without reload; the toolbar never covers page content at any width; full keyboard traversal with visible focus; screen-reader labels on icon-only controls. |
+| Narrow window | Shrink to ~500px: the toolbar stays one row and page content is never covered. |
+| Touch device | Pin dropdowns open on tap and close on an outside tap — they must not open on hover and stick. |
 | Two tabs at once | Simultaneous exports interleave at the configured global rate, not double rate. |
 | Cache | Second export of the same set completes with zero network requests; purge forces a refetch. |
 | Auto-update | Bump version, tag, release; the userscript manager detects the update from the raw URL. |

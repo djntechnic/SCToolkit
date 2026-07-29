@@ -16,9 +16,9 @@ import { BLOCK_TS_KEY, getValue, setValue } from '../core/storage.js';
 import { CSV } from '../data/csv.js';
 import { buildExportFilename } from '../data/filename.js';
 import { parseChecklistDocument, toChecklistTable } from '../data/checklistParser.js';
-import { escapeHtml } from '../ui/dom.js';
+
 import { setStatus } from '../ui/status.js';
-import { showToast } from '../ui/toast.js';
+import { showProgressToast, showToast } from '../ui/toast.js';
 import * as cache from './cache.js';
 import { detectBlock } from './blockDetect.js';
 import { AbortedError, BlockedError, fetchPageWithRetry, jitteredDelay } from './fetcher.js';
@@ -116,7 +116,7 @@ function downloadResult({ identity, rows }, fallbackLabel) {
  * @param {AbortSignal} signal
  * @returns {Promise<{identity: object, rows: Array<object>, totalPages: number}>}
  */
-async function fetchAllPages(setId, signal) {
+async function fetchAllPages(setId, signal, progress) {
   let pageIndex = 1;
   let totalPages = 1;
   let identity = { year: '', baseSet: '', setName: '' };
@@ -126,9 +126,9 @@ async function fetchAllPages(setId, signal) {
     if (signal.aborted) throw new AbortedError('Export cancelled.', true);
     if (pageIndex > 1) await jitteredDelay();
 
-    setStatus(
-      `Fetching Page ${pageIndex}${totalPages > 1 ? '/' + totalPages : ''}...${Pacing.describe()}`
-    );
+    const label = `Page ${pageIndex}${totalPages > 1 ? ' of ' + totalPages : ''}${Pacing.describe()}`;
+    setStatus(`Fetching ${label}...`);
+    progress?.update(label);
 
     const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
     Log(`HTTP GET Request -> ${fetchUrl}`, 'info', 'server');
@@ -181,7 +181,7 @@ export async function runExportSetCSV(setId, setName) {
       message:
         `Export paused — an anti-scraping block was detected recently. ` +
         `Try again in ~${remainingMin} min, or adjust the cooldown in Settings.`,
-      accent: 'var(--tk-red)'
+      variant: 'error'
     });
     return;
   }
@@ -194,7 +194,7 @@ export async function runExportSetCSV(setId, setName) {
     setStatus('Export Complete (cached)');
     showToast({
       message: `Exported <b>${cached.rows.length}</b> cards from cache — no requests made.`,
-      accent: 'var(--tk-green)'
+      variant: 'success'
     });
     return;
   }
@@ -206,8 +206,15 @@ export async function runExportSetCSV(setId, setName) {
   Log(`Starting checklist fetch for set ID ${setId} (${setName})`, 'info');
   setStatus(`Fetching ${setName}...`);
 
+  // A progress toast that updates in place, with the cancel affordance next to
+  // the thing it cancels rather than across the toolbar.
+  const progress = showProgressToast({
+    title: `Exporting ${setName}`,
+    onCancel: () => cancelCurrentExport()
+  });
+
   try {
-    const result = await fetchAllPages(setId, controller.signal);
+    const result = await fetchAllPages(setId, controller.signal, progress);
     if (result.rows.length === 0) throw new Error('No valid checklist rows identified within tables.');
 
     let label = result.identity.baseSet;
@@ -222,26 +229,20 @@ export async function runExportSetCSV(setId, setName) {
     downloadResult(result, setName);
 
     setStatus('Export Complete');
-    showToast({ message: `Exported <b>${result.rows.length}</b> cards for ${escapeHtml(label)}` });
+    progress.finish(`${result.rows.length} cards exported.`, 'success');
   } catch (error) {
     if (error instanceof BlockedError) {
       recordBlock(error.message);
+      progress.finish('Stopped — the site returned a challenge.', 'error');
       setStatus('Export blocked');
-      showToast({
-        message: `Export stopped — the site returned a challenge or refused the request. ${escapeHtml(error.message)}`,
-        accent: 'var(--tk-red)'
-      });
     } else if (error instanceof AbortedError) {
       Log(`Export stopped: ${error.message}`, error.byUser ? 'info' : 'warn');
+      progress.finish(error.byUser ? 'Cancelled.' : 'Timed out.', error.byUser ? 'muted' : 'error');
       setStatus(error.byUser ? 'Export cancelled' : 'Export timed out');
-      showToast({
-        message: escapeHtml(error.message),
-        accent: error.byUser ? 'var(--tk-text-muted)' : 'var(--tk-red)'
-      });
     } else {
       Log(`CSV Export Failed: ${error.message}`, 'error');
+      progress.finish(`Failed: ${error.message}`, 'error');
       setStatus('Export Failed');
-      showToast({ message: `Export Failed: ${escapeHtml(error.message)}`, accent: 'var(--tk-red)' });
     }
   } finally {
     CurrentRun.controller = null;

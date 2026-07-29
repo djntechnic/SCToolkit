@@ -176,3 +176,99 @@ test('the settings pane exposes the cache and timeout controls', async () => {
 
   dom.window.close();
 });
+
+test('the theme is applied to the document before chrome renders', async () => {
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const theme = dom.window.document.documentElement.getAttribute('data-sctk-theme');
+
+  assert.ok(['light', 'dark'].includes(theme), `unexpected theme ${theme}`);
+  dom.window.close();
+});
+
+test('the page offset comes from a measured variable, not a fixed 38px', async () => {
+  // The old rule was a literal body { padding-top: 38px }. The toolbar was
+  // flex-wrap: wrap, so the moment it wrapped to a second row it covered the
+  // top of the page.
+  //
+  // jsdom has no layout, so the observer correctly declines to publish a
+  // height of zero — what is checkable here is that the stylesheet consumes
+  // the variable and that the toolbar no longer wraps.
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const css = Array.from(dom.window.document.querySelectorAll('head style'), (s) => s.textContent).join('');
+
+  assert.match(css, /padding-top:\s*var\(--tk-toolbar-height,\s*38px\)/);
+  assert.equal(/#sctk-toolbar\s*\{[^}]*flex-wrap:\s*wrap/.test(css), false, 'toolbar must not wrap');
+  dom.window.close();
+});
+
+test('the toolbar publishes a measured height when layout is available', async () => {
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const doc = dom.window.document;
+  const bar = doc.getElementById('sctk-toolbar');
+
+  // Stand in for the layout jsdom does not do.
+  bar.getBoundingClientRect = () => ({ height: 52 });
+
+  // toolbar.js reads the ambient document, as it does in the page.
+  globalThis.document = doc;
+  globalThis.window = dom.window;
+  const { Toolbar } = await import('../src/ui/toolbar.js');
+  Toolbar.observeHeight(bar);
+
+  assert.equal(doc.documentElement.style.getPropertyValue('--tk-toolbar-height'), '52px');
+  dom.window.close();
+});
+
+test('Ctrl+K opens the command palette and Escape closes it', async () => {
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const doc = dom.window.document;
+
+  doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+  const input = doc.getElementById('tk-palette-input');
+  assert.ok(input, 'palette should open');
+  assert.ok(doc.querySelectorAll('.tk-palette-item').length > 0, 'palette should list commands');
+
+  input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(doc.getElementById('tk-palette-input'), null);
+  dom.window.close();
+});
+
+test('Ctrl+K is ignored while typing in a page field', async () => {
+  // Add Multiples is hundreds of number inputs; swallowing a keystroke there
+  // would be worse than not having the shortcut.
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const doc = dom.window.document;
+
+  const field = doc.createElement('input');
+  doc.body.appendChild(field);
+  field.focus();
+
+  field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+  assert.equal(doc.getElementById('tk-palette-input'), null);
+  dom.window.close();
+});
+
+test('the settings dialog is announced as modal and traps focus on open', async () => {
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const doc = dom.window.document;
+
+  doc.getElementById('tk-settings-trigger').click();
+  const panel = doc.getElementById('tk-settings-panel');
+
+  assert.equal(panel.getAttribute('role'), 'dialog');
+  assert.equal(panel.getAttribute('aria-modal'), 'true');
+  assert.ok(panel.contains(doc.activeElement), 'focus should move into the dialog');
+
+  assert.ok(doc.getElementById('tk-settings-diagnostics'), 'diagnostics tab should exist');
+  dom.window.close();
+});
+
+test('dropdowns no longer open on hover alone', async () => {
+  // Hover-open cannot be dismissed on a touch device.
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const css = Array.from(dom.window.document.querySelectorAll('head style'), (s) => s.textContent).join('');
+
+  assert.equal(/\.tk-dropdown:hover\s+\.tk-dropdown-content/.test(css), false);
+  assert.ok(/\.tk-dropdown\.tk-show\s+\.tk-dropdown-content/.test(css));
+  dom.window.close();
+});
