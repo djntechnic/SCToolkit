@@ -64,8 +64,11 @@ export const BADGES = {
   }
 };
 
-/** Shortcut badges, in the order they are rendered everywhere they appear. */
-export const SHORTCUT_ORDER = ['INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
+/** Toolbar order: navigation shortcuts, then the export action. */
+export const TOOLBAR_BADGES = ['INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST', 'CSV'];
+
+/** Set-link order: the two actions lead, because they are the reason to look. */
+export const SET_LINK_BADGES = ['PIN', 'CSV', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
 
 /**
  * @param {keyof BADGES} badgeKey
@@ -107,4 +110,42 @@ export function createBadge(badgeKey, sid = null, onClickOverride = null) {
     });
   }
   return btn;
+}
+
+/**
+ * Render a group of badges into a container.
+ *
+ * Replaces three hand-rolled blocks that each appended the same badges in
+ * slightly different order with slightly different handler wiring. The order is
+ * still per-caller — the toolbar and a set link legitimately lead with
+ * different things — but the wiring is not.
+ *
+ * `PIN` and `CSV` are the only action badges; they render as buttons when a
+ * handler is supplied and are skipped entirely when one is not, so a caller
+ * cannot accidentally emit a dead action badge.
+ *
+ * @param {HTMLElement} container
+ * @param {string} sid
+ * @param {object} [options]
+ * @param {string[]} [options.include] ordered badge keys
+ * @param {((e: Event) => void)|null} [options.onExport] handler for `CSV`
+ * @param {((e: Event) => void)|null} [options.onPin] handler for `PIN`
+ * @returns {HTMLElement} the container, for chaining
+ */
+export function renderBadgeSet(container, sid, {
+  include = TOOLBAR_BADGES,
+  onExport = null,
+  onPin = null
+} = {}) {
+  const handlers = { CSV: onExport, PIN: onPin };
+
+  include.forEach((key) => {
+    const isAction = key in handlers;
+    if (isAction && !handlers[key]) return;
+
+    const badge = createBadge(key, sid, isAction ? handlers[key] : null);
+    if (badge) container.appendChild(badge);
+  });
+
+  return container;
 }

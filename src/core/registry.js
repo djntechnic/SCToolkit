@@ -10,7 +10,6 @@
 import { Config, testUrlMatch } from './config.js';
 import { Log } from './log.js';
 import { initInputOptimization } from '../modules/inputOptimization.js';
-import { initCardNameFormatter } from '../modules/cardNameFormatter.js';
 import { initChecklistEnhancer } from '../modules/checklistEnhancer.js';
 import { initSetListEnhancer } from '../modules/setListEnhancer.js';
 import { initAddMultiplesEnhancer } from '../modules/addMultiplesEnhancer.js';
@@ -37,21 +36,13 @@ export const ModuleRegistry = [
     isAsync: false
   },
   {
-    id: 'cardNameFormatter',
-    name: 'Card Name Formatter',
-    description: 'Normalizes spaced hyphens in card name nodes on checklist-family pages.',
-    init: initCardNameFormatter,
-    isAsync: false
-  },
-  {
     id: 'checklistEnhancer',
     name: 'Checklist Enhancer',
-    description: 'Real-time table filter bar, plus (disabled by default) inline action-cell stubs.',
+    description: 'Real-time table filter bar on listing pages.',
     init: initChecklistEnhancer,
     isAsync: false,
     actionLabels: {
-      realtimeFilter: 'Real-time table filter bar',
-      inlineActionCells: 'Inline action-cell stubs (non-functional placeholders — off by default)'
+      realtimeFilter: 'Real-time table filter bar'
     }
   },
   {

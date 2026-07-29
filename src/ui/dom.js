@@ -3,7 +3,6 @@
  */
 
 import { Log } from '../core/log.js';
-import { Icons } from './icons.js';
 
 /**
  * Append a `<style>` element to the document head.
@@ -22,21 +21,24 @@ export function injectStyle(css) {
 }
 
 /**
+ * Create a toolbar button.
+ *
+ * v2.42.0 took a fifth `icon` argument that no caller ever passed, so every
+ * button rendered an empty icon slot. It is gone; a button that needs an icon
+ * can have one added deliberately.
+ *
  * @param {string} id
  * @param {string} text
  * @param {(e: Event) => void} onClick
  * @param {boolean} [disabled]
- * @param {keyof Icons} [icon]
  * @returns {HTMLButtonElement}
  */
-export function createBtn(id, text, onClick, disabled = false, icon = '') {
+export function createBtn(id, text, onClick, disabled = false) {
   const btn = document.createElement('button');
   btn.id = id;
   btn.type = 'button';
-  const iconSvg = icon && Icons[icon] ? Icons[icon]() : '';
-  btn.innerHTML = `${iconSvg}<span></span>`;
-  btn.querySelector('span').textContent = text;
   btn.className = 'sctk-btn';
+  btn.textContent = text;
   btn.disabled = disabled;
   btn.addEventListener('click', onClick);
   return btn;

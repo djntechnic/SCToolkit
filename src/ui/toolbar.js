@@ -8,24 +8,26 @@ import { extractSid } from '../core/sid.js';
 import { Log } from '../core/log.js';
 import { Pins, deriveSetYear } from '../core/storage.js';
 import { exportSetCSV } from '../net/setExport.js';
-import { SHORTCUT_ORDER, createBadge } from './badges.js';
+import { TOOLBAR_BADGES, createBadge, renderBadgeSet } from './badges.js';
 import { createBtn, injectStyle } from './dom.js';
 import { Icons } from './icons.js';
 import { TOOLBAR_CSS } from './styles.js';
 
 /**
- * Append the five shortcut links plus a CSV action for a set.
+ * Append the shortcut links plus a CSV action for a set.
  *
  * @param {HTMLElement} container
  * @param {string} sid
  * @param {string} [label] name used in the export's log and filename fallback
  */
 export function appendShortcutBadges(container, sid, label = 'Set') {
-  SHORTCUT_ORDER.forEach((key) => container.appendChild(createBadge(key, sid)));
-  container.appendChild(createBadge('CSV', sid, (e) => {
-    e.preventDefault();
-    exportSetCSV(sid, label);
-  }));
+  renderBadgeSet(container, sid, {
+    include: TOOLBAR_BADGES,
+    onExport: (e) => {
+      e.preventDefault();
+      exportSetCSV(sid, label);
+    }
+  });
 }
 
 /**

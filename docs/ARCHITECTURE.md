@@ -82,8 +82,9 @@ A module is an object in `ModuleRegistry`:
 
 > A module must not re-check the URL inside `init`. Doing so makes the route
 > editor in Settings a lie: the user edits the patterns, the registry honours
-> them, and the module then overrides the result. `checklistEnhancer` still does
-> this in Phase 1 and is flagged for Phase 2.
+> them, and the module then overrides the result. `test/registry.test.js` pins
+> this — it moves `checklistEnhancer` onto an unrelated route by config alone
+> and asserts the module follows.
 
 Route rules are `{ pattern, exclude }`. With no rules, everything matches;
 otherwise a URL must match at least one include (or there must be none) and no
@@ -119,12 +120,26 @@ one parsed document at a time rather than 200 live DOM trees.
 1. Create `src/modules/<name>.js` exporting a single `init<Name>()`.
 2. Import it in `core/registry.js` and add a registry entry.
 3. Add a `Config.modules.<id>` block to `DEFAULT_CONFIG` with `enabled`,
-   `urlMatch`, and `actions`. Without it the module never resolves — and a
-   `mergeWithDefaults` warning will tell you so.
+   `urlMatch`, and `actions`. Without it the module never resolves —
+   `test/registry.test.js` fails on a registry entry with no config block, and
+   on a config block with no registry entry.
 4. Do not bump `schemaVersion` for an additive module; `mergeWithDefaults`
-   already fills new keys from defaults.
+   already fills new keys from defaults. **Do** bump it when removing a module
+   or an action toggle, so stale keys are cleared from storage.
 5. Add tests for any pure logic the module needs, in `data/` or `core/`, not in
    the module file.
+
+### Config schema changes
+
+`migrate()` treats any stored version older than the current one as an upgrade
+and merges it onto fresh defaults: the user's choices survive, new keys arrive
+at their defaults, and removed modules and action toggles are dropped. Only a
+version *newer* than the build, or one that is missing or not a positive
+integer, resets to defaults.
+
+That means a schema bump is safe by construction and does not need its own
+branch. It also means removals must go through a bump — otherwise a deleted
+toggle sits in storage forever, invisible to Settings and read by nothing.
 
 ## Testing
 

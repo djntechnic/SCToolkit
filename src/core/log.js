@@ -1,10 +1,15 @@
 /**
  * Console logging with a US-Central timestamp and a CLIENT/SERVER origin tag.
  *
- * The origin tag is load-bearing for support: `'server'` means *an HTTP request
- * to the target site actually happened*. It is not a severity, a category, or a
- * decoration — if a log line is tagged `'server'` and no request was issued, the
- * tag is wrong. Everything else is `'client'`.
+ * The origin tag is load-bearing for support: `'server'` marks a line that
+ * *is about an HTTP request* — issuing one, or handling its response status.
+ * It is not a severity, a category, or a decoration.
+ *
+ * Deliberately excluded, because they are local work that merely follows a
+ * request: parsing a response, aggregating results, announcing that an export
+ * is about to begin, and reporting that one finished. If a reader counts the
+ * SERVER lines during an export, the total should be the number of requests
+ * made — that property is the whole point of the tag.
  */
 
 /** Ordered low-to-high; a message is emitted when its level >= the runtime level. */

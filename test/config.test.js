@@ -46,7 +46,7 @@ test('testUrlMatch: an invalid exclude pattern does not exclude', () => {
 
 test('migrate: a current-version config keeps its stored values', () => {
   const stored = {
-    schemaVersion: 2,
+    schemaVersion: DEFAULT_CONFIG.schemaVersion,
     modules: { checklistEnhancer: { enabled: false, urlMatch: [], actions: {} } },
     global: { toastDurationMs: 9000 }
   };
@@ -57,28 +57,39 @@ test('migrate: a current-version config keeps its stored values', () => {
 });
 
 test('migrate: fields absent from storage are filled from defaults', () => {
-  const result = SettingsStore.migrate({ schemaVersion: 2, modules: {}, global: {} });
+  const result = SettingsStore.migrate({
+    schemaVersion: DEFAULT_CONFIG.schemaVersion, modules: {}, global: {}
+  });
 
   assert.deepEqual(Object.keys(result.modules).sort(), Object.keys(DEFAULT_CONFIG.modules).sort());
   assert.equal(result.global.logLevel, DEFAULT_CONFIG.global.logLevel);
 });
 
-test('migrate: v1 upgrades in place rather than resetting', () => {
-  const result = SettingsStore.migrate({
-    schemaVersion: 1,
-    modules: { setListEnhancer: { enabled: false } },
-    global: { logLevel: 'debug' }
-  });
+test('migrate: any older version upgrades in place rather than resetting', () => {
+  // This is the property that matters across a version bump: users keep their
+  // settings. A hardcoded "v1 -> v2 only" branch would silently reset everyone
+  // the next time the schema moved.
+  for (let version = 1; version < DEFAULT_CONFIG.schemaVersion; version++) {
+    const result = SettingsStore.migrate({
+      schemaVersion: version,
+      modules: { setListEnhancer: { enabled: false } },
+      global: { logLevel: 'debug' }
+    });
 
-  assert.equal(result.modules.setListEnhancer.enabled, false);
-  assert.equal(result.global.logLevel, 'debug');
-  // The v2-only actions object is present even though v1 never wrote one.
-  assert.deepEqual(result.modules.checklistEnhancer.actions, DEFAULT_CONFIG.modules.checklistEnhancer.actions);
+    assert.equal(result.modules.setListEnhancer.enabled, false, `v${version} kept module choice`);
+    assert.equal(result.global.logLevel, 'debug', `v${version} kept global choice`);
+    assert.equal(result.schemaVersion, DEFAULT_CONFIG.schemaVersion);
+    // Keys the old version never wrote arrive at their defaults.
+    assert.deepEqual(
+      result.modules.checklistEnhancer.actions,
+      DEFAULT_CONFIG.modules.checklistEnhancer.actions
+    );
+  }
 });
 
-test('migrate: an unknown schema version resets to defaults', () => {
+test('migrate: a version newer than this build resets to defaults', () => {
   const result = SettingsStore.migrate({
-    schemaVersion: 99,
+    schemaVersion: DEFAULT_CONFIG.schemaVersion + 1,
     modules: { checklistEnhancer: { enabled: false } },
     global: { toastDurationMs: 1 }
   });
@@ -86,25 +97,44 @@ test('migrate: an unknown schema version resets to defaults', () => {
   assert.deepEqual(result, DEFAULT_CONFIG);
 });
 
-test('migrate: config for a module this build does not know about is dropped', () => {
-  const result = SettingsStore.migrate({
-    schemaVersion: 2,
-    modules: { someRemovedModule: { enabled: true } },
-    global: {}
-  });
-
-  assert.equal(result.modules.someRemovedModule, undefined);
+test('migrate: a missing or nonsense version resets to defaults', () => {
+  assert.deepEqual(SettingsStore.migrate({ modules: {}, global: {} }), DEFAULT_CONFIG);
+  assert.deepEqual(SettingsStore.migrate({ schemaVersion: 0 }), DEFAULT_CONFIG);
+  assert.deepEqual(SettingsStore.migrate({ schemaVersion: 'two' }), DEFAULT_CONFIG);
+  assert.deepEqual(SettingsStore.migrate({ schemaVersion: 2.5 }), DEFAULT_CONFIG);
 });
 
-test('migrate: action toggles merge rather than replace', () => {
+test('migrate: config for a module this build does not know about is dropped', () => {
   const result = SettingsStore.migrate({
-    schemaVersion: 2,
-    modules: { checklistEnhancer: { actions: { inlineActionCells: true } } },
+    schemaVersion: 3,
+    modules: { cardNameFormatter: { enabled: true } },
     global: {}
   });
 
-  assert.equal(result.modules.checklistEnhancer.actions.inlineActionCells, true);
-  // Not clobbered by the partial stored actions object.
+  assert.equal(result.modules.cardNameFormatter, undefined);
+});
+
+test('migrate: a stored toggle for a removed sub-feature is dropped', () => {
+  // `inlineActionCells` was deleted in Phase 2. A stored `true` must not
+  // survive in storage where nothing reads it and Settings cannot show it.
+  const result = SettingsStore.migrate({
+    schemaVersion: 3,
+    modules: { checklistEnhancer: { actions: { inlineActionCells: true, realtimeFilter: false } } },
+    global: {}
+  });
+
+  assert.equal('inlineActionCells' in result.modules.checklistEnhancer.actions, false);
+  assert.equal(result.modules.checklistEnhancer.actions.realtimeFilter, false);
+});
+
+test('migrate: a partial actions object leaves the other toggles at defaults', () => {
+  const result = SettingsStore.migrate({
+    schemaVersion: 3,
+    modules: { checklistEnhancer: { enabled: false, actions: {} } },
+    global: {}
+  });
+
+  assert.equal(result.modules.checklistEnhancer.enabled, false);
   assert.equal(result.modules.checklistEnhancer.actions.realtimeFilter, true);
 });
 

@@ -25,21 +25,14 @@ export const EXPORT_CONFIG = {
 };
 
 export const DEFAULT_CONFIG = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   modules: {
     inputOptimization: { enabled: true, urlMatch: [], actions: {} },
-    cardNameFormatter: {
-      enabled: true,
-      urlMatch: [
-        { pattern: '/checklist\\.cfm', exclude: false },
-        { pattern: '/viewcollectionforsaletrade\\.cfm', exclude: false },
-        { pattern: '/viewcollectionwantlist\\.cfm', exclude: false },
-        { pattern: '/collectionaddmultiples', exclude: false }
-      ],
-      actions: {}
-    },
     checklistEnhancer: {
       enabled: true,
+      // These patterns are the only gate on where the filter appears. The
+      // module does not re-check the route; editing this list in Settings is
+      // what moves the feature.
       urlMatch: [
         { pattern: '/checklist\\.cfm', exclude: false },
         { pattern: '/viewcollectionforsaletrade\\.cfm', exclude: false },
@@ -47,8 +40,7 @@ export const DEFAULT_CONFIG = {
         { pattern: '/collectionaddmultiples', exclude: false }
       ],
       actions: {
-        realtimeFilter: true,
-        inlineActionCells: false
+        realtimeFilter: true
       }
     },
     setListEnhancer: {
@@ -110,32 +102,45 @@ export const SettingsStore = {
   /**
    * Bring a stored config up to the current schema.
    *
-   * v1 -> v2 was additive only, so it is handled by the same merge as a
-   * same-version load. Any other version has no migration path and resets, on
-   * the principle that a wrong config is worse than a default one.
+   * Every schema change so far has been expressible as a merge onto fresh
+   * defaults: new keys arrive with their default value, removed modules are
+   * dropped, and the user's own choices survive. So any older version upgrades
+   * by merging, rather than each bump needing its own hardcoded branch — the
+   * previous shape of this function knew only about v1 -> v2, which meant the
+   * next bump would silently have reset everyone's settings.
+   *
+   * A version *newer* than this build, or one that is missing or not a
+   * positive integer, has no safe interpretation and resets: a wrong config is
+   * worse than a default one.
    *
    * @param {object} stored
    * @returns {object} a config conforming to the current schema
    */
   migrate: (stored) => {
-    if (stored.schemaVersion === DEFAULT_CONFIG.schemaVersion) {
+    const current = DEFAULT_CONFIG.schemaVersion;
+    const version = stored?.schemaVersion;
+
+    if (version === current) {
       return SettingsStore.mergeWithDefaults(stored);
     }
-    if (stored.schemaVersion === 1 && DEFAULT_CONFIG.schemaVersion === 2) {
-      Log('Migrating stored config from schema v1 to v2 (additive fields only).', 'info');
+
+    if (Number.isInteger(version) && version >= 1 && version < current) {
+      Log(`Migrating stored config from schema v${version} to v${current}.`, 'info');
       return SettingsStore.mergeWithDefaults(stored);
     }
+
     Log(
-      `Stored config schema v${stored.schemaVersion} has no migration path to v${DEFAULT_CONFIG.schemaVersion}. Resetting to defaults.`,
+      `Stored config schema v${version} has no migration path to v${current}. Resetting to defaults.`,
       'warn'
     );
     return SettingsStore.cloneDefaults();
   },
 
   /**
-   * Overlay stored values onto a fresh default config. Modules the current
-   * build does not know about are dropped with a warning rather than carried
-   * forward, so a downgrade cannot resurrect a removed module's config.
+   * Overlay stored values onto a fresh default config. Modules and action
+   * toggles the current build does not know about are dropped rather than
+   * carried forward, so a removed feature's config cannot linger in storage
+   * indefinitely, invisible and unreachable from the settings UI.
    *
    * @param {object} stored
    * @returns {object}
@@ -144,15 +149,19 @@ export const SettingsStore = {
     const merged = SettingsStore.cloneDefaults();
 
     Object.keys(stored.modules || {}).forEach((id) => {
-      if (merged.modules[id]) {
-        merged.modules[id] = {
-          ...merged.modules[id],
-          ...stored.modules[id],
-          actions: { ...merged.modules[id].actions, ...(stored.modules[id].actions || {}) }
-        };
-      } else {
+      const defaults = merged.modules[id];
+      if (!defaults) {
         Log(`Stored config references unknown module '${id}' — dropped.`, 'warn');
+        return;
       }
+
+      const storedActions = stored.modules[id].actions || {};
+      const actions = { ...defaults.actions };
+      Object.keys(actions).forEach((key) => {
+        if (key in storedActions) actions[key] = storedActions[key];
+      });
+
+      merged.modules[id] = { ...defaults, ...stored.modules[id], actions };
     });
 
     merged.global = { ...merged.global, ...(stored.global || {}) };

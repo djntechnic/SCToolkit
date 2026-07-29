@@ -12,7 +12,6 @@
 import { Config, EXPORT_CONFIG } from '../core/config.js';
 import { Log } from '../core/log.js';
 import { BLOCK_TS_KEY, getValue, setValue } from '../core/storage.js';
-import { Routes } from '../core/routes.js';
 import { CSV } from '../data/csv.js';
 import { buildExportFilename } from '../data/filename.js';
 import { parseChecklistDocument, toChecklistTable } from '../data/checklistParser.js';
@@ -22,18 +21,6 @@ import { showToast } from '../ui/toast.js';
 import { detectBlock } from './blockDetect.js';
 import { fetchPageWithRetry, jitteredDelay } from './fetcher.js';
 import { ExportQueue } from './queue.js';
-
-/**
- * Which listing the *current page* represents, used to suffix the filename.
- *
- * @returns {'checklist'|'forSale'|'wantlist'|'addMultiples'}
- */
-function currentPageKind() {
-  if (Routes.isForSaleTrade()) return 'forSale';
-  if (Routes.isWantlist()) return 'wantlist';
-  if (Routes.isAddMultiples()) return 'addMultiples';
-  return 'checklist';
-}
 
 /**
  * Report how long the anti-scraping cooldown still has to run.
@@ -81,7 +68,7 @@ export async function runExportSetCSV(setId, setName) {
     return;
   }
 
-  Log(`Starting checklist fetch for set ID ${setId} (${setName})`, 'info', 'server');
+  Log(`Starting checklist fetch for set ID ${setId} (${setName})`, 'info');
   setStatus(`Fetching ${setName}...`);
 
   try {
@@ -122,11 +109,11 @@ export async function runExportSetCSV(setId, setName) {
           );
         }
 
-        Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, 'info', 'server');
+        Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, 'info');
       }
 
       allRows.push(...parsed.rows);
-      Log(`Page ${pageIndex}/${totalPages} parsed successfully. ${parsed.rows.length} rows retrieved.`, 'info', 'server');
+      Log(`Page ${pageIndex}/${totalPages} parsed successfully. ${parsed.rows.length} rows retrieved.`, 'info');
 
       pageIndex++;
     } while (pageIndex <= totalPages);
@@ -135,21 +122,26 @@ export async function runExportSetCSV(setId, setName) {
 
     let setLogLabel = identity.baseSet;
     if (identity.setName) setLogLabel += ` - ${identity.setName}`;
-    Log(`Export complete for: ${setLogLabel} (${allRows.length} cards across ${totalPages} page(s))`, 'info', 'server');
+    Log(`Export complete for: ${setLogLabel} (${allRows.length} cards across ${totalPages} page(s))`, 'info');
 
+    // The suffix describes what was fetched, not where the button was clicked.
+    // This runner always fetches /Checklist.cfm, so the export is always a
+    // checklist — v2.42.0 read the *current page's* route here, which labelled
+    // a full checklist `_Wantlist` whenever you happened to start it from a
+    // wantlist page.
     const filename = buildExportFilename({
       year: identity.year,
       baseSet: identity.baseSet,
       setName: identity.setName,
       fallbackLabel: setName,
-      kind: currentPageKind()
+      kind: 'checklist'
     });
 
     CSV.download(CSV.toCSV(toChecklistTable(identity, allRows)), filename);
     setStatus('Export Complete');
     showToast({ message: `Exported <b>${allRows.length}</b> cards for ${escapeHtml(setLogLabel)}` });
   } catch (error) {
-    Log(`CSV Export Failed: ${error.message}`, 'error', 'server');
+    Log(`CSV Export Failed: ${error.message}`, 'error');
     setStatus('Export Failed');
     showToast({ message: `Export Failed: ${escapeHtml(error.message)}`, accent: 'var(--tk-red)' });
   }

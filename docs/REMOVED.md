@@ -8,11 +8,175 @@ Line references point into the pre-port v2.42.0 single-file source, which is
 retained outside this repository. Each entry quotes the removed code verbatim,
 so the reference is a convenience rather than a requirement.
 
-> **Still present, still dead.** `Modules.CardNameFormatter` and the
-> `checklistEnhancer.actions.inlineActionCells` block both target selectors that
-> do not exist. Phase 1 ported them unchanged so the extraction stayed
-> behaviour-preserving; deleting them is Phase 2. Both are annotated in source
-> with a pointer to this file.
+---
+
+## `Modules.CardNameFormatter`
+
+**Removed in:** 3.0.0-alpha.2 (Phase 2)
+**Original location:** `v2.42.0-monolith.user.js:1269-1277`, registry entry at `1479-1485`
+
+**Intent:** normalize ` - ` to a plain space inside card name nodes, so
+`Griffey - Jr` renders as `Griffey Jr`.
+
+**Why removed:** its only selector, `.card-name-selector`, is a placeholder that
+does not exist in the site's markup. `querySelectorAll` returned an empty list
+on every page, for every release that shipped it. It was a registered, enabled,
+user-visible module in Settings that had never once done anything.
+
+**Original code:**
+
+```js
+CardNameFormatter: () => {
+    DOMUtils.assertContract('cardNameFormatter', [
+        { selector: '.card-name-selector', label: '.card-name-selector (card name nodes)' }
+    ]);
+    const nameNodes = document.querySelectorAll('.card-name-selector');
+    nameNodes.forEach(node => {
+        node.textContent = node.textContent.replace(/(\w+)\s-\s(\w+)/g, '$1 $2').trim();
+    });
+},
+```
+
+**To revive:** identify the real class or structure that wraps a card name,
+recreate `src/modules/cardNameFormatter.js` with the transform above, register
+it, and add a `DEFAULT_CONFIG.modules.cardNameFormatter` block. The transform
+itself is sound; only the selector was ever wrong.
+
+---
+
+## `checklistEnhancer.actions.inlineActionCells`
+
+**Removed in:** 3.0.0-alpha.2 (Phase 2)
+**Original location:** `v2.42.0-monolith.user.js:1311-1334`
+
+**Intent:** add a column of quick-action buttons — add one to for-sale, add one
+to wantlist, and five status toggles — to every checklist row, and relocate the
+page's wantlist control into a top bar.
+
+**Why removed:** three separate dead ends. None of `tr.checklist-row`,
+`.action-cell-selector`, `.action-wantlist-selector`, or `.top-bar-selector`
+exist in the site's markup. The `.tk-inline-action` class it applied had no CSS
+rule anywhere in the script, so the buttons would have been unstyled text. And
+the click handler only wrote a log line — no action was ever implemented. It
+shipped disabled by default, labelled in Settings as "non-functional
+placeholders".
+
+**Original code:**
+
+```js
+const wantlistAction = document.querySelector('.action-wantlist-selector');
+const topBar = document.querySelector('.top-bar-selector');
+if (wantlistAction && topBar) topBar.prepend(wantlistAction);
+
+const rows = document.querySelectorAll('tr.checklist-row');
+rows.forEach((row, index) => {
+    const actionCell = row.querySelector('.action-cell-selector') || row.insertCell();
+    ['+1 FS', '+1 W', 'FS', 'FT', 'W', 'I', 'P'].forEach(action => {
+        const span = document.createElement('span');
+        span.className = 'tcdb-inline-action';
+        span.innerText = `[${action}]`;
+        span.title = `Perform ${action} action`;
+        span.onclick = () => Log(`Triggered [${action}] on row index ${index}`);
+        actionCell.appendChild(span);
+    });
+});
+```
+
+**To revive:** this is a feature to design, not code to restore. It needs the
+real row selector, real CSS, and — the part that was never written — actual
+implementations of the seven actions, each of which is a state-changing request
+to the site. That last point makes it a much larger piece of work than the
+stub suggests, and it would need its own entry in `docs/POLITE-USE.md`.
+
+**Storage note:** a stored `inlineActionCells: true` from an earlier install is
+dropped by `mergeWithDefaults`, which now keeps only action keys the current
+build defines. The `schemaVersion` bump to 3 is what triggers that cleanup.
+
+---
+
+## The `icon` parameter of `DOMUtils.createBtn`
+
+**Removed in:** 3.0.0-alpha.2 (Phase 2)
+**Original location:** `v2.42.0-monolith.user.js:389-398`
+
+**Intent:** let a toolbar button render a leading icon.
+
+**Why removed:** no caller ever passed it. `Toolbar.addAction` — the only route
+to `createBtn` — has no icon parameter of its own, so the argument was
+unreachable. Every button rendered `${''}<span>…` and the empty interpolation
+went unnoticed.
+
+**Original code:**
+
+```js
+createBtn: (id, text, onClick, disabled = false, icon = '') => {
+    const btn = document.createElement('button');
+    btn.id = id;
+    const iconSvg = icon && Icons[icon] ? Icons[icon]() : '';
+    btn.innerHTML = `${iconSvg}<span>${text}</span>`;
+    // ...
+},
+```
+
+**To revive:** add the parameter back to both `createBtn` and
+`Toolbar.addAction`, and use `renderBadgeSet`'s pattern of building the icon
+element rather than interpolating markup — the original also set the label via
+`innerHTML`, which is unnecessary for text that is always static.
+
+---
+
+## Route re-checking inside `ChecklistEnhancer`
+
+**Removed in:** 3.0.0-alpha.2 (Phase 2)
+**Original location:** `v2.42.0-monolith.user.js:1283`
+
+**Intent:** restrict the filter bar to checklist-family pages.
+
+**Why removed:** the registry already restricted it, using the user-editable
+`urlMatch` rules. The module then applied a second, hardcoded check — so
+editing the route patterns in Settings did nothing for this module. The
+Settings route editor was, for the one module people would most want to move,
+inert. The registry is now the only gate.
+
+**Original code:**
+
+```js
+if (actionCfg.realtimeFilter && mainContent && (Routes.isChecklist() || Routes.isForSaleTrade() || Routes.isWantlist() || Routes.isAddMultiples()) && !document.getElementById('tk-checklist-filter-wrap')) {
+```
+
+**To revive:** don't. If the filter should be restricted further, the
+restriction belongs in `DEFAULT_CONFIG.modules.checklistEnhancer.urlMatch`,
+where a user can see and change it.
+
+---
+
+## Filename suffix taken from the current page
+
+**Removed in:** 3.0.0-alpha.2 (Phase 2) — behaviour change
+
+**Original location:** `v2.42.0-monolith.user.js:1150-1153`
+
+**Intent:** label the exported file with the kind of listing it came from.
+
+**Why removed:** the export runner always fetches `/Checklist.cfm`, but the
+suffix was chosen from the route of whatever page the button was clicked on. A
+full checklist exported from a wantlist page was written to disk named
+`..._Wantlist.csv`. The file's contents and its name disagreed, and the name is
+what the user sorts by later.
+
+**Original code:**
+
+```js
+let pageSuffix = '_Checklist';
+if (Routes.isForSaleTrade()) pageSuffix = '_ForSale';
+else if (Routes.isWantlist()) pageSuffix = '_Wantlist';
+else if (Routes.isAddMultiples()) pageSuffix = '_AddMultiples';
+```
+
+**To revive:** the suffix map survives as `EXPORT_KIND_SUFFIX` in
+[`src/data/filename.js`](../src/data/filename.js), and `buildExportFilename`
+still takes a `kind`. If a runner is added that genuinely fetches a for-sale or
+wantlist listing, it passes the matching kind — derived from what it fetched.
 
 ---
 
