@@ -1,0 +1,64 @@
+name: Bug report
+description: Something in SCToolkit behaves incorrectly.
+labels: ['type:bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please redact anything account-specific (usernames, private collection
+        data) from URLs and console output before posting — issues are public.
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Fill in each line.
+      value: |
+        SCToolkit version:
+        Userscript manager + version:
+        Browser + version:
+        OS:
+        Page URL (redacted if needed):
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: Any `SCToolkit` lines from the browser console.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I am on the latest version.
+          required: true
+        - label: I checked whether disabling other userscripts changes the behaviour.

@@ -1,0 +1,51 @@
+name: Selector drift
+description: A feature stopped working because the target site's markup changed.
+labels: ['type:selector-drift']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Site markup changes are the single most common way this script breaks.
+        This template exists to make those reports fast to triage.
+
+  - type: input
+    id: feature
+    attributes:
+      label: Which feature broke?
+      placeholder: e.g. checklist filter, CSV export, set badges
+    validations:
+      required: true
+
+  - type: input
+    id: route
+    attributes:
+      label: Page type / route
+      placeholder: e.g. multi-page checklist
+    validations:
+      required: true
+
+  - type: textarea
+    id: markup
+    attributes:
+      label: Current markup
+      description: >
+        The relevant element from DevTools (Inspect → right-click → Copy →
+        Copy outerHTML). Trim to the smallest useful snippet and redact any
+        personal data.
+      render: html
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics output
+      description: Contents of Settings → Diagnostics, if available.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: SCToolkit version
+    validations:
+      required: true

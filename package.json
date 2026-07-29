@@ -1,0 +1,34 @@
+{
+  "name": "sctoolkit",
+  "version": "3.0.0-alpha.0",
+  "description": "Userscript toolkit for sports card database browsing: filtering, shortcuts, and polite CSV export.",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "author": "djntechnic",
+  "homepage": "https://github.com/djntechnic/SCToolkit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/djntechnic/SCToolkit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/djntechnic/SCToolkit/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "banner": "node scripts/banner.js",
+    "build": "node scripts/build.js",
+    "lint": "eslint .",
+    "test": "node --test",
+    "check": "npm run lint && npm test && npm run build && node scripts/verify-dist.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.18.0",
+    "eslint-plugin-userscripts": "^0.5.6",
+    "jsdom": "^26.0.0"
+  }
+}

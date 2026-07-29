@@ -1,0 +1,18 @@
+node_modules/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.env
+.env.*
+.idea/
+.vscode/
+coverage/
+*.tmp
+
+# dist/ is intentionally NOT ignored — the built userscript is the
+# auto-update artifact and must stay committed on main.
+
+# Pre-port reference copy of the v2.42.0 single-file script. Kept on disk for
+# diffing during the port, deliberately not published.
+legacy/

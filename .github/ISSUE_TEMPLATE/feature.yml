@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest a new capability or an improvement to an existing one.
+labels: ['type:feature']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the workflow that is currently painful, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+    validations:
+      required: true
+
+  - type: input
+    id: routes
+    attributes:
+      label: Which page types would this apply to?
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: checkboxes
+    id: traffic
+    attributes:
+      label: Network impact
+      options:
+        - label: >
+            This request would require additional HTTP requests to the target
+            site. (Check if unsure — it affects how the feature is paced.)
