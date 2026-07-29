@@ -4,33 +4,81 @@
  * on arrival.
  */
 
+import { Log } from '../core/log.js';
 import { InputIndex } from './inputOptimization.js';
 
-/** How many times to re-assert focus, and how far apart. */
-const FOCUS_RETRIES = 5;
-const FOCUS_INTERVAL_MS = 250;
+/** How long to keep re-asserting focus if the page keeps taking it away. */
+export const FOCUS_DEADLINE_MS = 1200;
 
-export function initAddMultiplesEnhancer() {
-  document.querySelectorAll('select').forEach((select) => {
+/** Events that mean the user has taken over. */
+const USER_INTENT_EVENTS = ['keydown', 'pointerdown', 'wheel'];
+
+/**
+ * Set every select that offers a For Sale/Trade option to it.
+ *
+ * @returns {number} how many were changed
+ */
+export function applySaleTypeDefaults(root = document) {
+  let changed = 0;
+  root.querySelectorAll('select').forEach((select) => {
     const fsOpt = Array.from(select.options).find((opt) => opt.text.includes('For Sale/Trade'));
-    if (fsOpt) select.value = fsOpt.value;
+    if (!fsOpt || select.value === fsOpt.value) return;
+    select.value = fsOpt.value;
+    changed++;
   });
+  return changed;
+}
 
-  const forceFocus = () => {
+/**
+ * Focus the first quantity field, and keep it focused against the page's own
+ * scripts — but stop the instant the user does anything.
+ *
+ * v2.42.0 ran `setInterval(forceFocus, 250)` five times unconditionally. If you
+ * started typing in a different field within 1.25s of load, it stole your
+ * cursor mid-word, up to four more times. This version re-asserts only while
+ * focus has actually been lost, and any keypress, click, or scroll cancels it
+ * outright.
+ */
+function focusFirstQuantityField() {
+  const target = (() => {
     const inputs = InputIndex.getValidInputs();
-    const firstQtyBox = inputs.find((el) => el.value === '0') || inputs[0];
-    if (!firstQtyBox) return;
-    firstQtyBox.focus({ preventScroll: true });
-    setTimeout(() => firstQtyBox.select(), 50);
+    return inputs.find((el) => el.value === '0') || inputs[0] || null;
+  })();
+
+  if (!target) return;
+
+  let cancelled = false;
+  const deadline = Date.now() + FOCUS_DEADLINE_MS;
+
+  const stop = () => {
+    if (cancelled) return;
+    cancelled = true;
+    USER_INTENT_EVENTS.forEach((type) => document.removeEventListener(type, stop, true));
   };
 
-  // The page's own scripts move focus after load, and there is no event that
-  // reliably marks the end of that. Re-asserting on a short interval is a
-  // timing guess; making it stop competing with the user is Phase 3 work.
-  forceFocus();
-  let attempts = 0;
-  const timer = setInterval(() => {
-    forceFocus();
-    if (++attempts >= FOCUS_RETRIES) clearInterval(timer);
-  }, FOCUS_INTERVAL_MS);
+  // Capture phase, so the user's intent is seen before the page can act on it.
+  USER_INTENT_EVENTS.forEach((type) => document.addEventListener(type, stop, true));
+
+  const assert = () => {
+    if (cancelled) return;
+
+    if (document.activeElement !== target) {
+      target.focus({ preventScroll: true });
+      target.select();
+    }
+
+    if (Date.now() < deadline) {
+      requestAnimationFrame(assert);
+    } else {
+      stop();
+    }
+  };
+
+  assert();
+}
+
+export function initAddMultiplesEnhancer() {
+  const changed = applySaleTypeDefaults();
+  if (changed > 0) Log(`Add Multiples: defaulted ${changed} sale-type select(s).`, 'debug');
+  focusFirstQuantityField();
 }

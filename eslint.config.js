@@ -24,6 +24,7 @@ export default [
         clearInterval: 'readonly',
         requestAnimationFrame: 'readonly',
         requestIdleCallback: 'readonly',
+        Event: 'readonly',
         MutationObserver: 'readonly',
         ResizeObserver: 'readonly',
         AbortController: 'readonly',

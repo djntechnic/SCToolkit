@@ -2,7 +2,7 @@
  * The compact set-action badges: shortcut links plus the two action badges.
  */
 
-import { Icons } from './icons.js';
+import { icon } from './icons.js';
 
 /**
  * Badge definitions. A definition with `getUrl` renders as an anchor; one
@@ -81,7 +81,7 @@ export function createBadge(badgeKey, sid = null, onClickOverride = null) {
   const config = BADGES[badgeKey];
   if (!config) return null;
 
-  const iconSvg = config.icon && Icons[config.icon] ? Icons[config.icon]() : '';
+  const iconSvg = icon(config.icon);
   const inner = `${iconSvg}${config.text ? `<span class="tk-badge-label">${config.text}</span>` : ''}`;
 
   if (config.getUrl && !onClickOverride) {

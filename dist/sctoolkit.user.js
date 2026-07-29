@@ -289,14 +289,21 @@
     /** @type {() => HTMLInputElement[]} */
     getValidInputs: () => []
   };
+  function isEligibleInput(el) {
+    const type = el.type ? el.type.toLowerCase() : "text";
+    if (type !== "text" && type !== "number") return false;
+    if (el.readOnly || el.disabled) return false;
+    return el.offsetParent !== null || el.value === "0";
+  }
+  var cache = { inputs: null };
+  function invalidateInputCache() {
+    cache.inputs = null;
+  }
   function getValidInputs() {
-    return Array.from(document.querySelectorAll("input")).filter((el) => {
-      const t = el.type ? el.type.toLowerCase() : "text";
-      const isTextField = t === "text" || t === "number";
-      const rect = el.getBoundingClientRect();
-      const isVisible = rect.width > 0 && rect.height > 0 || el.value === "0";
-      return isTextField && isVisible && !el.readOnly && !el.disabled;
-    });
+    if (cache.inputs === null) {
+      cache.inputs = Array.from(document.querySelectorAll("input")).filter(isEligibleInput);
+    }
+    return cache.inputs;
   }
   function initInputOptimization() {
     document.addEventListener("keydown", (e) => {
@@ -313,6 +320,9 @@
         setTimeout(() => nextInput.select(), 20);
       }
     });
+    const observer = new MutationObserver(invalidateInputCache);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("resize", invalidateInputCache, { passive: true });
     InputIndex.getValidInputs = getValidInputs;
   }
 
@@ -366,25 +376,46 @@
   }
 
   // src/modules/checklistEnhancer.js
+  var DATA_ROW_SELECTOR = 'a[href*="ViewCard.cfm"], input, select';
+  var HIDDEN_CLASS = "tk-hidden";
+  function buildRowIndex(mainContent) {
+    const index = [];
+    mainContent.querySelectorAll("table tr").forEach((el) => {
+      if (!el.querySelector(DATA_ROW_SELECTOR)) return;
+      index.push({ el, haystack: el.textContent.replace(/\s+/g, " ").toLowerCase() });
+    });
+    return index;
+  }
+  function applyFilter(index, term) {
+    let visible = 0;
+    index.forEach(({ el, haystack }) => {
+      const match = term === "" || haystack.includes(term);
+      el.classList.toggle(HIDDEN_CLASS, !match);
+      if (match) visible++;
+    });
+    return visible;
+  }
   function installFilter(mainContent) {
     const targetTable = mainContent.querySelector("table");
     if (!targetTable) return;
+    const index = buildRowIndex(mainContent);
+    Log(`Checklist filter indexed ${index.length} data row(s).`, "debug");
     const filterWrap = document.createElement("div");
     filterWrap.id = "tk-checklist-filter-wrap";
     filterWrap.innerHTML = `
     <strong>Filter Items:</strong>
     <input type="text" id="tk-checklist-filter" placeholder="Filter by Player, Card #, Tag, Team..."
            title="Type to filter active table rows in real time" aria-label="Filter table rows">
+    <span id="tk-filter-count" aria-live="polite"></span>
   `;
     targetTable.before(filterWrap);
+    const countEl = filterWrap.querySelector("#tk-filter-count");
     const input = filterWrap.querySelector("#tk-checklist-filter");
-    const applyFilter = debounce((term) => {
-      mainContent.querySelectorAll("table tr").forEach((row) => {
-        if (!row.querySelector('a[href*="ViewCard.cfm"], input, select')) return;
-        row.style.display = row.innerText.toLowerCase().includes(term) ? "" : "none";
-      });
+    const run = debounce((term) => {
+      const visible = applyFilter(index, term);
+      countEl.textContent = term === "" ? "" : `${visible} of ${index.length}`;
     }, Config.global.checklistFilterDebounceMs);
-    input.addEventListener("input", (e) => applyFilter(e.target.value.toLowerCase().trim()));
+    input.addEventListener("input", (e) => run(e.target.value.toLowerCase().trim()));
   }
   function initChecklistEnhancer() {
     if (!Config.modules.checklistEnhancer.actions.realtimeFilter) return;
@@ -847,19 +878,82 @@
   }
 
   // src/ui/icons.js
-  var Icons = {
-    bolt: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-    gem: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3 8 9l3 12"/><path d="M13 3l3 6-3 12"/><path d="M2 9h20"/></svg>`,
-    tag: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>`,
-    layers: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
-    star: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
-    download: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
-    pin: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
-    x: () => `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
-    chevronUp: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
-    plus: () => `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-    gear: () => `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
+  var ICONS = {
+    bolt: {
+      size: 12,
+      strokeWidth: 1.5,
+      body: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
+    },
+    gem: {
+      size: 12,
+      strokeWidth: 1.5,
+      body: '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3 8 9l3 12"/><path d="M13 3l3 6-3 12"/><path d="M2 9h20"/>'
+    },
+    tag: {
+      size: 12,
+      strokeWidth: 1.5,
+      body: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>'
+    },
+    layers: {
+      size: 12,
+      strokeWidth: 1.5,
+      body: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>'
+    },
+    star: {
+      size: 12,
+      strokeWidth: 1.5,
+      body: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'
+    },
+    download: {
+      size: 12,
+      strokeWidth: 1.5,
+      body: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
+    },
+    pin: {
+      size: 12,
+      strokeWidth: 1.5,
+      body: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'
+    },
+    x: {
+      size: 11,
+      strokeWidth: 2,
+      body: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
+    },
+    chevronUp: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<polyline points="18 15 12 9 6 15"/>'
+    },
+    plus: {
+      size: 11,
+      strokeWidth: 2,
+      body: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'
+    },
+    gear: {
+      size: 12,
+      strokeWidth: 1.5,
+      body: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
+    }
   };
+  var SPRITE_ID = "sctk-icon-sprite";
+  var symbolId = (name) => `tk-i-${name}`;
+  function buildSprite() {
+    const symbols = Object.entries(ICONS).map(
+      ([name, { strokeWidth, body }]) => `<symbol id="${symbolId(name)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${body}</symbol>`
+    ).join("");
+    return `<svg id="${SPRITE_ID}" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">${symbols}</svg>`;
+  }
+  function installIconSprite() {
+    if (document.getElementById(SPRITE_ID)) return;
+    const holder = document.createElement("div");
+    holder.innerHTML = buildSprite();
+    document.body.prepend(holder.firstChild);
+  }
+  function icon(name) {
+    const def = ICONS[name];
+    if (!def) return "";
+    return `<svg class="tk-icon" width="${def.size}" height="${def.size}" aria-hidden="true"><use href="#${symbolId(name)}"/></svg>`;
+  }
 
   // src/ui/badges.js
   var BADGES = {
@@ -922,7 +1016,7 @@
   function createBadge(badgeKey, sid = null, onClickOverride = null) {
     const config = BADGES[badgeKey];
     if (!config) return null;
-    const iconSvg = config.icon && Icons[config.icon] ? Icons[config.icon]() : "";
+    const iconSvg = icon(config.icon);
     const inner = `${iconSvg}${config.text ? `<span class="tk-badge-label">${config.text}</span>` : ""}`;
     if (config.getUrl && !onClickOverride) {
       const link = document.createElement("a");
@@ -1023,6 +1117,13 @@
     --tk-shadow-elevated: 0 4px 16px rgba(0,0,0,0.12);
 }
 
+/* Icons are <use> references into the injected sprite. */
+.tk-icon { flex-shrink: 0; display: inline-block; vertical-align: middle; }
+
+/* Filter hiding. A class rather than an inline style so the filter never has
+   to read or restore a row's own display value. */
+.tk-hidden { display: none !important; }
+
 #sctk-toolbar { position: fixed; top: 0; left: 0; width: 100%; z-index: 99999; background: var(--tk-bg-base); color: var(--tk-text); display: flex; align-items: center; min-height: 34px; padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 11px; border-bottom: 1px solid var(--tk-border); box-shadow: 0 2px 8px rgba(0,0,0,0.06); box-sizing: border-box; flex-wrap: wrap; }
 
 /* Wordmark */
@@ -1111,6 +1212,7 @@
 #tk-checklist-filter-wrap { margin: 8px 0; display: flex; align-items: center; gap: 6px; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-left: 3px solid var(--tk-accent); padding: 6px 10px; border-radius: 4px; font-family: var(--tk-font-ui); color: var(--tk-text); font-size: 11.5px; }
 #tk-checklist-filter-wrap strong { font-family: var(--tk-font-mono); font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tk-accent); font-weight: 700; }
 #tk-checklist-filter { padding: 3px 6px; border: 1px solid var(--tk-border-strong); background: var(--tk-bg-elevated); color: var(--tk-text); border-radius: 3px; font-size: 11.5px; width: 240px; font-family: var(--tk-font-ui); }
+#tk-filter-count { font-family: var(--tk-font-mono); font-size: 10px; color: var(--tk-text-muted); white-space: nowrap; }
 #tk-checklist-filter:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; border-color: var(--tk-accent); }
 
 /* Responsive Breakpoints */
@@ -1229,6 +1331,7 @@ body { padding-top: 38px !important; }
   var Toolbar = {
     init: () => {
       injectStyle(TOOLBAR_CSS);
+      installIconSprite();
       const bar = document.createElement("div");
       bar.id = "sctk-toolbar";
       bar.innerHTML = `
@@ -1325,7 +1428,7 @@ body { padding-top: 38px !important; }
       const scrollTopBtn = document.createElement("button");
       scrollTopBtn.type = "button";
       scrollTopBtn.className = "tk-scroll-btn";
-      scrollTopBtn.innerHTML = `${Icons.chevronUp()}<span>Top</span>`;
+      scrollTopBtn.innerHTML = `${icon("chevronUp")}<span>Top</span>`;
       scrollTopBtn.title = "Scroll to top of page";
       scrollTopBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
       container.appendChild(scrollTopBtn);
@@ -1367,7 +1470,8 @@ body { padding-top: 38px !important; }
   };
 
   // src/modules/setListEnhancer.js
-  var LATE_RENDER_DELAY_MS = 500;
+  var LATE_RENDER_TIMEOUT_MS = 3e3;
+  var CHUNK_SIZE = 25;
   var SET_LINK_SELECTOR = [
     'a[href*="ViewSet" i]',
     'a[href*="CollectionSummary" i]',
@@ -1375,8 +1479,9 @@ body { padding-top: 38px !important; }
     'a[href*="sid=" i]',
     'a[href*="/sid/" i]'
   ].join(", ");
-  function findSetLinks() {
-    return Array.from(document.querySelectorAll(SET_LINK_SELECTOR)).filter((link) => link.textContent.trim().length > 0 && !link.querySelector("img, i, svg"));
+  var onIdle = typeof requestIdleCallback === "function" ? (fn) => requestIdleCallback(fn, { timeout: 500 }) : (fn) => setTimeout(fn, 16);
+  function findSetLinks(root = document) {
+    return Array.from(root.querySelectorAll(SET_LINK_SELECTOR)).filter((link) => link.textContent.trim().length > 0 && !link.querySelector("img, i, svg"));
   }
   function isExpandableParent(link) {
     const parentLi = link.closest("li");
@@ -1391,85 +1496,150 @@ body { padding-top: 38px !important; }
     }
     return false;
   }
-  function injectSetActions(setLinks) {
+  function buildBadgeGroup(link, setId, currentPageSid) {
+    if (currentPageSid && setId === currentPageSid) return null;
+    const setName = link.textContent.trim();
+    const container = document.createElement("span");
+    container.style.display = "inline-flex";
+    container.style.alignItems = "center";
+    const expandable = isExpandableParent(link);
+    const include = SET_LINK_BADGES.filter(
+      (key) => expandable || key !== "INSERTS" && key !== "PARALLELS"
+    );
+    renderBadgeSet(container, setId, {
+      include,
+      onPin: (e) => {
+        e.preventDefault();
+        const added = Pins.add({
+          id: setId,
+          name: setName,
+          url: link.href,
+          year: deriveSetYear(setName, link.href)
+        });
+        if (!added) return;
+        Toolbar.renderPins();
+        showToast({ message: `Pinned: <b>${escapeHtml(setName)}</b>` });
+      },
+      onExport: (e) => {
+        e.preventDefault();
+        exportSetCSV(setId, setName);
+      }
+    });
+    return container;
+  }
+  function injectSetActions(links) {
     const currentPageSid = extractSid(window.location.href);
-    setLinks.forEach((link) => {
+    let injected = 0;
+    links.forEach((link) => {
       if (link.dataset.tkInjected) return;
       const setId = extractSid(link.href);
       if (!setId) return;
       link.dataset.tkInjected = "true";
-      if (currentPageSid && setId === currentPageSid) return;
-      const setName = link.textContent.trim();
-      const container = document.createElement("span");
-      container.style.display = "inline-flex";
-      container.style.alignItems = "center";
-      const expandable = isExpandableParent(link);
-      const include = SET_LINK_BADGES.filter(
-        (key) => expandable || key !== "INSERTS" && key !== "PARALLELS"
-      );
-      renderBadgeSet(container, setId, {
-        include,
-        onPin: (e) => {
-          e.preventDefault();
-          const added = Pins.add({
-            id: setId,
-            name: setName,
-            url: link.href,
-            year: deriveSetYear(setName, link.href)
-          });
-          if (!added) return;
-          Toolbar.renderPins();
-          showToast({ message: `Pinned: <b>${escapeHtml(setName)}</b>` });
-        },
-        onExport: (e) => {
-          e.preventDefault();
-          exportSetCSV(setId, setName);
-        }
-      });
-      link.after(container);
+      const group = buildBadgeGroup(link, setId, currentPageSid);
+      if (!group) return;
+      const fragment = document.createDocumentFragment();
+      fragment.appendChild(group);
+      link.after(fragment);
+      injected++;
     });
+    return injected;
+  }
+  function injectInChunks(links, onDone = () => {
+  }) {
+    let cursor = 0;
+    let total = 0;
+    const step = () => {
+      const slice = links.slice(cursor, cursor + CHUNK_SIZE);
+      cursor += CHUNK_SIZE;
+      total += injectSetActions(slice);
+      if (cursor < links.length) {
+        onIdle(step);
+      } else {
+        onDone(total);
+      }
+    };
+    step();
+  }
+  function waitForLateLinks() {
+    let settled = false;
+    const finish = (links) => {
+      if (settled) return;
+      settled = true;
+      observer.disconnect();
+      clearTimeout(timer);
+      if (links.length === 0) {
+        assertContract("setListEnhancer", [
+          { selector: SET_LINK_SELECTOR, label: "set links (pin/export badge anchors)" }
+        ]);
+        return;
+      }
+      injectInChunks(links, (n) => {
+        Log(`Set List Enhancer: badges injected for ${n} late-rendered link(s).`, "debug");
+      });
+    };
+    const observer = new MutationObserver(() => {
+      const links = findSetLinks();
+      if (links.length > 0) finish(links);
+    });
+    const timer = setTimeout(() => finish(findSetLinks()), LATE_RENDER_TIMEOUT_MS);
+    observer.observe(document.body, { childList: true, subtree: true });
   }
   function initSetListEnhancer() {
     const setLinks = findSetLinks();
     if (setLinks.length === 0) {
-      setTimeout(() => {
-        const late = findSetLinks();
-        if (late.length === 0) {
-          assertContract("setListEnhancer", [
-            { selector: SET_LINK_SELECTOR, label: "set links (pin/export badge anchors)" }
-          ]);
-          return;
-        }
-        injectSetActions(late);
-        Log(`Set List Enhancer: badges injected for ${late.length} late-rendered link(s).`, "debug");
-      }, LATE_RENDER_DELAY_MS);
+      waitForLateLinks();
       return;
     }
-    injectSetActions(setLinks);
-    Log(`Set List Enhancer: badges injected for ${setLinks.length} link(s).`, "debug");
+    injectInChunks(setLinks, (n) => {
+      Log(`Set List Enhancer: badges injected for ${n} of ${setLinks.length} link(s).`, "debug");
+    });
   }
 
   // src/modules/addMultiplesEnhancer.js
-  var FOCUS_RETRIES = 5;
-  var FOCUS_INTERVAL_MS = 250;
-  function initAddMultiplesEnhancer() {
-    document.querySelectorAll("select").forEach((select) => {
+  var FOCUS_DEADLINE_MS = 1200;
+  var USER_INTENT_EVENTS = ["keydown", "pointerdown", "wheel"];
+  function applySaleTypeDefaults(root = document) {
+    let changed = 0;
+    root.querySelectorAll("select").forEach((select) => {
       const fsOpt = Array.from(select.options).find((opt) => opt.text.includes("For Sale/Trade"));
-      if (fsOpt) select.value = fsOpt.value;
+      if (!fsOpt || select.value === fsOpt.value) return;
+      select.value = fsOpt.value;
+      changed++;
     });
-    const forceFocus = () => {
+    return changed;
+  }
+  function focusFirstQuantityField() {
+    const target = (() => {
       const inputs = InputIndex.getValidInputs();
-      const firstQtyBox = inputs.find((el) => el.value === "0") || inputs[0];
-      if (!firstQtyBox) return;
-      firstQtyBox.focus({ preventScroll: true });
-      setTimeout(() => firstQtyBox.select(), 50);
+      return inputs.find((el) => el.value === "0") || inputs[0] || null;
+    })();
+    if (!target) return;
+    let cancelled = false;
+    const deadline = Date.now() + FOCUS_DEADLINE_MS;
+    const stop = () => {
+      if (cancelled) return;
+      cancelled = true;
+      USER_INTENT_EVENTS.forEach((type) => document.removeEventListener(type, stop, true));
     };
-    forceFocus();
-    let attempts = 0;
-    const timer = setInterval(() => {
-      forceFocus();
-      if (++attempts >= FOCUS_RETRIES) clearInterval(timer);
-    }, FOCUS_INTERVAL_MS);
+    USER_INTENT_EVENTS.forEach((type) => document.addEventListener(type, stop, true));
+    const assert = () => {
+      if (cancelled) return;
+      if (document.activeElement !== target) {
+        target.focus({ preventScroll: true });
+        target.select();
+      }
+      if (Date.now() < deadline) {
+        requestAnimationFrame(assert);
+      } else {
+        stop();
+      }
+    };
+    assert();
+  }
+  function initAddMultiplesEnhancer() {
+    const changed = applySaleTypeDefaults();
+    if (changed > 0) Log(`Add Multiples: defaulted ${changed} sale-type select(s).`, "debug");
+    focusFirstQuantityField();
   }
 
   // src/modules/csvExportEngine.js
@@ -1579,14 +1749,15 @@ body { padding-top: 38px !important; }
     /** Debounced writer, rebuilt whenever the debounce interval itself changes. */
     _persist: () => {
     },
+    /** Whether the modal's stylesheet has been added to the page yet. */
+    _stylesInjected: false,
     init: () => {
-      injectStyle(SETTINGS_CSS);
       SettingsUI._rebuildPersist();
       const trigger = document.createElement("button");
       trigger.id = "tk-settings-trigger";
       trigger.type = "button";
       trigger.className = "tk-scroll-btn";
-      trigger.innerHTML = Icons.gear();
+      trigger.innerHTML = icon("gear");
       trigger.title = "SCToolkit Settings";
       trigger.setAttribute("aria-label", "SCToolkit Settings");
       trigger.addEventListener("click", () => SettingsUI.open());
@@ -1614,6 +1785,10 @@ body { padding-top: 38px !important; }
     },
     open: () => {
       if (document.getElementById(SettingsUI.overlayId)) return;
+      if (!SettingsUI._stylesInjected) {
+        injectStyle(SETTINGS_CSS);
+        SettingsUI._stylesInjected = true;
+      }
       const overlay = document.createElement("div");
       overlay.id = SettingsUI.overlayId;
       overlay.addEventListener("click", (e) => {
@@ -1638,7 +1813,7 @@ body { padding-top: 38px !important; }
       const closeBtn = document.createElement("button");
       closeBtn.id = "tk-settings-close";
       closeBtn.type = "button";
-      closeBtn.innerHTML = Icons.x();
+      closeBtn.innerHTML = icon("x");
       closeBtn.title = "Close";
       closeBtn.setAttribute("aria-label", "Close settings");
       closeBtn.addEventListener("click", () => SettingsUI.close());
@@ -1799,7 +1974,7 @@ body { padding-top: 38px !important; }
         const removeBtn = document.createElement("button");
         removeBtn.type = "button";
         removeBtn.className = "tk-route-remove-btn";
-        removeBtn.innerHTML = Icons.x();
+        removeBtn.innerHTML = icon("x");
         removeBtn.title = "Remove this pattern";
         removeBtn.setAttribute("aria-label", "Remove this pattern");
         removeBtn.addEventListener("click", () => {
@@ -1820,7 +1995,7 @@ body { padding-top: 38px !important; }
       const addBtn = document.createElement("button");
       addBtn.type = "button";
       addBtn.className = "tk-route-add-btn";
-      addBtn.innerHTML = `${Icons.plus()}<span>Add pattern</span>`;
+      addBtn.innerHTML = `${icon("plus")}<span>Add pattern</span>`;
       addBtn.addEventListener("click", () => addRow("", false));
       wrap.appendChild(errorEl);
       wrap.appendChild(addBtn);

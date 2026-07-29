@@ -7,7 +7,7 @@ import { Config, SettingsStore, syncExportConfig } from '../core/config.js';
 import { Log, RuntimeSettings } from '../core/log.js';
 import { ModuleRegistry } from '../core/registry.js';
 import { debounce, injectStyle } from './dom.js';
-import { Icons } from './icons.js';
+import { icon } from './icons.js';
 import { SETTINGS_CSS } from './styles.js';
 import { showToast } from './toast.js';
 
@@ -17,15 +17,17 @@ export const SettingsUI = {
   /** Debounced writer, rebuilt whenever the debounce interval itself changes. */
   _persist: () => {},
 
+  /** Whether the modal's stylesheet has been added to the page yet. */
+  _stylesInjected: false,
+
   init: () => {
-    injectStyle(SETTINGS_CSS);
     SettingsUI._rebuildPersist();
 
     const trigger = document.createElement('button');
     trigger.id = 'tk-settings-trigger';
     trigger.type = 'button';
     trigger.className = 'tk-scroll-btn';
-    trigger.innerHTML = Icons.gear();
+    trigger.innerHTML = icon('gear');
     trigger.title = 'SCToolkit Settings';
     trigger.setAttribute('aria-label', 'SCToolkit Settings');
     trigger.addEventListener('click', () => SettingsUI.open());
@@ -57,6 +59,14 @@ export const SettingsUI = {
   open: () => {
     if (document.getElementById(SettingsUI.overlayId)) return;
 
+    // ~55 rules that only matter once this modal exists. Injecting them at page
+    // load made every page parse a stylesheet for a panel most sessions never
+    // open.
+    if (!SettingsUI._stylesInjected) {
+      injectStyle(SETTINGS_CSS);
+      SettingsUI._stylesInjected = true;
+    }
+
     const overlay = document.createElement('div');
     overlay.id = SettingsUI.overlayId;
     overlay.addEventListener('click', (e) => {
@@ -87,7 +97,7 @@ export const SettingsUI = {
     const closeBtn = document.createElement('button');
     closeBtn.id = 'tk-settings-close';
     closeBtn.type = 'button';
-    closeBtn.innerHTML = Icons.x();
+    closeBtn.innerHTML = icon('x');
     closeBtn.title = 'Close';
     closeBtn.setAttribute('aria-label', 'Close settings');
     closeBtn.addEventListener('click', () => SettingsUI.close());
@@ -290,7 +300,7 @@ export const SettingsUI = {
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.className = 'tk-route-remove-btn';
-      removeBtn.innerHTML = Icons.x();
+      removeBtn.innerHTML = icon('x');
       removeBtn.title = 'Remove this pattern';
       removeBtn.setAttribute('aria-label', 'Remove this pattern');
       removeBtn.addEventListener('click', () => {
@@ -314,7 +324,7 @@ export const SettingsUI = {
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'tk-route-add-btn';
-    addBtn.innerHTML = `${Icons.plus()}<span>Add pattern</span>`;
+    addBtn.innerHTML = `${icon('plus')}<span>Add pattern</span>`;
     addBtn.addEventListener('click', () => addRow('', false));
 
     wrap.appendChild(errorEl);

@@ -10,7 +10,7 @@ import { Pins, deriveSetYear } from '../core/storage.js';
 import { exportSetCSV } from '../net/setExport.js';
 import { TOOLBAR_BADGES, createBadge, renderBadgeSet } from './badges.js';
 import { createBtn, injectStyle } from './dom.js';
-import { Icons } from './icons.js';
+import { icon, installIconSprite } from './icons.js';
 import { TOOLBAR_CSS } from './styles.js';
 
 /**
@@ -56,6 +56,9 @@ function appendContextLabel(container, text) {
 export const Toolbar = {
   init: () => {
     injectStyle(TOOLBAR_CSS);
+    // Must precede any icon: every icon on the page is a <use> reference into
+    // this sprite.
+    installIconSprite();
 
     const bar = document.createElement('div');
     bar.id = 'sctk-toolbar';
@@ -173,7 +176,7 @@ export const Toolbar = {
     const scrollTopBtn = document.createElement('button');
     scrollTopBtn.type = 'button';
     scrollTopBtn.className = 'tk-scroll-btn';
-    scrollTopBtn.innerHTML = `${Icons.chevronUp()}<span>Top</span>`;
+    scrollTopBtn.innerHTML = `${icon('chevronUp')}<span>Top</span>`;
     scrollTopBtn.title = 'Scroll to top of page';
     scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     container.appendChild(scrollTopBtn);
