@@ -89,17 +89,60 @@ test('the bundle boots on a checklist page without throwing', async () => {
   dom.window.close();
 });
 
-test('the settings modal opens and closes', async () => {
+test('the settings modal opens and closes, and its CSS arrives only then', async () => {
   const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
   const doc = dom.window.document;
 
+  const stylesAtBoot = doc.querySelectorAll('head style').length;
+
   doc.getElementById('tk-settings-trigger').click();
-  const panel = doc.getElementById('tk-settings-panel');
-  assert.ok(panel, 'settings panel should open');
+  assert.ok(doc.getElementById('tk-settings-panel'), 'settings panel should open');
   assert.equal(doc.querySelectorAll('.tk-settings-module-row').length, 6);
+
+  // The modal's stylesheet is injected on first open, not at page load.
+  assert.equal(doc.querySelectorAll('head style').length, stylesAtBoot + 1);
 
   doc.getElementById('tk-settings-close').click();
   assert.equal(doc.getElementById('tk-settings-overlay'), null);
+
+  // Reopening must not inject it a second time.
+  doc.getElementById('tk-settings-trigger').click();
+  assert.equal(doc.querySelectorAll('head style').length, stylesAtBoot + 1);
+
+  dom.window.close();
+});
+
+test('the icon sprite is installed and every icon resolves to it', async () => {
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const doc = dom.window.document;
+
+  const sprite = doc.getElementById('sctk-icon-sprite');
+  assert.ok(sprite, 'sprite should be installed');
+
+  const symbolIds = new Set(Array.from(sprite.querySelectorAll('symbol'), (s) => `#${s.id}`));
+  const uses = doc.querySelectorAll('use');
+
+  assert.ok(uses.length > 0, 'icons should render as <use> references');
+  uses.forEach((use) => {
+    assert.ok(symbolIds.has(use.getAttribute('href')), `dangling icon reference ${use.getAttribute('href')}`);
+  });
+});
+
+test('the filter hides rows by class and reports the match count', async () => {
+  const { dom } = await bootAndSettle('https://example.test/Checklist.cfm/sid/4001/');
+  const doc = dom.window.document;
+
+  const input = doc.getElementById('tk-checklist-filter');
+  input.value = 'nothing matches this';
+  input.dispatchEvent(new dom.window.Event('input'));
+
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  const dataRow = doc.querySelector('#main-content-area tr');
+  assert.equal(dataRow.classList.contains('tk-hidden'), true);
+  assert.equal(dataRow.style.display, '', 'must not write inline display');
+  assert.equal(doc.getElementById('tk-filter-count').textContent, '0 of 1');
+
   dom.window.close();
 });
 

@@ -10,22 +10,48 @@ export const InputIndex = {
 };
 
 /**
- * Enumerate the inputs that participate in Enter-to-Tab, in document order.
+ * Whether an input participates in Enter-to-Tab.
+ *
+ * Visibility is tested with `offsetParent`, which is null for a `display:none`
+ * element and its descendants. v2.42.0 called `getBoundingClientRect()` on
+ * every input on the page on every Enter keypress — a full layout flush per
+ * keystroke, on exactly the pages that have hundreds of inputs.
  *
  * The `value === '0'` clause is deliberate: quantity fields pre-filled with
  * zero are sometimes laid out with no measurable box, and skipping them would
- * make the whole feature useless on exactly the page it exists for.
+ * make the whole feature useless on the page it exists for.
  *
- * @returns {HTMLInputElement[]}
+ * @param {HTMLInputElement} el
+ * @returns {boolean}
  */
+export function isEligibleInput(el) {
+  const type = el.type ? el.type.toLowerCase() : 'text';
+  if (type !== 'text' && type !== 'number') return false;
+  if (el.readOnly || el.disabled) return false;
+  return el.offsetParent !== null || el.value === '0';
+}
+
+/**
+ * Cached list of eligible inputs, in document order.
+ *
+ * Invalidated rather than rebuilt when the DOM changes: marking a flag is O(1)
+ * per mutation batch, and the rebuild only happens if the user actually
+ * presses Enter afterwards. A page that mutates constantly therefore costs
+ * nothing until the feature is used.
+ */
+const cache = { inputs: null };
+
+/** Discard the cached list; the next lookup rebuilds it. */
+export function invalidateInputCache() {
+  cache.inputs = null;
+}
+
+/** @returns {HTMLInputElement[]} */
 export function getValidInputs() {
-  return Array.from(document.querySelectorAll('input')).filter((el) => {
-    const t = el.type ? el.type.toLowerCase() : 'text';
-    const isTextField = (t === 'text' || t === 'number');
-    const rect = el.getBoundingClientRect();
-    const isVisible = (rect.width > 0 && rect.height > 0) || el.value === '0';
-    return isTextField && isVisible && !el.readOnly && !el.disabled;
-  });
+  if (cache.inputs === null) {
+    cache.inputs = Array.from(document.querySelectorAll('input')).filter(isEligibleInput);
+  }
+  return cache.inputs;
 }
 
 export function initInputOptimization() {
@@ -48,6 +74,15 @@ export function initInputOptimization() {
       setTimeout(() => nextInput.select(), 20);
     }
   });
+
+  // Rows added, removed, or toggled hidden all change the list. Watching the
+  // document is broad, but the handler is a single assignment.
+  const observer = new MutationObserver(invalidateInputCache);
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  // A resize can change what is laid out, and therefore what `offsetParent`
+  // reports.
+  window.addEventListener('resize', invalidateInputCache, { passive: true });
 
   InputIndex.getValidInputs = getValidInputs;
 }

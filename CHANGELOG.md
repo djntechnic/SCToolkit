@@ -94,6 +94,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   class with no rule, and handlers that only logged.
 - The unreachable `icon` parameter of `createBtn`.
 
+### Phase 3 — performance
+
+**Changed**
+- **Checklist filter.** Data rows are indexed once at install; filtering toggles
+  a single `.tk-hidden` class against the cached text. Previously every debounce
+  tick re-queried the table, ran a per-row `querySelector`, and read
+  `row.innerText` — a layout-forcing property — meaning a thousand forced
+  reflows per keystroke on a thousand-row set. The filter also now reports
+  `n of N` matches.
+- **Enter-to-Tab.** The eligible-input list is cached and invalidated by a
+  `MutationObserver` and `resize`, instead of being rebuilt on every Enter with
+  a `getBoundingClientRect()` call per input on the page. Visibility is tested
+  with `offsetParent`.
+- **Set listings.** Badges are built into a `DocumentFragment` and attached in
+  one operation per link, and links are processed in idle-time chunks of 25 so a
+  few-hundred-link page stays responsive. The first chunk runs synchronously so
+  badges appear immediately where the user is already looking.
+- **Late-rendered set links** are detected by a `MutationObserver` that
+  disconnects on first hit, replacing a flat `setTimeout(500)` that was too
+  early on a slow page and needlessly late on a fast one.
+- **Icons** are injected once as a `<symbol>` sprite and referenced by `<use>`.
+  A 200-link listing previously parsed ~1,400 complete icon markups through
+  `innerHTML`.
+- **Settings CSS** is injected on first open rather than at page load.
+
+**Fixed**
+- Add Multiples no longer fights the user for the cursor. The old
+  `setInterval(forceFocus, 250)` ran five times unconditionally, so typing in
+  another field within 1.25s of load had focus stolen mid-word up to four more
+  times. Focus is now re-asserted only while it has actually been lost, and any
+  keypress, pointer press, or scroll cancels it outright.
+
+**Notes**
+- The export-memory item from the plan's Phase 3 already landed in Phase 1:
+  pages are reduced to plain row objects as they arrive.
+- `dist/` grew ~4 KB. The bundle is deliberately not minified — it is a
+  userscript users can read before installing — so the added documentation
+  outweighs the markup the sprite removes. The runtime win is in parse count,
+  not bytes.
+
 ### Known issues
 - Test fixtures are synthetic rather than sanitized real captures.
 

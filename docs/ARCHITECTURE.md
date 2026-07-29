@@ -47,7 +47,8 @@ module importing from `ui/` is a bug.
 | `data/csv.js` | RFC 4180 escaping and download |
 | `data/filename.js` | Export filename construction |
 | `ui/styles.js` | Design tokens and component CSS |
-| `ui/icons.js`, `ui/badges.js`, `ui/dom.js` | Icon set, badge factory, DOM helpers |
+| `ui/icons.js` | Icon geometry, the `<symbol>` sprite, and `<use>` references |
+| `ui/badges.js`, `ui/dom.js` | Badge factory, DOM helpers |
 | `ui/toolbar.js`, `ui/status.js`, `ui/toast.js`, `ui/settings.js` | The chrome |
 | `modules/*.js` | One file per registry entry |
 
@@ -154,6 +155,25 @@ toggle sits in storage forever, invisible to Settings and read by nothing.
   `dist/sctoolkit.user.js` in jsdom with stubbed `GM_*` globals. It is the only
   check that can catch an import cycle or a load-order fault, so **build before
   test**: `npm run check` and CI both do.
+
+## Performance rules
+
+The expensive things on these pages are layout reads and repeated markup
+parsing, not computation. Three rules follow, and the Phase 3 tests pin them:
+
+- **Never read layout in an event handler.** `innerText`,
+  `getBoundingClientRect()`, `offsetTop` and friends force a synchronous
+  reflow. Index what you need up front and read the cache. The checklist filter
+  and Enter-to-Tab are both structured this way.
+- **Toggle a class; do not write `style.display`.** A class write is a no-op
+  when the state is unchanged, and it leaves the element's own stylesheet value
+  intact.
+- **Batch DOM insertion.** Build into a `DocumentFragment` and attach once. For
+  work proportional to page size, slice it across `requestIdleCallback` and run
+  the first slice synchronously so the visible region updates immediately.
+
+Icons follow from the same reasoning: one sprite parsed once, referenced by
+`<use>`, rather than a full SVG string parsed per badge.
 
 ## Build and release
 
