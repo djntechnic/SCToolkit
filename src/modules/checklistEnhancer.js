@@ -11,6 +11,17 @@ import { Config } from '../core/config.js';
 import { Log } from '../core/log.js';
 import { assertContract, debounce } from '../ui/dom.js';
 
+/**
+ * Containers that hold a listing table, most specific first.
+ *
+ * Only checklist and set-index pages have `#main-content-area`. The for-sale,
+ * wantlist, add-multiples, and collection views wrap their table in `#content`
+ * instead — so requiring the first selector meant the filter silently never
+ * appeared on three of the four routes its own config lists. Confirmed against
+ * real captures in `test/fixtures/real/`.
+ */
+export const FILTER_SCOPES = ['#main-content-area', '#content'];
+
 /** Rows carrying one of these are data rows; anything else is chrome. */
 const DATA_ROW_SELECTOR = 'a[href*="ViewCard.cfm"], input, select';
 
@@ -63,6 +74,20 @@ export function applyFilter(index, term) {
 }
 
 /**
+ * Find the narrowest container that holds a listing table.
+ *
+ * @param {Document|HTMLElement} [root]
+ * @returns {HTMLElement|null}
+ */
+export function findFilterScope(root = document) {
+  for (const selector of FILTER_SCOPES) {
+    const el = root.querySelector(selector);
+    if (el && el.querySelector('table')) return el;
+  }
+  return null;
+}
+
+/**
  * Insert the filter box above the first content table and wire it up.
  *
  * @param {HTMLElement} mainContent
@@ -99,13 +124,13 @@ export function initChecklistEnhancer() {
   if (!Config.modules.checklistEnhancer.actions.realtimeFilter) return;
   if (document.getElementById('tk-checklist-filter-wrap')) return;
 
-  const mainContent = document.getElementById('main-content-area');
-  if (!mainContent) {
+  const scope = findFilterScope();
+  if (!scope) {
     assertContract('checklistEnhancer', [
-      { selector: '#main-content-area', label: '#main-content-area (filter mount point)' }
+      { selector: FILTER_SCOPES.join(', '), label: 'a listing container holding a table' }
     ]);
     return;
   }
 
-  installFilter(mainContent);
+  installFilter(scope);
 }

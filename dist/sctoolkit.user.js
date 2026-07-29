@@ -380,6 +380,7 @@
   }
 
   // src/modules/checklistEnhancer.js
+  var FILTER_SCOPES = ["#main-content-area", "#content"];
   var DATA_ROW_SELECTOR = 'a[href*="ViewCard.cfm"], input, select';
   var HIDDEN_CLASS = "tk-hidden";
   function buildRowIndex(mainContent) {
@@ -398,6 +399,13 @@
       if (match) visible++;
     });
     return visible;
+  }
+  function findFilterScope(root = document) {
+    for (const selector of FILTER_SCOPES) {
+      const el = root.querySelector(selector);
+      if (el && el.querySelector("table")) return el;
+    }
+    return null;
   }
   function installFilter(mainContent) {
     const targetTable = mainContent.querySelector("table");
@@ -424,14 +432,14 @@
   function initChecklistEnhancer() {
     if (!Config.modules.checklistEnhancer.actions.realtimeFilter) return;
     if (document.getElementById("tk-checklist-filter-wrap")) return;
-    const mainContent = document.getElementById("main-content-area");
-    if (!mainContent) {
+    const scope = findFilterScope();
+    if (!scope) {
       assertContract("checklistEnhancer", [
-        { selector: "#main-content-area", label: "#main-content-area (filter mount point)" }
+        { selector: FILTER_SCOPES.join(", "), label: "a listing container holding a table" }
       ]);
       return;
     }
-    installFilter(mainContent);
+    installFilter(scope);
   }
 
   // src/core/sid.js
@@ -1946,11 +1954,24 @@ body { padding-top: 38px !important; }
   }
 
   // src/modules/csvExportEngine.js
+  var PRINT_ITEM_SELECTOR = ".yourcol-item";
+  function collectRows(root = document) {
+    const tableRows = Array.from(root.querySelectorAll("table tr")).map(
+      (row) => Array.from(row.querySelectorAll("td, th")).map((c) => c.textContent.trim())
+    ).filter((cells) => cells.length > 0);
+    if (tableRows.length > 0) return tableRows;
+    const items = Array.from(root.querySelectorAll(PRINT_ITEM_SELECTOR)).map((item) => [item.textContent.replace(/\s+/g, " ").trim()]).filter(([text]) => text.length > 0);
+    return items.length > 0 ? [["Item"], ...items] : [];
+  }
   function generateCSV(type) {
     setStatus(`Exporting ${type}...`);
-    const csvRows = Array.from(document.querySelectorAll("table tr")).map(
-      (row) => Array.from(row.querySelectorAll("td, th")).map((c) => c.innerText.trim())
-    );
+    const csvRows = collectRows();
+    if (csvRows.length === 0) {
+      setStatus("Nothing to export");
+      showToast({ message: "Nothing to export — no rows found on this page.", accent: "var(--tk-red)" });
+      Log(`Export aborted: no rows found for ${type}.`, "warn");
+      return;
+    }
     let filename = `SCToolkit_${type}_Export_${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.csv`;
     if (Routes.isPlayerCollection()) {
       const playerHeader = document.querySelector("#main-content-area h1") || document.querySelector("h1");
