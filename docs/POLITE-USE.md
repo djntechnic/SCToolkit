@@ -6,22 +6,36 @@ so users know what they are running and so site operators can see the intent.
 
 ## Commitments
 
-1. **Sequential, single-tab-equivalent.** Requests are serialized through one
-   queue, and that queue is throttled across *all* open tabs via shared
-   storage. Opening five tabs does not produce five times the request rate.
-2. **Human-scale pacing.** Every request is separated by a base delay plus
-   randomized jitter. Pacing adapts upward when the site is slow or returns a
-   rate-limit signal, and decays back only after sustained success.
-3. **Bounded work.** A hard page ceiling caps any single export run. Runs are
-   cancellable by the user at any point.
-4. **Cache before re-fetch.** Parsed results are cached with a TTL, so repeating
-   an export does not repeat the traffic.
-5. **Hard stop on any block signal.** Rate-limit responses, challenge pages, and
-   access denials abort the run immediately and start a persisted cooldown.
-   The script never attempts to solve, bypass, or evade a challenge.
-6. **Respects `Retry-After`.** Both the delta-seconds and HTTP-date forms.
-7. **No concurrency knob.** Users can make the script slower; they cannot make
-   it faster than the built-in floor.
+Each item is marked with what is **in code today** versus what is still
+outstanding. Nothing here is claimed before it is implemented.
+
+1. **Sequential.** ✅ Requests are serialized through one queue; a second export
+   waits for the first to finish.
+   ⏳ *Outstanding:* the queue is per-tab, so two tabs exporting at once produce
+   two request streams. Cross-tab throttling via shared storage is the highest
+   priority remaining item.
+2. **Human-scale pacing.** ✅ Every request after the first is separated by a
+   base delay (default 500 ms) plus randomized jitter (0–700 ms).
+   ⏳ *Outstanding:* pacing does not yet adapt upward when the site slows.
+3. **Bounded work.** ✅ A hard page ceiling (default 200) caps any single run and
+   aborts *before* fetching if the discovered page count exceeds it.
+   ⏳ *Outstanding:* runs are not yet cancellable mid-flight, and requests have
+   no timeout.
+4. **Cache before re-fetch.** ⏳ *Outstanding.* Re-exporting a set currently
+   re-fetches every page.
+5. **Hard stop on any block signal.** ✅ A challenge or access-denied page aborts
+   the run immediately and starts a persisted cooldown (default 5 minutes)
+   during which new exports are refused. The script never attempts to solve,
+   bypass, or evade a challenge.
+   ⏳ *Outstanding:* detection covers three markers and misses newer challenge
+   formats.
+6. **Respects `Retry-After`.** ✅ Both the delta-seconds and HTTP-date forms, on
+   HTTP 429 and 503, falling back to capped exponential backoff.
+7. **No concurrency knob.** ✅ Users can make the script slower; there is no
+   setting that makes it faster than the built-in floor.
+
+Outstanding items are Phase 4 of the plan and are tracked in
+[CHANGELOG.md](../CHANGELOG.md).
 
 ## What this script does not do
 
@@ -39,5 +53,16 @@ If any behaviour here is unwelcome, open an issue at
 removed. Contact is preferred over blocking; the pacing values in this project
 are defaults, not demands.
 
-_Implementation lands in Phase 4; the numeric defaults will be listed here once
-they are in code rather than in a plan._
+## Current defaults
+
+| Setting | Default | Floor |
+|---|---|---|
+| Base delay between requests | 500 ms | 200 ms |
+| Random jitter added | 0–700 ms | 0 |
+| Retries per page on 429/503 | 3 | 0 |
+| Backoff base / cap | 1 s / 15 s | 250 ms / 2 s |
+| Page ceiling per run | 200 | 20 |
+| Cooldown after a detected block | 5 min | 0 (user-disableable) |
+
+All are user-adjustable in Settings within those bounds. There is no setting
+that removes the delay or runs requests in parallel.

@@ -21,8 +21,8 @@
     "banner": "node scripts/banner.js",
     "build": "node scripts/build.js",
     "lint": "eslint .",
-    "test": "node --test",
-    "check": "npm run lint && npm test && npm run build && node scripts/verify-dist.js"
+    "test": "node --test \"test/**/*.test.js\"",
+    "check": "npm run lint && npm run build && npm test && node scripts/verify-dist.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
