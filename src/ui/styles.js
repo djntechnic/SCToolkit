@@ -7,7 +7,11 @@
 
 /** Tokens plus toolbar, badge, filter, and toast styling. */
 export const TOOLBAR_CSS = `
-/* ---- Design tokens (Light Theme) ---- */
+/* ---- Design tokens ----
+   Kept on :root rather than a scoping class because the toolbar, toasts,
+   settings modal, and filter bar mount in four different places in the page.
+   The --tk- prefix is specific enough that collision with the site's own
+   variables is not a real risk. Dark values override by attribute below. */
 :root {
     --tk-bg-base: #f8f9fa;
     --tk-bg-elevated: #ffffff;
@@ -37,7 +41,32 @@ export const TOOLBAR_CSS = `
    to read or restore a row's own display value. */
 .tk-hidden { display: none !important; }
 
-#sctk-toolbar { position: fixed; top: 0; left: 0; width: 100%; z-index: 99999; background: var(--tk-bg-base); color: var(--tk-text); display: flex; align-items: center; min-height: 34px; padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 11px; border-bottom: 1px solid var(--tk-border); box-shadow: 0 2px 8px rgba(0,0,0,0.06); box-sizing: border-box; flex-wrap: wrap; }
+/* Dark palette. Only the values change; every rule below is theme-agnostic. */
+:root[data-sctk-theme="dark"] {
+    --tk-bg-base: #16181b;
+    --tk-bg-elevated: #1f2225;
+    --tk-bg-hover: #2a2e33;
+    --tk-border: #33383d;
+    --tk-border-strong: #464c53;
+    --tk-text: #e6e8ea;
+    --tk-text-muted: #9aa2ab;
+    --tk-accent: #f0a437;
+    --tk-teal: #2dd4bf;
+    --tk-blue: #60a5fa;
+    --tk-violet: #a78bfa;
+    --tk-magenta: #f472b6;
+    --tk-green: #4ade80;
+    --tk-red: #f87171;
+    --tk-shadow-elevated: 0 4px 16px rgba(0,0,0,0.55);
+}
+
+/* Solid-fill badges need dark text against the brighter dark-mode accents. */
+:root[data-sctk-theme="dark"] .tk-badge-link-fs,
+:root[data-sctk-theme="dark"] .tk-badge-link-w { color: #16181b; }
+:root[data-sctk-theme="dark"] .sctk-btn:hover:not(:disabled),
+:root[data-sctk-theme="dark"] #tk-center-context .tk-scroll-btn:hover { color: #ffffff; }
+
+#sctk-toolbar { position: fixed; top: 0; left: 0; width: 100%; z-index: 99999; background: var(--tk-bg-base); color: var(--tk-text); display: flex; align-items: center; min-height: 34px; padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 11px; border-bottom: 1px solid var(--tk-border); box-shadow: 0 2px 8px rgba(0,0,0,0.06); box-sizing: border-box; flex-wrap: nowrap; }
 
 /* Wordmark */
 #sctk-toolbar .tk-wordmark { display: flex; flex-direction: column; justify-content: center; padding: 2px 6px; margin-right: 8px; flex-shrink: 0; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-top: 2px solid var(--tk-accent); border-radius: 0 0 3px 3px; line-height: 1.1; }
@@ -84,7 +113,9 @@ export const TOOLBAR_CSS = `
 /* Dropdown Styling for Pins */
 .tk-dropdown { position: relative; display: inline-block; }
 .tk-dropdown-content { display: none; position: absolute; left: 0; top: 100%; margin-top: 2px; background-color: var(--tk-bg-elevated); min-width: 320px; box-shadow: var(--tk-shadow-elevated); z-index: 100000; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); max-height: 450px; overflow-y: auto; text-align: left; }
-.tk-dropdown:hover .tk-dropdown-content, .tk-dropdown:focus-within .tk-dropdown-content, .tk-dropdown.tk-show .tk-dropdown-content { display: block; }
+/* Click-only. Hover-open cannot be dismissed on a touch device and fires by
+   accident on the way to something else on desktop. */
+.tk-dropdown.tk-show .tk-dropdown-content { display: block; }
 
 .tk-dropdown-content .tk-pin-item { color: var(--tk-text); padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; border-bottom: 1px solid var(--tk-border); }
 .tk-dropdown-content .tk-pin-item:last-child { border-bottom: none; }
@@ -102,6 +133,13 @@ export const TOOLBAR_CSS = `
 .tk-dropbtn { display: inline-flex; align-items: center; gap: 3px; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); color: var(--tk-text); border-radius: var(--tk-radius-sm); padding: 2px 6px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; line-height: 1.2; }
 .tk-dropbtn:hover { border-color: var(--tk-accent); color: var(--tk-accent); background: var(--tk-bg-hover); }
 .tk-dropbtn:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
+
+/* Overflow menu — the toolbar no longer wraps, so anything that does not fit
+   moves in here rather than pushing page content down. */
+#tk-overflow { flex-shrink: 0; }
+#tk-overflow[hidden] { display: none; }
+#tk-overflow .tk-dropdown-content { right: 0; left: auto; min-width: 220px; padding: 4px; }
+#tk-overflow .tk-dropdown-content .sctk-btn { width: 100%; justify-content: flex-start; margin: 2px 0; }
 
 /* Compact Badge Styles */
 .sctk-badge { display: inline-flex; align-items: center; gap: 3px; font-family: var(--tk-font-mono); padding: 2px 5px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; vertical-align: middle; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
@@ -143,6 +181,19 @@ export const TOOLBAR_CSS = `
     #tk-checklist-filter { width: 160px; }
 }
 
+/* Command palette */
+#tk-palette-overlay { position: fixed; inset: 0; z-index: 200001; background: rgba(0,0,0,0.45); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; font-family: var(--tk-font-ui); }
+#tk-palette-panel { background: var(--tk-bg-elevated); color: var(--tk-text); width: min(560px, 92vw); border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); box-shadow: var(--tk-shadow-elevated); overflow: hidden; }
+#tk-palette-input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: none; border-bottom: 1px solid var(--tk-border); background: var(--tk-bg-elevated); color: var(--tk-text); font-family: var(--tk-font-ui); font-size: 13px; }
+#tk-palette-input:focus { outline: none; }
+#tk-palette-results { max-height: 46vh; overflow-y: auto; }
+.tk-palette-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 12px; cursor: pointer; font-size: 11.5px; border-left: 2px solid transparent; }
+.tk-palette-item:hover { background: var(--tk-bg-hover); }
+.tk-palette-item.active { background: var(--tk-bg-hover); border-left-color: var(--tk-accent); }
+.tk-palette-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-palette-hint { flex-shrink: 0; font-family: var(--tk-font-mono); font-size: 9.5px; color: var(--tk-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.tk-palette-empty { padding: 12px; color: var(--tk-text-muted); font-size: 11.5px; }
+
 /* Toast System */
 .tk-toast-container { position: fixed; z-index: 100000; display: flex; flex-direction: column; gap: 6px; pointer-events: none; font-family: var(--tk-font-ui); }
 .tk-toast-bottom-right { bottom: 16px; right: 16px; }
@@ -155,10 +206,19 @@ export const TOOLBAR_CSS = `
     .tk-toast-message { transform: translateY(8px); transition: opacity 0.25s ease, transform 0.25s ease; }
     .tk-toast-message.tk-toast-show { transform: translateY(0); }
 }
+.tk-toast-hint { font-family: var(--tk-font-mono); font-size: 9px; color: var(--tk-text-muted); border: 1px solid var(--tk-border-strong); border-radius: 3px; padding: 0 3px; }
+.tk-toast-detail { color: var(--tk-text-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.tk-toast-cancel { margin-top: 6px; background: transparent; border: 1px solid var(--tk-border-strong); color: var(--tk-text); border-radius: var(--tk-radius-sm); padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; cursor: pointer; }
+.tk-toast-cancel:hover:not(:disabled) { background: var(--tk-red); border-color: var(--tk-red); color: #fff; }
+.tk-toast-cancel:disabled { opacity: 0.6; cursor: default; }
+.tk-toast-cancel:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
 .tk-toast-message ul, .tk-toast-message ol { text-align: left; margin: 3px 0 0 0; padding-left: 16px; }
 .tk-toast-message li { text-align: left; margin-bottom: 2px; }
 
-body { padding-top: 38px !important; }
+/* Height is measured and written to this variable by a ResizeObserver. The
+   old fixed 38px was wrong the moment the toolbar wrapped to a second row, and
+   the toolbar covered the top of the page. */
+body { padding-top: var(--tk-toolbar-height, 38px) !important; }
 `;
 
 /** Settings modal styling. */
@@ -193,6 +253,9 @@ export const SETTINGS_CSS = `
 .tk-settings-field select:focus-visible,
 #tk-settings-panel input[type="checkbox"]:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
 #tk-settings-panel input[type="checkbox"] { accent-color: var(--tk-accent); }
+.tk-diag-list { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 12px 0; font-size: 11px; }
+.tk-diag-list dt { font-family: var(--tk-font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tk-text-muted); }
+.tk-diag-list dd { margin: 0; word-break: break-word; }
 #tk-settings-help { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--tk-border); font-size: 10.5px; color: var(--tk-text-muted); line-height: 1.5; }
 #tk-settings-help a { color: var(--tk-blue); }
 

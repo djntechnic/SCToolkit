@@ -64,6 +64,9 @@ export const BADGES = {
   }
 };
 
+/** The five navigation shortcuts, without the actions. */
+export const SHORTCUT_KEYS = ['INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
+
 /** Toolbar order: navigation shortcuts, then the export action. */
 export const TOOLBAR_BADGES = ['INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST', 'CSV'];
 

@@ -10,6 +10,10 @@ import * as cache from '../net/cache.js';
 import { createBtn, debounce, injectStyle } from './dom.js';
 import { icon } from './icons.js';
 import { SETTINGS_CSS } from './styles.js';
+import { THEMES, applyTheme } from './theme.js';
+import { Routes } from '../core/routes.js';
+import { resolveModules } from '../core/registry.js';
+import { BLOCK_TS_KEY, getValue } from '../core/storage.js';
 import { showToast } from './toast.js';
 
 export const SettingsUI = {
@@ -52,7 +56,7 @@ export const SettingsUI = {
       Log('Settings saved to GM storage.', 'info');
       showToast({
         message: 'Settings saved — reload the page to apply changes.',
-        accent: 'var(--tk-green)'
+        variant: 'success'
       });
     }, Config.global.settingsSaveDebounceMs);
   },
@@ -76,16 +80,63 @@ export const SettingsUI = {
 
     const panel = document.createElement('div');
     panel.id = 'tk-settings-panel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-label', 'SCToolkit Settings');
     panel.appendChild(SettingsUI._buildHeader());
     panel.appendChild(SettingsUI._buildTabbedBody());
 
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
+
+    // Remember where focus came from, so closing returns it rather than
+    // dropping the user at the top of the page.
+    SettingsUI._returnFocusTo = document.activeElement;
+    SettingsUI._trapFocus(panel);
+    panel.querySelector('button, input, select')?.focus();
+  },
+
+  /**
+   * Keep Tab inside the dialog and close on Escape.
+   *
+   * Without this the keyboard walks straight out of a modal that is still
+   * covering the page — the user is then tabbing through content they cannot
+   * see or click.
+   *
+   * @param {HTMLElement} panel
+   */
+  _trapFocus: (panel) => {
+    panel.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        SettingsUI.close();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusable = Array.from(
+        panel.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')
+      ).filter((el) => !el.disabled && el.offsetParent !== null);
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
   },
 
   close: () => {
     const overlay = document.getElementById(SettingsUI.overlayId);
     if (overlay) overlay.remove();
+    SettingsUI._returnFocusTo?.focus?.();
+    SettingsUI._returnFocusTo = null;
   },
 
   _buildHeader: () => {
@@ -125,29 +176,33 @@ export const SettingsUI = {
     routesTab.className = 'tk-settings-tab';
     routesTab.textContent = 'Modules & Routes';
 
-    tabBar.appendChild(globalTab);
-    tabBar.appendChild(routesTab);
+    const diagTab = document.createElement('button');
+    diagTab.type = 'button';
+    diagTab.className = 'tk-settings-tab';
+    diagTab.textContent = 'Diagnostics';
+
+    tabBar.append(globalTab, routesTab, diagTab);
 
     const content = document.createElement('div');
     content.id = 'tk-settings-tab-content';
 
-    const globalPane = SettingsUI._buildGlobalPane();
-    const modulesPane = SettingsUI._buildModulesPane();
-    modulesPane.style.display = 'none';
+    const panes = {
+      global: SettingsUI._buildGlobalPane(),
+      routes: SettingsUI._buildModulesPane(),
+      diagnostics: SettingsUI._buildDiagnosticsPane()
+    };
+    const tabs = { global: globalTab, routes: routesTab, diagnostics: diagTab };
 
-    content.appendChild(globalPane);
-    content.appendChild(modulesPane);
+    Object.values(panes).forEach((pane) => content.appendChild(pane));
 
-    const activate = (tab) => {
-      globalTab.classList.toggle('active', tab === 'global');
-      routesTab.classList.toggle('active', tab === 'routes');
-      globalPane.style.display = tab === 'global' ? '' : 'none';
-      modulesPane.style.display = tab === 'routes' ? '' : 'none';
+    const activate = (name) => {
+      Object.entries(tabs).forEach(([key, tab]) => tab.classList.toggle('active', key === name));
+      Object.entries(panes).forEach(([key, pane]) => { pane.style.display = key === name ? '' : 'none'; });
       content.scrollTop = 0;
     };
 
-    globalTab.addEventListener('click', () => activate('global'));
-    routesTab.addEventListener('click', () => activate('routes'));
+    Object.entries(tabs).forEach(([name, tab]) => tab.addEventListener('click', () => activate(name)));
+    activate('global');
 
     body.appendChild(tabBar);
     body.appendChild(content);
@@ -344,6 +399,30 @@ export const SettingsUI = {
 
     GLOBAL_FIELDS.forEach((field) => pane.appendChild(SettingsUI._buildRangeField(field)));
 
+    const themeField = document.createElement('div');
+    themeField.className = 'tk-settings-field';
+    const themeLabel = document.createElement('label');
+    themeLabel.textContent = 'Theme';
+    const themeSelect = document.createElement('select');
+    themeSelect.title = 'auto follows your operating system. The site itself has no theme to follow.';
+    THEMES.forEach((value) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = value;
+      if (Config.global.theme === value) opt.selected = true;
+      themeSelect.appendChild(opt);
+    });
+    themeSelect.addEventListener('change', () => {
+      Config.global.theme = themeSelect.value;
+      // Applies immediately: a theme you have to reload to see is a theme you
+      // cannot evaluate while choosing it.
+      applyTheme();
+      Log(`Config change: global.theme = ${themeSelect.value}`, 'info');
+      SettingsUI._persist();
+    });
+    themeField.append(themeLabel, themeSelect);
+    pane.appendChild(themeField);
+
     const logField = document.createElement('div');
     logField.className = 'tk-settings-field';
     const logLabel = document.createElement('label');
@@ -367,8 +446,6 @@ export const SettingsUI = {
     logField.appendChild(logSelect);
     pane.appendChild(logField);
 
-    pane.appendChild(SettingsUI._buildCachePanel());
-
     const help = document.createElement('div');
     help.id = 'tk-settings-help';
     help.innerHTML =
@@ -379,6 +456,53 @@ export const SettingsUI = {
       '<a href="https://github.com/djntechnic/SCToolkit" target="_blank" rel="noopener noreferrer">github.com/djntechnic/SCToolkit</a>';
     pane.appendChild(help);
 
+    return pane;
+  },
+
+  /**
+   * What the script currently thinks about this page.
+   *
+   * Contract-check results, active-module resolution, and the block timestamp
+   * previously only ever reached the console — which meant that when a user
+   * reported "the filter didn't appear", nobody could tell whether the module
+   * had run at all.
+   */
+  _buildDiagnosticsPane: () => {
+    const pane = document.createElement('div');
+    pane.id = 'tk-settings-diagnostics';
+
+    const title = document.createElement('div');
+    title.className = 'tk-settings-section-title';
+    title.textContent = 'Diagnostics';
+    pane.appendChild(title);
+
+    const active = resolveModules().map((m) => m.name);
+    const lastBlock = getValue(BLOCK_TS_KEY, 0);
+    const routes = Object.keys(Routes).filter((key) => {
+      try { return Routes[key](); } catch { return false; }
+    });
+
+    const rows = [
+      ['Version', SettingsUI._version()],
+      ['URL', window.location.pathname + window.location.search],
+      ['Matched routes', routes.length ? routes.join(', ') : 'none'],
+      ['Active modules', active.length ? `${active.length}: ${active.join(', ')}` : 'none on this page'],
+      ['Last block detected', lastBlock ? new Date(lastBlock).toLocaleString() : 'never'],
+      ['Theme', `${Config.global.theme} (resolved: ${document.documentElement.getAttribute('data-sctk-theme')})`]
+    ];
+
+    const table = document.createElement('dl');
+    table.className = 'tk-diag-list';
+    rows.forEach(([label, value]) => {
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      dd.textContent = value;
+      table.append(dt, dd);
+    });
+    pane.appendChild(table);
+
+    pane.appendChild(SettingsUI._buildCachePanel());
     return pane;
   },
 
@@ -410,7 +534,7 @@ export const SettingsUI = {
     const purge = createBtn('tk-cache-purge', 'Clear cache', () => {
       cache.clear();
       refresh();
-      showToast({ message: 'Export cache cleared.', accent: 'var(--tk-green)' });
+      showToast({ message: 'Export cache cleared.', variant: 'success' });
     });
 
     field.appendChild(label);

@@ -178,6 +178,7 @@
       checklistFilterDebounceMs: 150,
       paginationLoaderDelayMs: 1e3,
       settingsSaveDebounceMs: 400,
+      theme: "auto",
       logLevel: "info"
     }
   };
@@ -669,33 +670,84 @@
   }
 
   // src/ui/toast.js
-  function showToast({
-    message = "",
-    location = "bottom-right",
-    duration = Config.global.toastDurationMs,
-    accent = "var(--tk-teal)"
-  } = {}) {
-    const containerId = `tk-toast-container-${location}`;
-    let container = document.getElementById(containerId);
+  var TOAST_VARIANTS = {
+    info: "var(--tk-teal)",
+    success: "var(--tk-green)",
+    warn: "var(--tk-accent)",
+    error: "var(--tk-red)",
+    progress: "var(--tk-blue)",
+    muted: "var(--tk-text-muted)"
+  };
+  var STACK_LIMIT = 4;
+  function containerFor(location) {
+    const id = `tk-toast-container-${location}`;
+    let container = document.getElementById(id);
     if (!container) {
       container = document.createElement("div");
-      container.id = containerId;
+      container.id = id;
       container.className = `tk-toast-container tk-toast-${location}`;
+      container.setAttribute("aria-live", "polite");
+      container.setAttribute("role", "status");
       document.body.appendChild(container);
     }
+    return container;
+  }
+  function showToast({
+    message = "",
+    variant = "info",
+    location = "bottom-right",
+    duration = Config.global.toastDurationMs,
+    accent
+  } = {}) {
+    const container = containerFor(location);
+    while (container.children.length >= STACK_LIMIT) container.firstChild.remove();
     const toast = document.createElement("div");
     toast.className = "tk-toast-message";
-    toast.style.borderLeftColor = accent;
+    toast.style.borderLeftColor = accent ?? TOAST_VARIANTS[variant] ?? TOAST_VARIANTS.info;
     toast.innerHTML = message;
     container.appendChild(toast);
     setTimeout(() => toast.classList.add("tk-toast-show"), 10);
+    if (duration !== Infinity) scheduleDismiss(toast, container, duration);
+    return toast;
+  }
+  function scheduleDismiss(toast, container, delay) {
     setTimeout(() => {
       toast.classList.remove("tk-toast-show");
       setTimeout(() => {
         toast.remove();
         if (container.childNodes.length === 0) container.remove();
       }, 300);
-    }, duration);
+    }, delay);
+  }
+  function showProgressToast({ title = "Working", onCancel = null } = {}) {
+    const toast = showToast({ variant: "progress", duration: Infinity, message: "" });
+    const heading = document.createElement("b");
+    heading.textContent = title;
+    const detail = document.createElement("div");
+    detail.className = "tk-toast-detail";
+    toast.append(heading, detail);
+    if (onCancel) {
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "tk-toast-cancel";
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", () => {
+        cancel.disabled = true;
+        onCancel();
+      });
+      toast.appendChild(cancel);
+    }
+    return {
+      update: (message) => {
+        detail.textContent = message;
+      },
+      finish: (message, variant = "success") => {
+        detail.textContent = message;
+        toast.querySelector(".tk-toast-cancel")?.remove();
+        toast.style.borderLeftColor = TOAST_VARIANTS[variant] ?? TOAST_VARIANTS.info;
+        scheduleDismiss(toast, toast.parentElement, Config.global.toastDurationMs);
+      }
+    };
   }
 
   // src/net/cache.js
@@ -991,7 +1043,7 @@
         Log(`Export queued behind ${position - 1} pending job(s): ${label}`, "info");
         showToast({
           message: `Queued: <b>${escapeHtml(label)}</b> (position ${position})`,
-          accent: "var(--tk-text-muted)"
+          variant: "muted"
         });
         return;
       }
@@ -1056,7 +1108,7 @@
     CSV.download(CSV.toCSV(toChecklistTable(identity, rows)), filename);
     return filename;
   }
-  async function fetchAllPages(setId, signal) {
+  async function fetchAllPages(setId, signal, progress) {
     let pageIndex = 1;
     let totalPages = 1;
     let identity = { year: "", baseSet: "", setName: "" };
@@ -1064,9 +1116,9 @@
     do {
       if (signal.aborted) throw new AbortedError("Export cancelled.", true);
       if (pageIndex > 1) await jitteredDelay();
-      setStatus(
-        `Fetching Page ${pageIndex}${totalPages > 1 ? "/" + totalPages : ""}...${Pacing.describe()}`
-      );
+      const label = `Page ${pageIndex}${totalPages > 1 ? " of " + totalPages : ""}${Pacing.describe()}`;
+      setStatus(`Fetching ${label}...`);
+      progress?.update(label);
       const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
       Log(`HTTP GET Request -> ${fetchUrl}`, "info", "server");
       const response = await fetchPageWithRetry(fetchUrl, pageIndex, { onStatus: setStatus, signal });
@@ -1100,7 +1152,7 @@
       setStatus("Export blocked (cooldown)");
       showToast({
         message: `Export paused — an anti-scraping block was detected recently. Try again in ~${remainingMin} min, or adjust the cooldown in Settings.`,
-        accent: "var(--tk-red)"
+        variant: "error"
       });
       return;
     }
@@ -1112,7 +1164,7 @@
       setStatus("Export Complete (cached)");
       showToast({
         message: `Exported <b>${cached.rows.length}</b> cards from cache — no requests made.`,
-        accent: "var(--tk-green)"
+        variant: "success"
       });
       return;
     }
@@ -1121,8 +1173,12 @@
     CurrentRun.onStart?.();
     Log(`Starting checklist fetch for set ID ${setId} (${setName})`, "info");
     setStatus(`Fetching ${setName}...`);
+    const progress = showProgressToast({
+      title: `Exporting ${setName}`,
+      onCancel: () => cancelCurrentExport()
+    });
     try {
-      const result = await fetchAllPages(setId, controller.signal);
+      const result = await fetchAllPages(setId, controller.signal, progress);
       if (result.rows.length === 0) throw new Error("No valid checklist rows identified within tables.");
       let label = result.identity.baseSet;
       if (result.identity.setName) label += ` - ${result.identity.setName}`;
@@ -1133,26 +1189,20 @@
       write(setId, result, ttlHours);
       downloadResult(result, setName);
       setStatus("Export Complete");
-      showToast({ message: `Exported <b>${result.rows.length}</b> cards for ${escapeHtml(label)}` });
+      progress.finish(`${result.rows.length} cards exported.`, "success");
     } catch (error) {
       if (error instanceof BlockedError) {
         recordBlock(error.message);
+        progress.finish("Stopped — the site returned a challenge.", "error");
         setStatus("Export blocked");
-        showToast({
-          message: `Export stopped — the site returned a challenge or refused the request. ${escapeHtml(error.message)}`,
-          accent: "var(--tk-red)"
-        });
       } else if (error instanceof AbortedError) {
         Log(`Export stopped: ${error.message}`, error.byUser ? "info" : "warn");
+        progress.finish(error.byUser ? "Cancelled." : "Timed out.", error.byUser ? "muted" : "error");
         setStatus(error.byUser ? "Export cancelled" : "Export timed out");
-        showToast({
-          message: escapeHtml(error.message),
-          accent: error.byUser ? "var(--tk-text-muted)" : "var(--tk-red)"
-        });
       } else {
         Log(`CSV Export Failed: ${error.message}`, "error");
+        progress.finish(`Failed: ${error.message}`, "error");
         setStatus("Export Failed");
-        showToast({ message: `Export Failed: ${escapeHtml(error.message)}`, accent: "var(--tk-red)" });
       }
     } finally {
       CurrentRun.controller = null;
@@ -1294,6 +1344,7 @@
       title: "Remove Pin"
     }
   };
+  var SHORTCUT_KEYS = ["INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
   var TOOLBAR_BADGES = ["INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST", "CSV"];
   var SET_LINK_BADGES = ["PIN", "CSV", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
   function createBadge(badgeKey, sid = null, onClickOverride = null) {
@@ -1377,7 +1428,11 @@
 
   // src/ui/styles.js
   var TOOLBAR_CSS = `
-/* ---- Design tokens (Light Theme) ---- */
+/* ---- Design tokens ----
+   Kept on :root rather than a scoping class because the toolbar, toasts,
+   settings modal, and filter bar mount in four different places in the page.
+   The --tk- prefix is specific enough that collision with the site's own
+   variables is not a real risk. Dark values override by attribute below. */
 :root {
     --tk-bg-base: #f8f9fa;
     --tk-bg-elevated: #ffffff;
@@ -1407,7 +1462,32 @@
    to read or restore a row's own display value. */
 .tk-hidden { display: none !important; }
 
-#sctk-toolbar { position: fixed; top: 0; left: 0; width: 100%; z-index: 99999; background: var(--tk-bg-base); color: var(--tk-text); display: flex; align-items: center; min-height: 34px; padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 11px; border-bottom: 1px solid var(--tk-border); box-shadow: 0 2px 8px rgba(0,0,0,0.06); box-sizing: border-box; flex-wrap: wrap; }
+/* Dark palette. Only the values change; every rule below is theme-agnostic. */
+:root[data-sctk-theme="dark"] {
+    --tk-bg-base: #16181b;
+    --tk-bg-elevated: #1f2225;
+    --tk-bg-hover: #2a2e33;
+    --tk-border: #33383d;
+    --tk-border-strong: #464c53;
+    --tk-text: #e6e8ea;
+    --tk-text-muted: #9aa2ab;
+    --tk-accent: #f0a437;
+    --tk-teal: #2dd4bf;
+    --tk-blue: #60a5fa;
+    --tk-violet: #a78bfa;
+    --tk-magenta: #f472b6;
+    --tk-green: #4ade80;
+    --tk-red: #f87171;
+    --tk-shadow-elevated: 0 4px 16px rgba(0,0,0,0.55);
+}
+
+/* Solid-fill badges need dark text against the brighter dark-mode accents. */
+:root[data-sctk-theme="dark"] .tk-badge-link-fs,
+:root[data-sctk-theme="dark"] .tk-badge-link-w { color: #16181b; }
+:root[data-sctk-theme="dark"] .sctk-btn:hover:not(:disabled),
+:root[data-sctk-theme="dark"] #tk-center-context .tk-scroll-btn:hover { color: #ffffff; }
+
+#sctk-toolbar { position: fixed; top: 0; left: 0; width: 100%; z-index: 99999; background: var(--tk-bg-base); color: var(--tk-text); display: flex; align-items: center; min-height: 34px; padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 11px; border-bottom: 1px solid var(--tk-border); box-shadow: 0 2px 8px rgba(0,0,0,0.06); box-sizing: border-box; flex-wrap: nowrap; }
 
 /* Wordmark */
 #sctk-toolbar .tk-wordmark { display: flex; flex-direction: column; justify-content: center; padding: 2px 6px; margin-right: 8px; flex-shrink: 0; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-top: 2px solid var(--tk-accent); border-radius: 0 0 3px 3px; line-height: 1.1; }
@@ -1454,7 +1534,9 @@
 /* Dropdown Styling for Pins */
 .tk-dropdown { position: relative; display: inline-block; }
 .tk-dropdown-content { display: none; position: absolute; left: 0; top: 100%; margin-top: 2px; background-color: var(--tk-bg-elevated); min-width: 320px; box-shadow: var(--tk-shadow-elevated); z-index: 100000; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); max-height: 450px; overflow-y: auto; text-align: left; }
-.tk-dropdown:hover .tk-dropdown-content, .tk-dropdown:focus-within .tk-dropdown-content, .tk-dropdown.tk-show .tk-dropdown-content { display: block; }
+/* Click-only. Hover-open cannot be dismissed on a touch device and fires by
+   accident on the way to something else on desktop. */
+.tk-dropdown.tk-show .tk-dropdown-content { display: block; }
 
 .tk-dropdown-content .tk-pin-item { color: var(--tk-text); padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; border-bottom: 1px solid var(--tk-border); }
 .tk-dropdown-content .tk-pin-item:last-child { border-bottom: none; }
@@ -1472,6 +1554,13 @@
 .tk-dropbtn { display: inline-flex; align-items: center; gap: 3px; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); color: var(--tk-text); border-radius: var(--tk-radius-sm); padding: 2px 6px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; line-height: 1.2; }
 .tk-dropbtn:hover { border-color: var(--tk-accent); color: var(--tk-accent); background: var(--tk-bg-hover); }
 .tk-dropbtn:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
+
+/* Overflow menu — the toolbar no longer wraps, so anything that does not fit
+   moves in here rather than pushing page content down. */
+#tk-overflow { flex-shrink: 0; }
+#tk-overflow[hidden] { display: none; }
+#tk-overflow .tk-dropdown-content { right: 0; left: auto; min-width: 220px; padding: 4px; }
+#tk-overflow .tk-dropdown-content .sctk-btn { width: 100%; justify-content: flex-start; margin: 2px 0; }
 
 /* Compact Badge Styles */
 .sctk-badge { display: inline-flex; align-items: center; gap: 3px; font-family: var(--tk-font-mono); padding: 2px 5px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; vertical-align: middle; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
@@ -1513,6 +1602,19 @@
     #tk-checklist-filter { width: 160px; }
 }
 
+/* Command palette */
+#tk-palette-overlay { position: fixed; inset: 0; z-index: 200001; background: rgba(0,0,0,0.45); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; font-family: var(--tk-font-ui); }
+#tk-palette-panel { background: var(--tk-bg-elevated); color: var(--tk-text); width: min(560px, 92vw); border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); box-shadow: var(--tk-shadow-elevated); overflow: hidden; }
+#tk-palette-input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: none; border-bottom: 1px solid var(--tk-border); background: var(--tk-bg-elevated); color: var(--tk-text); font-family: var(--tk-font-ui); font-size: 13px; }
+#tk-palette-input:focus { outline: none; }
+#tk-palette-results { max-height: 46vh; overflow-y: auto; }
+.tk-palette-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 12px; cursor: pointer; font-size: 11.5px; border-left: 2px solid transparent; }
+.tk-palette-item:hover { background: var(--tk-bg-hover); }
+.tk-palette-item.active { background: var(--tk-bg-hover); border-left-color: var(--tk-accent); }
+.tk-palette-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-palette-hint { flex-shrink: 0; font-family: var(--tk-font-mono); font-size: 9.5px; color: var(--tk-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.tk-palette-empty { padding: 12px; color: var(--tk-text-muted); font-size: 11.5px; }
+
 /* Toast System */
 .tk-toast-container { position: fixed; z-index: 100000; display: flex; flex-direction: column; gap: 6px; pointer-events: none; font-family: var(--tk-font-ui); }
 .tk-toast-bottom-right { bottom: 16px; right: 16px; }
@@ -1525,10 +1627,19 @@
     .tk-toast-message { transform: translateY(8px); transition: opacity 0.25s ease, transform 0.25s ease; }
     .tk-toast-message.tk-toast-show { transform: translateY(0); }
 }
+.tk-toast-hint { font-family: var(--tk-font-mono); font-size: 9px; color: var(--tk-text-muted); border: 1px solid var(--tk-border-strong); border-radius: 3px; padding: 0 3px; }
+.tk-toast-detail { color: var(--tk-text-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.tk-toast-cancel { margin-top: 6px; background: transparent; border: 1px solid var(--tk-border-strong); color: var(--tk-text); border-radius: var(--tk-radius-sm); padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; cursor: pointer; }
+.tk-toast-cancel:hover:not(:disabled) { background: var(--tk-red); border-color: var(--tk-red); color: #fff; }
+.tk-toast-cancel:disabled { opacity: 0.6; cursor: default; }
+.tk-toast-cancel:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
 .tk-toast-message ul, .tk-toast-message ol { text-align: left; margin: 3px 0 0 0; padding-left: 16px; }
 .tk-toast-message li { text-align: left; margin-bottom: 2px; }
 
-body { padding-top: 38px !important; }
+/* Height is measured and written to this variable by a ResizeObserver. The
+   old fixed 38px was wrong the moment the toolbar wrapped to a second row, and
+   the toolbar covered the top of the page. */
+body { padding-top: var(--tk-toolbar-height, 38px) !important; }
 `;
   var SETTINGS_CSS = `
 #tk-settings-overlay { position: fixed; inset: 0; z-index: 200000; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-family: var(--tk-font-ui); }
@@ -1561,6 +1672,9 @@ body { padding-top: 38px !important; }
 .tk-settings-field select:focus-visible,
 #tk-settings-panel input[type="checkbox"]:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
 #tk-settings-panel input[type="checkbox"] { accent-color: var(--tk-accent); }
+.tk-diag-list { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 12px 0; font-size: 11px; }
+.tk-diag-list dt { font-family: var(--tk-font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tk-text-muted); }
+.tk-diag-list dd { margin: 0; word-break: break-word; }
 #tk-settings-help { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--tk-border); font-size: 10.5px; color: var(--tk-text-muted); line-height: 1.5; }
 #tk-settings-help a { color: var(--tk-blue); }
 
@@ -1588,6 +1702,58 @@ body { padding-top: 38px !important; }
     .tk-route-row input[type="text"] { flex-basis: 100%; }
 }
 `;
+
+  // src/ui/dropdown.js
+  function closeAllDropdowns(except = null) {
+    document.querySelectorAll(".tk-dropdown.tk-show").forEach((el) => {
+      if (el === except) return;
+      el.classList.remove("tk-show");
+      el.querySelector("[aria-expanded]")?.setAttribute("aria-expanded", "false");
+    });
+  }
+  var itemsOf = (dropdown) => Array.from(dropdown.querySelectorAll('.tk-dropdown-content a, .tk-dropdown-content button, .tk-dropdown-content [role="button"]')).filter((el) => el.offsetParent !== null || el.hidden === false);
+  function initDropdown(dropdown, trigger) {
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.setAttribute("aria-haspopup", "true");
+    const setOpen = (open) => {
+      dropdown.classList.toggle("tk-show", open);
+      trigger.setAttribute("aria-expanded", String(open));
+    };
+    trigger.addEventListener("click", (e) => {
+      e.preventDefault();
+      const willOpen = !dropdown.classList.contains("tk-show");
+      closeAllDropdowns(dropdown);
+      setOpen(willOpen);
+      if (willOpen) itemsOf(dropdown)[0]?.focus();
+    });
+    dropdown.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        trigger.focus();
+        return;
+      }
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return;
+      const items = itemsOf(dropdown);
+      if (items.length === 0) return;
+      e.preventDefault();
+      const current = items.indexOf(document.activeElement);
+      const next = {
+        ArrowDown: current < 0 ? 0 : (current + 1) % items.length,
+        ArrowUp: current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length,
+        Home: 0,
+        End: items.length - 1
+      }[e.key];
+      items[next].focus();
+    });
+  }
+  function initDropdownDismissal() {
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".tk-dropdown")) closeAllDropdowns();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeAllDropdowns();
+    });
+  }
 
   // src/ui/toolbar.js
   function appendShortcutBadges(container, sid, label = "Set") {
@@ -1628,11 +1794,8 @@ body { padding-top: 38px !important; }
       <div id="tk-status">Initializing...</div>
     `;
       document.body.prepend(bar);
-      document.addEventListener("click", (e) => {
-        if (!e.target.closest(".tk-dropdown")) {
-          document.querySelectorAll(".tk-dropdown.tk-show").forEach((d) => d.classList.remove("tk-show"));
-        }
-      });
+      initDropdownDismissal();
+      Toolbar.observeHeight(bar);
       Toolbar.renderPins();
       Toolbar.renderCenterContext();
       Toolbar.installCancelControl();
@@ -1660,6 +1823,26 @@ body { padding-top: 38px !important; }
       CurrentRun.onEnd = () => {
         btn.hidden = true;
       };
+    },
+    /**
+     * Publish the toolbar's real height so the page can be offset by exactly it.
+     *
+     * The old rule was a fixed `body { padding-top: 38px }`. The toolbar was
+     * `flex-wrap: wrap`, so the moment it wrapped to a second row it covered the
+     * top of the page — the compensation and the thing it compensated for were
+     * free to disagree. The toolbar no longer wraps, and the offset is measured
+     * rather than assumed.
+     *
+     * @param {HTMLElement} bar
+     */
+    observeHeight: (bar) => {
+      const publish = () => {
+        const height = Math.ceil(bar.getBoundingClientRect().height);
+        if (height > 0) document.documentElement.style.setProperty("--tk-toolbar-height", `${height}px`);
+      };
+      publish();
+      if (typeof ResizeObserver === "function") new ResizeObserver(publish).observe(bar);
+      else window.addEventListener("resize", publish, { passive: true });
     },
     /**
      * @param {string} id
@@ -1691,13 +1874,8 @@ body { padding-top: 38px !important; }
         dropBtn.className = "tk-dropbtn";
         dropBtn.textContent = `${year} ▾`;
         dropBtn.title = `View pinned sets for ${year}`;
-        dropBtn.addEventListener("click", (e) => {
-          e.preventDefault();
-          const isShowing = dropDiv.classList.contains("tk-show");
-          document.querySelectorAll(".tk-dropdown.tk-show").forEach((d) => d.classList.remove("tk-show"));
-          if (!isShowing) dropDiv.classList.add("tk-show");
-        });
         dropDiv.appendChild(dropBtn);
+        initDropdown(dropDiv, dropBtn);
         const dropContent = document.createElement("div");
         dropContent.className = "tk-dropdown-content";
         grouped[year].forEach((pin) => {
@@ -1968,7 +2146,7 @@ body { padding-top: 38px !important; }
     const csvRows = collectRows();
     if (csvRows.length === 0) {
       setStatus("Nothing to export");
-      showToast({ message: "Nothing to export — no rows found on this page.", accent: "var(--tk-red)" });
+      showToast({ message: "Nothing to export — no rows found on this page.", variant: "error" });
       Log(`Export aborted: no rows found for ${type}.`, "warn");
       return;
     }
@@ -2067,6 +2245,30 @@ body { padding-top: 38px !important; }
     });
   }
 
+  // src/ui/theme.js
+  var THEME_ATTR = "data-sctk-theme";
+  var THEMES = ["auto", "light", "dark"];
+  function resolveTheme(preference, prefersDark) {
+    if (preference === "light" || preference === "dark") return preference;
+    return prefersDark ? "dark" : "light";
+  }
+  function osPrefersDark() {
+    return typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function applyTheme() {
+    const resolved = resolveTheme(Config.global.theme, osPrefersDark());
+    document.documentElement.setAttribute(THEME_ATTR, resolved);
+    return resolved;
+  }
+  function initTheme() {
+    const resolved = applyTheme();
+    Log(`Theme resolved to '${resolved}' from preference '${Config.global.theme}'.`, "debug");
+    if (typeof matchMedia !== "function") return;
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      if (Config.global.theme === "auto") applyTheme();
+    });
+  }
+
   // src/ui/settings.js
   var SettingsUI = {
     overlayId: "tk-settings-overlay",
@@ -2103,7 +2305,7 @@ body { padding-top: 38px !important; }
         Log("Settings saved to GM storage.", "info");
         showToast({
           message: "Settings saved — reload the page to apply changes.",
-          accent: "var(--tk-green)"
+          variant: "success"
         });
       }, Config.global.settingsSaveDebounceMs);
     },
@@ -2120,14 +2322,54 @@ body { padding-top: 38px !important; }
       });
       const panel = document.createElement("div");
       panel.id = "tk-settings-panel";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      panel.setAttribute("aria-label", "SCToolkit Settings");
       panel.appendChild(SettingsUI._buildHeader());
       panel.appendChild(SettingsUI._buildTabbedBody());
       overlay.appendChild(panel);
       document.body.appendChild(overlay);
+      SettingsUI._returnFocusTo = document.activeElement;
+      SettingsUI._trapFocus(panel);
+      panel.querySelector("button, input, select")?.focus();
+    },
+    /**
+     * Keep Tab inside the dialog and close on Escape.
+     *
+     * Without this the keyboard walks straight out of a modal that is still
+     * covering the page — the user is then tabbing through content they cannot
+     * see or click.
+     *
+     * @param {HTMLElement} panel
+     */
+    _trapFocus: (panel) => {
+      panel.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          SettingsUI.close();
+          return;
+        }
+        if (e.key !== "Tab") return;
+        const focusable = Array.from(
+          panel.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')
+        ).filter((el) => !el.disabled && el.offsetParent !== null);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      });
     },
     close: () => {
       const overlay = document.getElementById(SettingsUI.overlayId);
       if (overlay) overlay.remove();
+      SettingsUI._returnFocusTo?.focus?.();
+      SettingsUI._returnFocusTo = null;
     },
     _buildHeader: () => {
       const header = document.createElement("div");
@@ -2158,24 +2400,29 @@ body { padding-top: 38px !important; }
       routesTab.type = "button";
       routesTab.className = "tk-settings-tab";
       routesTab.textContent = "Modules & Routes";
-      tabBar.appendChild(globalTab);
-      tabBar.appendChild(routesTab);
+      const diagTab = document.createElement("button");
+      diagTab.type = "button";
+      diagTab.className = "tk-settings-tab";
+      diagTab.textContent = "Diagnostics";
+      tabBar.append(globalTab, routesTab, diagTab);
       const content = document.createElement("div");
       content.id = "tk-settings-tab-content";
-      const globalPane = SettingsUI._buildGlobalPane();
-      const modulesPane = SettingsUI._buildModulesPane();
-      modulesPane.style.display = "none";
-      content.appendChild(globalPane);
-      content.appendChild(modulesPane);
-      const activate = (tab) => {
-        globalTab.classList.toggle("active", tab === "global");
-        routesTab.classList.toggle("active", tab === "routes");
-        globalPane.style.display = tab === "global" ? "" : "none";
-        modulesPane.style.display = tab === "routes" ? "" : "none";
+      const panes = {
+        global: SettingsUI._buildGlobalPane(),
+        routes: SettingsUI._buildModulesPane(),
+        diagnostics: SettingsUI._buildDiagnosticsPane()
+      };
+      const tabs = { global: globalTab, routes: routesTab, diagnostics: diagTab };
+      Object.values(panes).forEach((pane) => content.appendChild(pane));
+      const activate = (name) => {
+        Object.entries(tabs).forEach(([key, tab]) => tab.classList.toggle("active", key === name));
+        Object.entries(panes).forEach(([key, pane]) => {
+          pane.style.display = key === name ? "" : "none";
+        });
         content.scrollTop = 0;
       };
-      globalTab.addEventListener("click", () => activate("global"));
-      routesTab.addEventListener("click", () => activate("routes"));
+      Object.entries(tabs).forEach(([name, tab]) => tab.addEventListener("click", () => activate(name)));
+      activate("global");
       body.appendChild(tabBar);
       body.appendChild(content);
       return body;
@@ -2333,6 +2580,27 @@ body { padding-top: 38px !important; }
       sectionTitle.textContent = "Global Settings";
       pane.appendChild(sectionTitle);
       GLOBAL_FIELDS.forEach((field) => pane.appendChild(SettingsUI._buildRangeField(field)));
+      const themeField = document.createElement("div");
+      themeField.className = "tk-settings-field";
+      const themeLabel = document.createElement("label");
+      themeLabel.textContent = "Theme";
+      const themeSelect = document.createElement("select");
+      themeSelect.title = "auto follows your operating system. The site itself has no theme to follow.";
+      THEMES.forEach((value) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = value;
+        if (Config.global.theme === value) opt.selected = true;
+        themeSelect.appendChild(opt);
+      });
+      themeSelect.addEventListener("change", () => {
+        Config.global.theme = themeSelect.value;
+        applyTheme();
+        Log(`Config change: global.theme = ${themeSelect.value}`, "info");
+        SettingsUI._persist();
+      });
+      themeField.append(themeLabel, themeSelect);
+      pane.appendChild(themeField);
       const logField = document.createElement("div");
       logField.className = "tk-settings-field";
       const logLabel = document.createElement("label");
@@ -2355,11 +2623,55 @@ body { padding-top: 38px !important; }
       logField.appendChild(logLabel);
       logField.appendChild(logSelect);
       pane.appendChild(logField);
-      pane.appendChild(SettingsUI._buildCachePanel());
       const help = document.createElement("div");
       help.id = "tk-settings-help";
       help.innerHTML = `Module, action, route-pattern, and threshold changes apply on next page load. The log level change above applies immediately to this page’s console output.<br><br>Version: ${SettingsUI._version()}<br>Documentation and issue tracker: <a href="https://github.com/djntechnic/SCToolkit" target="_blank" rel="noopener noreferrer">github.com/djntechnic/SCToolkit</a>`;
       pane.appendChild(help);
+      return pane;
+    },
+    /**
+     * What the script currently thinks about this page.
+     *
+     * Contract-check results, active-module resolution, and the block timestamp
+     * previously only ever reached the console — which meant that when a user
+     * reported "the filter didn't appear", nobody could tell whether the module
+     * had run at all.
+     */
+    _buildDiagnosticsPane: () => {
+      const pane = document.createElement("div");
+      pane.id = "tk-settings-diagnostics";
+      const title = document.createElement("div");
+      title.className = "tk-settings-section-title";
+      title.textContent = "Diagnostics";
+      pane.appendChild(title);
+      const active = resolveModules().map((m) => m.name);
+      const lastBlock = getValue(BLOCK_TS_KEY, 0);
+      const routes = Object.keys(Routes).filter((key) => {
+        try {
+          return Routes[key]();
+        } catch {
+          return false;
+        }
+      });
+      const rows = [
+        ["Version", SettingsUI._version()],
+        ["URL", window.location.pathname + window.location.search],
+        ["Matched routes", routes.length ? routes.join(", ") : "none"],
+        ["Active modules", active.length ? `${active.length}: ${active.join(", ")}` : "none on this page"],
+        ["Last block detected", lastBlock ? new Date(lastBlock).toLocaleString() : "never"],
+        ["Theme", `${Config.global.theme} (resolved: ${document.documentElement.getAttribute("data-sctk-theme")})`]
+      ];
+      const table = document.createElement("dl");
+      table.className = "tk-diag-list";
+      rows.forEach(([label, value]) => {
+        const dt = document.createElement("dt");
+        dt.textContent = label;
+        const dd = document.createElement("dd");
+        dd.textContent = value;
+        table.append(dt, dd);
+      });
+      pane.appendChild(table);
+      pane.appendChild(SettingsUI._buildCachePanel());
       return pane;
     },
     /**
@@ -2384,7 +2696,7 @@ body { padding-top: 38px !important; }
       const purge = createBtn("tk-cache-purge", "Clear cache", () => {
         clear();
         refresh();
-        showToast({ message: "Export cache cleared.", accent: "var(--tk-green)" });
+        showToast({ message: "Export cache cleared.", variant: "success" });
       });
       field.appendChild(label);
       field.appendChild(summary);
@@ -2561,12 +2873,173 @@ body { padding-top: 38px !important; }
     }
   ];
 
+  // src/ui/palette.js
+  var OVERLAY_ID = "tk-palette-overlay";
+  var MAX_RESULTS = 12;
+  function fuzzyScore(query, text) {
+    if (query === "") return 0;
+    const haystack = text.toLowerCase();
+    let score = 0;
+    let cursor = 0;
+    let previous = -2;
+    for (const ch of query) {
+      const found = haystack.indexOf(ch, cursor);
+      if (found === -1) return -1;
+      if (found === previous + 1) score += 3;
+      if (found === 0 || /[\s\-_/]/.test(haystack[found - 1])) score += 2;
+      score += 1;
+      previous = found;
+      cursor = found + 1;
+    }
+    return score - haystack.length / 200;
+  }
+  function rankCommands(commands, query) {
+    const q = query.trim().toLowerCase();
+    if (q === "") return commands.slice(0, MAX_RESULTS);
+    return commands.map((command) => ({ command, score: fuzzyScore(q, command.label) })).filter(({ score }) => score >= 0).sort((a, b) => b.score - a.score).slice(0, MAX_RESULTS).map(({ command }) => command);
+  }
+  function buildCommands({ href = window.location.href, pins = Pins.all() } = {}) {
+    const commands = [];
+    const currentSid = extractSid(href);
+    if (currentSid) {
+      SHORTCUT_KEYS.forEach((key) => {
+        const badge = BADGES[key];
+        commands.push({
+          label: `This set: ${badge.title}`,
+          hint: "current set",
+          run: () => {
+            window.location.href = badge.getUrl(currentSid);
+          }
+        });
+      });
+      commands.push({
+        label: "This set: Export checklist to CSV",
+        hint: "current set",
+        run: () => exportSetCSV(currentSid, document.title || "Set")
+      });
+    }
+    pins.forEach((pin) => {
+      commands.push({
+        label: `Pinned: ${pin.name}`,
+        hint: pin.year,
+        run: () => {
+          window.location.href = pin.url;
+        }
+      });
+      commands.push({
+        label: `Pinned: Export ${pin.name}`,
+        hint: "CSV",
+        run: () => exportSetCSV(pin.id, pin.name)
+      });
+    });
+    return commands;
+  }
+  var isOpen = () => !!document.getElementById(OVERLAY_ID);
+  function closePalette() {
+    document.getElementById(OVERLAY_ID)?.remove();
+  }
+  function openPalette(deps = {}) {
+    if (isOpen()) return;
+    const commands = [
+      ...buildCommands(deps),
+      { label: "Open Settings", hint: "configuration", run: () => deps.openSettings?.() }
+    ];
+    const overlay = document.createElement("div");
+    overlay.id = OVERLAY_ID;
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closePalette();
+    });
+    const panel = document.createElement("div");
+    panel.id = "tk-palette-panel";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.setAttribute("aria-label", "SCToolkit command palette");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.id = "tk-palette-input";
+    input.placeholder = "Search sets and actions...";
+    input.setAttribute("aria-label", "Search sets and actions");
+    input.autocomplete = "off";
+    const list = document.createElement("div");
+    list.id = "tk-palette-results";
+    list.setAttribute("role", "listbox");
+    let active = 0;
+    let shown = [];
+    const render = () => {
+      shown = rankCommands(commands, input.value);
+      list.innerHTML = "";
+      active = Math.min(active, Math.max(shown.length - 1, 0));
+      if (shown.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "tk-palette-empty";
+        empty.textContent = "No matches.";
+        list.appendChild(empty);
+        return;
+      }
+      shown.forEach((command, i) => {
+        const row = document.createElement("div");
+        row.className = `tk-palette-item${i === active ? " active" : ""}`;
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", String(i === active));
+        row.innerHTML = `<span class="tk-palette-label">${escapeHtml(command.label)}</span><span class="tk-palette-hint">${escapeHtml(command.hint)}</span>`;
+        row.addEventListener("click", () => {
+          closePalette();
+          command.run();
+        });
+        list.appendChild(row);
+      });
+    };
+    input.addEventListener("input", () => {
+      active = 0;
+      render();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        closePalette();
+        return;
+      }
+      if (e.key === "Enter") {
+        const command = shown[active];
+        if (command) {
+          closePalette();
+          command.run();
+        }
+        return;
+      }
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      if (shown.length === 0) return;
+      active = e.key === "ArrowDown" ? (active + 1) % shown.length : (active - 1 + shown.length) % shown.length;
+      render();
+      list.children[active]?.scrollIntoView({ block: "nearest" });
+    });
+    panel.append(input, list);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    render();
+    input.focus();
+  }
+  function initPalette(deps = {}) {
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "k" && e.key !== "K") return;
+      if (!e.ctrlKey && !e.metaKey) return;
+      const el = document.activeElement;
+      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (typing && el.id !== "tk-palette-input") return;
+      e.preventDefault();
+      if (isOpen()) closePalette();
+      else openPalette(deps);
+    });
+  }
+
   // src/main.js
   async function boot() {
     initConfig();
+    initTheme();
     Log("Starting core execution sequence");
     Toolbar.init();
     SettingsUI.init();
+    initPalette({ openSettings: () => SettingsUI.open() });
     const activeModules = resolveModules();
     const loadedModuleNames = [];
     const pendingAsyncTasks = [];
@@ -2590,9 +3063,9 @@ body { padding-top: 38px !important; }
 • ${loadedModuleNames.join("\n• ")}`
     );
     showToast({
-      message: `<b>SCToolkit Active</b><ul>${loadedModuleNames.map((m) => `<li>${escapeHtml(m)}</li>`).join("")}</ul>`,
+      message: `<b>SCToolkit Active</b> <span class="tk-toast-hint">Ctrl+K</span><ul>${loadedModuleNames.map((m) => `<li>${escapeHtml(m)}</li>`).join("")}</ul>`,
       location: "bottom-right",
-      accent: "var(--tk-accent)"
+      variant: "warn"
     });
     Log(`Core execution sequence complete. ${loadedModuleNames.length} modules loaded: ${loadedModuleNames.join(", ")}`);
   }

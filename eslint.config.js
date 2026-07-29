@@ -26,6 +26,7 @@ export default [
         requestIdleCallback: 'readonly',
         Event: 'readonly',
         MutationObserver: 'readonly',
+        matchMedia: 'readonly',
         ResizeObserver: 'readonly',
         AbortController: 'readonly',
         DOMParser: 'readonly',

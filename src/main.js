@@ -18,16 +18,21 @@ import { resolveModules } from './core/registry.js';
 import { EXPORT_BUTTON_IDS } from './modules/csvExportEngine.js';
 import { escapeHtml } from './ui/dom.js';
 import { SettingsUI } from './ui/settings.js';
+import { initTheme } from './ui/theme.js';
+import { initPalette } from './ui/palette.js';
 import { enableAction, setStatus } from './ui/status.js';
 import { showToast } from './ui/toast.js';
 import { Toolbar } from './ui/toolbar.js';
 
 async function boot() {
   initConfig();
+  // Before any chrome is built, so nothing renders in the wrong palette first.
+  initTheme();
   Log('Starting core execution sequence');
 
   Toolbar.init();
   SettingsUI.init();
+  initPalette({ openSettings: () => SettingsUI.open() });
 
   const activeModules = resolveModules();
   const loadedModuleNames = [];
@@ -59,9 +64,9 @@ async function boot() {
   );
 
   showToast({
-    message: `<b>SCToolkit Active</b><ul>${loadedModuleNames.map((m) => `<li>${escapeHtml(m)}</li>`).join('')}</ul>`,
+    message: `<b>SCToolkit Active</b> <span class="tk-toast-hint">Ctrl+K</span><ul>${loadedModuleNames.map((m) => `<li>${escapeHtml(m)}</li>`).join('')}</ul>`,
     location: 'bottom-right',
-    accent: 'var(--tk-accent)'
+    variant: 'warn'
   });
 
   Log(`Core execution sequence complete. ${loadedModuleNames.length} modules loaded: ${loadedModuleNames.join(', ')}`);
