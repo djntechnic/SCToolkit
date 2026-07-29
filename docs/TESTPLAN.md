@@ -6,31 +6,48 @@ release.
 
 ## Automated (`npm test`)
 
-`node --test` + jsdom, driven entirely by sanitized captures in
-`test/fixtures/`. No test may make a network request.
+`node --test` + jsdom, driven entirely by fixtures in `test/fixtures/`. No test
+may make a network request.
 
-| Suite | Status |
-|---|---|
-| Userscript metadata banner | ✅ Phase 0 |
-| Checklist parser vs. fixtures (single page, multi-page, figcaption/variation row, no-person-link row) | Phase 1 |
-| Golden-file: fixture → exact expected CSV bytes | Phase 1 |
-| Export filename builder, incl. missing-year fallback | Phase 1 |
-| CSV field escaping (comma, quote, newline, null) | Phase 1 |
-| URL rule matching (include-only, exclude-only, both, invalid regex) | Phase 1 |
-| Config migration (fresh, same-version merge, upgrade, unknown version, unknown module) | Phase 1 |
-| Block detection vs. captured challenge/denial pages | Phase 4 |
-| Backoff math, incl. `Retry-After` in seconds and HTTP-date form | Phase 4 |
-| Cross-tab throttle timing, faked clock | Phase 4 |
+**Build before test.** `test/bootstrap.test.js` loads the built bundle, so a
+stale `dist/` makes it assert against the wrong code. `npm run check` and CI
+both order the steps `lint → build → test → verify-dist`.
 
-### Capturing a fixture
+| Suite | File | Status |
+|---|---|---|
+| Userscript metadata banner | `meta.test.js` | ✅ Phase 0 |
+| Subject-cell token classification (tags, print run, generational suffix, captions) | `checklistParser.test.js` | ✅ Phase 1 |
+| Checklist parser vs. fixtures (single page, multi-page, figcaption row, no-person-link row) | `checklistParser.test.js` | ✅ Phase 1 |
+| Golden-file: fixture → exact expected CSV bytes | `checklistParser.test.js` | ✅ Phase 1 |
+| Export filename builder, incl. missing-year fallback | `filename.test.js` | ✅ Phase 1 |
+| CSV field escaping (comma, quote, newline, null) | `csv.test.js` | ✅ Phase 1 |
+| URL rule matching (include-only, exclude-only, both, invalid regex) | `config.test.js` | ✅ Phase 1 |
+| Config migration (fresh, same-version merge, v1 upgrade, unknown version, unknown module) | `config.test.js` | ✅ Phase 1 |
+| SID extraction and pinned-set year derivation | `storage.test.js` | ✅ Phase 1 |
+| Block detection vs. a challenge-page fixture | `net.test.js` | ✅ Phase 1 |
+| Backoff math, incl. `Retry-After` in seconds and HTTP-date form | `net.test.js` | ✅ Phase 1 |
+| Bundle boots in jsdom; toolbar, filter, and settings mount | `bootstrap.test.js` | ✅ Phase 1 |
+| Block detection vs. captured *real* challenge pages | — | Phase 4 |
+| Cross-tab throttle timing, faked clock | — | Phase 4 |
 
-Save the page source, then strip: session cookies, user handles, real
-usernames, any personal collection data, and absolute URLs containing IDs tied
-to an account. Fixtures are committed and public — treat them as such.
+### Fixture status
+
+The committed fixtures are **synthetic** — they reproduce the markup shapes the
+parser depends on without being copies of any real page. They prove the parser
+handles the shapes we believe exist, which is not the same as proving those are
+the shapes that do exist. Replacing them with sanitized real captures is
+outstanding work; see [`test/fixtures/README.md`](../test/fixtures/README.md)
+for the sanitization procedure.
+
+The golden-file test is the regression tripwire for the parser. If a change to
+`checklistParser.js` breaks it, the change is wrong until proven otherwise.
 
 ## Manual route walk
 
-Install `dist/sctoolkit.user.js` and confirm each row.
+Install `dist/sctoolkit.user.js` and confirm each row. Rows referencing a
+command palette, Diagnostics tab, cancel affordance, cross-tab throttling, or
+the result cache describe features that land in Phases 3–5 and are not
+testable yet.
 
 | Route | Confirm |
 |---|---|

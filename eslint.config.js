@@ -54,7 +54,9 @@ export default [
         console: 'readonly',
         process: 'readonly',
         URL: 'readonly',
-        Buffer: 'readonly'
+        Buffer: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly'
       }
     }
   },

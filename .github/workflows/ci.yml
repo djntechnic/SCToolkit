@@ -25,11 +25,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test
-        run: npm test
-
+      # Build before test: the bootstrap smoke test loads dist/ and would
+      # otherwise be asserting against the previously committed bundle.
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test
 
       # dist/ is the @updateURL target. If a fresh build differs from what was
       # committed, users would be auto-updated to stale code.

@@ -1,8 +1,5 @@
 # Architecture
 
-> **Phase 0 status.** This document describes the target structure. Sections
-> marked _(pending)_ are filled in as each phase lands.
-
 ## Shape
 
 SCToolkit ships as a **single userscript file** — that is a hard constraint of
@@ -23,24 +20,125 @@ src/main.js  --esbuild-->  dist/sctoolkit.user.js  --raw.githubusercontent-->  T
 
 | Layer | Rule |
 |---|---|
-| `core/` | No DOM writes. Logging, config, storage, route predicates, module registry. |
-| `net/` | All outbound HTTP funnels through here. Owns pacing, throttling, retry, block detection, caching. Nothing else calls `fetch`. |
+| `core/` | No DOM writes. Logging, config, storage, SID and route helpers, module registry. |
+| `net/` | All outbound HTTP funnels through here. Owns pacing, throttling, retry, block detection, the export queue. Nothing else calls `fetch`. |
 | `data/` | Pure functions only: `Document` in, plain objects/strings out. No globals, no `GM_*`. This is where the test suite carries the most weight. |
-| `ui/` | All DOM construction and styling. Reads from `core/`, never parses pages. |
+| `ui/` | All DOM construction and styling. Reads from `core/`, never parses fetched pages. |
 | `modules/` | User-facing features. Composed from the layers above; registered in `core/registry.js`. |
 
 Dependencies point downward only: `modules → ui/net/data → core`. A `data/`
 module importing from `ui/` is a bug.
 
-## The registry contract _(pending — Phase 1)_
+### File map
 
-Each module declares `{ id, name, init, urlMatch, actions }` and is gated
-**solely** by the registry's URL matching. Modules must not re-check routes
-themselves; doing so makes the Settings route editor inert.
+| File | Responsibility |
+|---|---|
+| `core/log.js` | Levelled console logging; the CLIENT/SERVER origin tag |
+| `core/config.js` | Schema, defaults, migration, persistence, `testUrlMatch` |
+| `core/storage.js` | `GM_*` wrappers, pinned sets, `deriveSetYear` |
+| `core/routes.js` | Page-shape predicates for the current URL |
+| `core/sid.js` | Set-ID extraction from either URL form |
+| `core/registry.js` | Module definitions and URL-gated resolution |
+| `net/fetcher.js` | Jittered pacing, backoff, `Retry-After`, retry loop |
+| `net/blockDetect.js` | Challenge/denial page detection |
+| `net/queue.js` | Serialized export queue |
+| `net/setExport.js` | Multi-page checklist export orchestration |
+| `data/checklistParser.js` | Checklist markup → plain row objects |
+| `data/csv.js` | RFC 4180 escaping and download |
+| `data/filename.js` | Export filename construction |
+| `ui/styles.js` | Design tokens and component CSS |
+| `ui/icons.js`, `ui/badges.js`, `ui/dom.js` | Icon set, badge factory, DOM helpers |
+| `ui/toolbar.js`, `ui/status.js`, `ui/toast.js`, `ui/settings.js` | The chrome |
+| `modules/*.js` | One file per registry entry |
 
-## Data flow: an export _(pending — Phase 1/4)_
+### Two known cycle hazards
 
-## Adding a module _(pending — Phase 1)_
+Both are structural, and both are already avoided:
+
+- **`status.js` is split from `toolbar.js`** so the export runner can report
+  progress without importing the toolbar that started it.
+- **`SettingsUI.init()` is called from `main.js`, not `Toolbar.init()`.** The
+  settings pane renders the registry, the registry imports the modules, and the
+  modules import the toolbar — so a toolbar that imported settings would close
+  the loop.
+
+## The registry contract
+
+A module is an object in `ModuleRegistry`:
+
+```js
+{
+  id: 'checklistEnhancer',      // key into Config.modules
+  name: 'Checklist Enhancer',   // shown in settings and the status tooltip
+  description: '...',           // shown in settings
+  init: initChecklistEnhancer,  // () => void | Promise<void>
+  isAsync: false,               // whether the bootstrap awaits init
+  actionLabels: { ... }         // optional sub-feature toggles
+}
+```
+
+`resolveModules()` filters by `Config.modules[id].enabled` and by
+`testUrlMatch(cfg.urlMatch, location.href)`. That is the **only** gate.
+
+> A module must not re-check the URL inside `init`. Doing so makes the route
+> editor in Settings a lie: the user edits the patterns, the registry honours
+> them, and the module then overrides the result. `checklistEnhancer` still does
+> this in Phase 1 and is flagged for Phase 2.
+
+Route rules are `{ pattern, exclude }`. With no rules, everything matches;
+otherwise a URL must match at least one include (or there must be none) and no
+exclude. An unparseable pattern never matches, so a typo cannot widen scope.
+
+`init` may still branch on page *content* — that is a different question from
+which pages the module is for.
+
+## Data flow: an export
+
+```
+badge click
+  └─ exportSetCSV(sid, label)
+       └─ ExportQueue.enqueue          serialized; one export at a time
+            └─ runExportSetCSV
+                 ├─ cooldownRemainingMinutes()      refuse if recently blocked
+                 └─ for each page:
+                      ├─ jitteredDelay()            skipped for page 1
+                      ├─ fetchPageWithRetry()       429/503 → Retry-After or backoff
+                      ├─ detectBlock(html)          → record timestamp, abort
+                      ├─ DOMParser → parseChecklistDocument()
+                      │    page 1 also yields identity + totalPages
+                      └─ push plain row objects; drop the Document
+                 ├─ buildExportFilename()
+                 └─ CSV.toCSV() → CSV.download()
+```
+
+Every page is reduced to plain objects as it arrives, so a 200-page run holds
+one parsed document at a time rather than 200 live DOM trees.
+
+## Adding a module
+
+1. Create `src/modules/<name>.js` exporting a single `init<Name>()`.
+2. Import it in `core/registry.js` and add a registry entry.
+3. Add a `Config.modules.<id>` block to `DEFAULT_CONFIG` with `enabled`,
+   `urlMatch`, and `actions`. Without it the module never resolves — and a
+   `mergeWithDefaults` warning will tell you so.
+4. Do not bump `schemaVersion` for an additive module; `mergeWithDefaults`
+   already fills new keys from defaults.
+5. Add tests for any pure logic the module needs, in `data/` or `core/`, not in
+   the module file.
+
+## Testing
+
+`node --test` with jsdom, no framework dependency. Three tiers:
+
+- **Pure logic** — parser, filename, CSV, config migration, route matching,
+  backoff maths. Fast, exhaustive, no DOM.
+- **Fixture parsing** — `test/fixtures/*.html` through the real parser,
+  including a golden-file assertion on exact CSV bytes. This is the tripwire
+  for any future parser change.
+- **Bundle smoke test** — `test/bootstrap.test.js` evaluates the built
+  `dist/sctoolkit.user.js` in jsdom with stubbed `GM_*` globals. It is the only
+  check that can catch an import cycle or a load-order fault, so **build before
+  test**: `npm run check` and CI both do.
 
 ## Build and release
 
