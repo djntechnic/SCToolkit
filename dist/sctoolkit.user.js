@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SCToolkit
 // @namespace    https://github.com/djntechnic/SCToolkit
-// @version      3.0.0-alpha.0
+// @version      3.0.0
 // @description  Userscript toolkit for sports card database browsing: filtering, shortcuts, and polite CSV export.
 // @author       djntechnic
 // @license      MIT
@@ -529,15 +529,18 @@
     "Subject",
     "Tags",
     "Print Run",
-    "Team"
+    "Team",
+    "Variations"
   ];
   var NAME_SUFFIX = /^(Jr\.?|Sr\.?|II|III|IV|V)$/i;
   var PRINT_RUN = /^SN\d+$/i;
-  var CAPTION_PREFIX = /^(VAR|ERR|UER):\s*/i;
-  var DESCRIBABLE_TAG = /^(VAR|ERR|UER)$/i;
+  var CAPTION_TAGS = ["VAR", "ERR", "UER", "COR"];
+  var CAPTION_SEGMENT = new RegExp(`^(${CAPTION_TAGS.join("|")}):\\s*`, "i");
+  var DESCRIBABLE_TAG = new RegExp(`^(${CAPTION_TAGS.join("|")})$`, "i");
+  var TAG_CELL = /^[A-Z0-9]{1,6}(\s*,\s*[A-Z0-9]{1,6})*$/;
   var VARIATION_CARD_NO = /\d+[a-z]$/i;
   var norm = (node) => node ? node.textContent.replace(/\s+/g, " ").trim() : "";
-  function parseSubjectCell(rawSubject, captionDesc = "", caption = {}) {
+  function parseSubjectCell(rawSubject, caption = {}) {
     const tokens = String(rawSubject || "").split(" ");
     const subjectParts = [];
     let tagParts = [];
@@ -559,19 +562,52 @@
         subjectParts.unshift(token);
       }
     }
-    if (captionDesc) {
-      const attached = tagParts.some((t) => DESCRIBABLE_TAG.test(t));
-      tagParts = tagParts.map((tag) => DESCRIBABLE_TAG.test(tag) ? `${tag} (${captionDesc})` : tag);
-      const isVariation = caption.prefixed || attached || caption.variantCardNo;
-      if (isVariation && !tagParts.some((t) => t.includes(captionDesc))) {
-        tagParts.push(`VAR (${captionDesc})`);
-      }
-    }
+    (caption.extraTags ?? []).forEach((tag) => {
+      if (!tagParts.some((t) => t.toUpperCase() === tag.toUpperCase())) tagParts.push(tag);
+    });
+    tagParts = mergeCaption(tagParts, caption);
     return {
       subject: subjectParts.join(" ").replace(/,\s*$/, "").trim(),
       tags: tagParts.join(", "),
       printRun
     };
+  }
+  function parseCaptionSegments(raw) {
+    const text = String(raw || "").replace(/\s+/g, " ").trim();
+    if (!text) return [];
+    const segments = [];
+    text.split(";").forEach((piece) => {
+      const part = piece.trim();
+      if (!part) return;
+      const match = part.match(CAPTION_SEGMENT);
+      if (match) {
+        segments.push({ tag: match[1].toUpperCase(), desc: part.slice(match[0].length).trim() });
+      } else if (segments.length > 0) {
+        segments[segments.length - 1].desc += `; ${part}`;
+      } else {
+        segments.push({ tag: null, desc: part });
+      }
+    });
+    return segments.filter((s) => s.desc !== "" || s.tag);
+  }
+  function mergeCaption(tagParts, caption) {
+    const segments = caption.segments ?? [];
+    if (segments.length === 0) return tagParts;
+    let tags = [...tagParts];
+    segments.forEach(({ tag, desc }) => {
+      if (!desc) return;
+      if (tag) {
+        const at = tags.findIndex((t) => t.toUpperCase() === tag);
+        if (at >= 0) tags[at] = `${tag} (${desc})`;
+        else tags.push(`${tag} (${desc})`);
+        return;
+      }
+      const attached = tags.some((t) => DESCRIBABLE_TAG.test(t));
+      if (!attached && !caption.variantCardNo) return;
+      tags = tags.map((t) => DESCRIBABLE_TAG.test(t) ? `${t} (${desc})` : t);
+      if (!tags.some((t) => t.includes(desc))) tags.push(`VAR (${desc})`);
+    });
+    return tags;
   }
   function findSubjectCell(row, cardNoLink) {
     const personLink = row.querySelector('a[href*="Person.cfm"]');
@@ -591,30 +627,46 @@
     const subjectTd = findSubjectCell(row, cardNoLink);
     const cardNo = cardNoLink.textContent.trim();
     let rawSubject = "";
-    let captionDesc = "";
-    let prefixed = false;
+    let segments = [];
     if (subjectTd) {
       const figcaptionEl = subjectTd.querySelector("figcaption, .figure-caption");
-      if (figcaptionEl) {
-        const raw = norm(figcaptionEl);
-        prefixed = CAPTION_PREFIX.test(raw);
-        captionDesc = raw.replace(CAPTION_PREFIX, "").trim();
-      }
+      if (figcaptionEl) segments = parseCaptionSegments(norm(figcaptionEl));
       const cloneTd = subjectTd.cloneNode(true);
       cloneTd.querySelectorAll("figcaption, .figure-caption").forEach((el) => el.remove());
       rawSubject = norm(cloneTd);
     }
-    const { subject, tags, printRun } = parseSubjectCell(rawSubject, captionDesc, {
-      prefixed,
-      variantCardNo: VARIATION_CARD_NO.test(cardNo)
+    const variations = parseVariationPanel(row);
+    const panelTags = [...new Set(variations.flatMap((v) => v.tags))];
+    const { subject, tags, printRun } = parseSubjectCell(rawSubject, {
+      segments,
+      variantCardNo: VARIATION_CARD_NO.test(cardNo),
+      extraTags: panelTags
     });
     return {
       cardNo,
       subject,
       tags,
       printRun,
-      team: teamLink ? teamLink.textContent.trim() : ""
+      team: teamLink ? teamLink.textContent.trim() : "",
+      variations: variations.map((v) => v.desc).filter(Boolean).join(" | ")
     };
+  }
+  function parseVariationPanel(row) {
+    const toggle = row.querySelector('a[aria-controls], [data-bs-toggle="collapse"][aria-controls]');
+    const panelId = toggle?.getAttribute("aria-controls");
+    if (!panelId) return [];
+    const panel = row.ownerDocument.getElementById(panelId);
+    if (!panel) return [];
+    return Array.from(panel.querySelectorAll("tr")).map((tr) => {
+      const cells = Array.from(tr.querySelectorAll("td")).map((td) => norm(td)).filter((text) => text !== "" && text !== " ");
+      const tags = [];
+      const description = [];
+      cells.forEach((text) => {
+        if (TAG_CELL.test(text)) tags.push(...text.split(",").map((t) => t.trim()));
+        else description.push(text);
+      });
+      return { tags, desc: description.join(" ") };
+    }).filter((v) => v.tags.length > 0 || v.desc !== "");
   }
   function parseSetIdentity(doc) {
     let year = "";
@@ -674,7 +726,8 @@
         r.subject,
         r.tags,
         r.printRun,
-        r.team
+        r.team,
+        r.variations ?? ""
       ])
     ];
   }

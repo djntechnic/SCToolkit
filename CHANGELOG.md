@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.0.0] — 2026-07-29
+
 ### Added
 - Phase 0 scaffolding: repository, MIT license, `src/` module layout, esbuild
   bundle pipeline, generated userscript banner, `node --test` suite, CI and
@@ -302,10 +304,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Branch protection on `main`: CI must pass, no force-push, no deletion, no
   bypass — added once the repository went public in Phase 1.
 
+### Variation, error, and correction notes
+
+**Added**
+- A **`Variations` column** in the exported CSV. The site lists a card's
+  variations, errors, and corrections in a panel that is collapsed by default;
+  those rows carry no card number, so the row parser skipped them and **none of
+  that data reached the export**. The 1990 Donruss capture has 725 such panels
+  and produced none of it. Panels are located by `aria-controls` rather than DOM
+  position, so a layout change cannot pair a row with the wrong panel.
+- Keywords found in a panel are merged into the `Tags` column, which is what a
+  reader filters on. Card 10 of that set now reads `DK, ERR, VAR, COR` instead
+  of `DK`.
+- `COR` (corrected print) is now a recognised caption keyword. It was missing
+  entirely: a `COR: ...` caption was either dropped or, on a suffixed card
+  number, relabelled `VAR (COR: ...)` — a correction reported as a variation.
+
+**Changed**
+- **A caption keeps its own keyword.** `ERR: Reversed image` becomes
+  `ERR (Reversed image)`, not `VAR (...)`. Flattening everything to `VAR`
+  discarded a distinction the page makes explicitly.
+- **Multi-keyword captions are split.** A real caption carries more than one
+  semantic at once — `VAR: Pack border; "© 1989 LEAF, INC." on back; ERR:
+  Reverse image` — and now yields two separate tags rather than one opaque blob.
+
 ### Known issues
 - `Inserts.cfm` expandable-parent detection (the Inserts/Parallels badge logic)
   is exercised against real markup but its two branches are not individually
-  pinned.
+  pinned (#10).
 
 ## [2.42.0] — prior single-file releases
 

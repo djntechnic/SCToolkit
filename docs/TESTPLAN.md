@@ -38,6 +38,9 @@ both order the steps `lint → build → test → verify-dist`.
 | Adaptive pacing: rise, decay, clamps, bounded sample window | `antiScraping.test.js` | ✅ Phase 4 |
 | Cache read/write/TTL/eviction, and corrupt-data tolerance | `antiScraping.test.js` | ✅ Phase 4 |
 | Real checklist → CSV, incl. suffixes, tags, and thumbnail-link rejection | `realPages.test.js` | ✅ |
+| All four caption keywords (VAR/ERR/UER/COR) reach the export | `realPages.test.js` | ✅ |
+| Collapsed variation panels are read, and do not become extra rows | `realPages.test.js` | ✅ |
+| Multi-keyword captions split into separate tags | `checklistParser.test.js` | ✅ |
 | Real 18-page pagination control read from the last-page link | `realPages.test.js` | ✅ |
 | Filter container resolution across all four listing routes | `realPages.test.js` | ✅ |
 | Print-view export is non-empty | `realPages.test.js` | ✅ |
@@ -74,6 +77,7 @@ testable yet.
 
 | Route | Confirm |
 |---|---|
+| Checklist with variations | A card with an error and a correction shows all its keywords in Tags, and its descriptions in the Variations column. Panel rows must not appear as extra cards. |
 | Checklist (multi-page) | Filter is instant on a 1,000-row set and shows `n of N`; hidden rows carry `.tk-hidden` and no inline style; export matches the golden CSV; progress toast counts pages; **Cancel** aborts mid-run. |
 | Set index / inserts listing | Badges on every set link; **no badge group on links lacking a set id**; a several-hundred-link page stays scrollable while badges fill in. Icons render — a broken sprite reference shows as blank space. |
 | Add-multiples entry | Sale-type defaults applied; first zero-quantity input focused; Enter tabs through hundreds of inputs without lag. **Type into a different field immediately on load — the cursor must not be taken back.** |

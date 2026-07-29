@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   CHECKLIST_HEADER,
+  parseCaptionSegments,
   parseChecklistDocument,
   parseSetIdentity,
   parseSubjectCell,
@@ -53,7 +54,7 @@ test('parseSubjectCell: a tag after the name ends collection', () => {
 });
 
 test('parseSubjectCell: caption annotates a matching tag in place', () => {
-  const result = parseSubjectCell('Chipper Jones VAR', 'Batting stance');
+  const result = parseSubjectCell('Chipper Jones VAR', { segments: [{ tag: null, desc: 'Batting stance' }] });
   assert.equal(result.subject, 'Chipper Jones');
   assert.equal(result.tags, 'VAR (Batting stance)');
 });
@@ -62,25 +63,82 @@ test('parseSubjectCell: a caption with no evidence of a variation adds no tag', 
   // Real checklist cards caption themselves with the card range they cover.
   // Treating every caption as a variation fabricated tags on 20 rows of one
   // real set — see test/realPages.test.js.
-  const result = parseSubjectCell('Derek Jeter', 'Sunglasses on cap');
+  const result = parseSubjectCell('Derek Jeter', { segments: [{ tag: null, desc: 'Sunglasses on cap' }] });
   assert.equal(result.subject, 'Derek Jeter');
   assert.equal(result.tags, '');
 });
 
-test('parseSubjectCell: a VAR-prefixed caption synthesises the tag', () => {
-  const result = parseSubjectCell('Derek Jeter', 'Sunglasses on cap', { prefixed: true });
+test('parseSubjectCell: a keyworded caption synthesises its own tag', () => {
+  const result = parseSubjectCell('Derek Jeter', {
+    segments: [{ tag: 'VAR', desc: 'Sunglasses on cap' }]
+  });
   assert.equal(result.tags, 'VAR (Sunglasses on cap)');
+});
+
+test('parseSubjectCell: the caption keyword is preserved, not flattened to VAR', () => {
+  // An ERR caption is an error, not a variation. Reporting it as VAR loses the
+  // distinction the page went to the trouble of making.
+  assert.equal(
+    parseSubjectCell('Some Player', { segments: [{ tag: 'ERR', desc: 'Reversed image' }] }).tags,
+    'ERR (Reversed image)'
+  );
+  assert.equal(
+    parseSubjectCell('Some Player', { segments: [{ tag: 'COR', desc: 'Batting right-handed' }] }).tags,
+    'COR (Batting right-handed)'
+  );
+  assert.equal(
+    parseSubjectCell('Some Player', { segments: [{ tag: 'UER', desc: 'Born in MI, not NJ' }] }).tags,
+    'UER (Born in MI, not NJ)'
+  );
 });
 
 test('parseSubjectCell: a suffixed card number is evidence of a variation', () => {
   // `50b` is a variant of `50` by the site's own numbering convention.
-  const result = parseSubjectCell('Derek Jeter', 'Sunglasses on cap', { variantCardNo: true });
+  const result = parseSubjectCell('Derek Jeter', {
+    segments: [{ tag: null, desc: 'Sunglasses on cap' }],
+    variantCardNo: true
+  });
   assert.equal(result.tags, 'VAR (Sunglasses on cap)');
 });
 
 test('parseSubjectCell: an existing variation tag absorbs the caption', () => {
-  const result = parseSubjectCell('Derek Jeter VAR', 'Sunglasses on cap');
+  const result = parseSubjectCell('Derek Jeter VAR', {
+    segments: [{ tag: null, desc: 'Sunglasses on cap' }]
+  });
   assert.equal(result.tags, 'VAR (Sunglasses on cap)');
+});
+
+test('parseSubjectCell: a keyworded caption attaches to a bare tag of that kind', () => {
+  const result = parseSubjectCell('Some Player ERR', {
+    segments: [{ tag: 'ERR', desc: 'Reversed image' }]
+  });
+  assert.equal(result.tags, 'ERR (Reversed image)');
+});
+
+test('parseSubjectCell: variation-panel tags are merged into the tag list', () => {
+  const result = parseSubjectCell('Brian Downing DK', { extraTags: ['ERR', 'VAR', 'COR'] });
+  assert.equal(result.tags, 'DK, ERR, VAR, COR');
+});
+
+test('parseCaptionSegments: splits a multi-keyword caption', () => {
+  // Real captions carry two semantics at once.
+  assert.deepEqual(
+    parseCaptionSegments('VAR: Pack border; "(c) 1989" on back; ERR: Reverse image'),
+    [
+      { tag: 'VAR', desc: 'Pack border; "(c) 1989" on back' },
+      { tag: 'ERR', desc: 'Reverse image' }
+    ]
+  );
+});
+
+test('parseCaptionSegments: an unkeyworded caption is one null-tagged segment', () => {
+  assert.deepEqual(parseCaptionSegments('Checklist: 211-245'),
+    [{ tag: null, desc: 'Checklist: 211-245' }]);
+});
+
+test('parseCaptionSegments: empty input yields nothing', () => {
+  assert.deepEqual(parseCaptionSegments(''), []);
+  assert.deepEqual(parseCaptionSegments(undefined), []);
 });
 
 test('parseSetIdentity: splits a leading year off the h1 and reads the h3', () => {
@@ -133,7 +191,8 @@ test('parseChecklistDocument: parses every card row and skips the rest', () => {
     subject: 'Ken Griffey Jr.',
     tags: 'RC',
     printRun: '',
-    team: 'Seattle Mariners'
+    team: 'Seattle Mariners',
+    variations: ''
   });
   assert.equal(rows[1].printRun, '250');
   assert.equal(rows[2].subject, 'Cal Ripken, Jr.');
@@ -159,7 +218,8 @@ test('parseChecklistDocument: rows without a person link fall back to the next c
     subject: 'Chicago Cubs Team Checklist',
     tags: 'CL',
     printRun: '',
-    team: 'Chicago Cubs'
+    team: 'Chicago Cubs',
+    variations: ''
   });
   // Empty cells are skipped while walking right from the card number.
   assert.equal(rows[1].subject, 'League Leaders');
@@ -175,10 +235,10 @@ test('golden file: the single-page fixture produces exact CSV bytes', () => {
   const csv = toCSV(toChecklistTable(parsed, parsed.rows));
 
   assert.equal(csv, [
-    'Year,Base Set,Set Name,Card No,Subject,Tags,Print Run,Team',
-    '2023,Example Chrome,Refractors,1,Ken Griffey Jr.,RC,,Seattle Mariners',
-    '2023,Example Chrome,Refractors,2,Mike Trout,AU,250,Los Angeles Angels',
-    '2023,Example Chrome,Refractors,3a,"Cal Ripken, Jr.",,,Baltimore Orioles'
+    'Year,Base Set,Set Name,Card No,Subject,Tags,Print Run,Team,Variations',
+    '2023,Example Chrome,Refractors,1,Ken Griffey Jr.,RC,,Seattle Mariners,',
+    '2023,Example Chrome,Refractors,2,Mike Trout,AU,250,Los Angeles Angels,',
+    '2023,Example Chrome,Refractors,3a,"Cal Ripken, Jr.",,,Baltimore Orioles,'
   ].join('\n'));
 });
 
