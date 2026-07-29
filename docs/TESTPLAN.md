@@ -33,8 +33,11 @@ both order the steps `lint → build → test → verify-dist`.
 | Filter row index, class-based hiding, input eligibility, badge injection | `perf.test.js` | ✅ Phase 3 |
 | Icon sprite completeness; no dangling `<use>` references | `icons.test.js` | ✅ Phase 3 |
 | Settings CSS injected on first open only | `bootstrap.test.js` | ✅ Phase 3 |
-| Block detection vs. captured *real* challenge pages | — | Phase 4 |
-| Cross-tab throttle timing, faked clock | — | Phase 4 |
+| Block detection: challenge, hCaptcha, denial page, and the page-copy false positive | `antiScraping.test.js` | ✅ Phase 4 |
+| Cross-tab throttle timing, incl. another tab claiming mid-wait | `antiScraping.test.js` | ✅ Phase 4 |
+| Adaptive pacing: rise, decay, clamps, bounded sample window | `antiScraping.test.js` | ✅ Phase 4 |
+| Cache read/write/TTL/eviction, and corrupt-data tolerance | `antiScraping.test.js` | ✅ Phase 4 |
+| Block detection vs. captured *real* challenge pages | — | needs a real capture |
 
 ### Fixture status
 

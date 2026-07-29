@@ -134,8 +134,49 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   outweighs the markup the sprite removes. The runtime win is in parse count,
   not bytes.
 
+### Phase 4 — anti-scraping mitigation
+
+**Added**
+- **Cross-tab throttle** (`net/throttle.js`). Every request is gated on a
+  timestamp shared across all tabs, so two tabs exporting at once interleave
+  rather than doubling the request rate. This was the largest gap between what
+  `docs/POLITE-USE.md` promised and what the code did.
+- **Export cache** (`net/cache.js`). Parsed results are stored with a TTL
+  (default 24 h, 0 to disable); re-exporting a set within the window makes zero
+  requests. Capped at 20 sets and 20,000 rows per set, with occupancy and a
+  purge button in Settings. Raw HTML is never persisted.
+- **Adaptive pacing** (`net/pacing.js`). A session penalty on top of the base
+  delay, raised on a rate-limit response or a sustained slow rolling median, and
+  decayed only on continued success — it rises five times faster than it falls.
+  Surfaced in the toolbar so a slowdown is visible rather than mysterious.
+- **Per-request timeout** (default 30 s) and a **Cancel Export** button. A hung
+  request previously stalled the queue indefinitely, and a 200-page run could
+  only be stopped by closing the tab. Cancelling interrupts a backoff wait too —
+  a cancel button that ignores a 15-second sleep is not a cancel button.
+- Typed `AbortedError` and `BlockedError`, so a cancellation, a timeout, and a
+  block are reported as three different things rather than one generic failure.
+
+**Changed**
+- **Block detection** now covers JavaScript-challenge interstitials
+  (`__cf_chl`, `challenge-platform`, `Just a moment`), hCaptcha, and HTTP
+  401/403 in addition to the original three markers. A challenge page that
+  matched none of them used to parse as an empty checklist and get reported as a
+  mysteriously missing set.
+- **`Access Denied` no longer matches page copy.** The bare substring was
+  searched across the whole body, so an ordinary page mentioning the phrase
+  would abort the export and start a five-minute cooldown. Denial detection now
+  only matches inside a `<title>` or `<h1>`.
+
+**Notes**
+- No schema bump: the new settings are additive, and `mergeWithDefaults` fills
+  new keys from defaults.
+- `docs/POLITE-USE.md` has no outstanding items left. Every commitment in it is
+  now implemented and tested.
+
 ### Known issues
-- Test fixtures are synthetic rather than sanitized real captures.
+- Test fixtures for *checklist markup* are synthetic rather than sanitized real
+  captures. The challenge-page fixtures are generic by nature and are not
+  affected by this.
 
 ## [2.42.0] — prior single-file releases
 

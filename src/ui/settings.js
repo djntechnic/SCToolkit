@@ -6,7 +6,8 @@
 import { Config, SettingsStore, syncExportConfig } from '../core/config.js';
 import { Log, RuntimeSettings } from '../core/log.js';
 import { ModuleRegistry } from '../core/registry.js';
-import { debounce, injectStyle } from './dom.js';
+import * as cache from '../net/cache.js';
+import { createBtn, debounce, injectStyle } from './dom.js';
 import { icon } from './icons.js';
 import { SETTINGS_CSS } from './styles.js';
 import { showToast } from './toast.js';
@@ -366,6 +367,8 @@ export const SettingsUI = {
     logField.appendChild(logSelect);
     pane.appendChild(logField);
 
+    pane.appendChild(SettingsUI._buildCachePanel());
+
     const help = document.createElement('div');
     help.id = 'tk-settings-help';
     help.innerHTML =
@@ -377,6 +380,43 @@ export const SettingsUI = {
     pane.appendChild(help);
 
     return pane;
+  },
+
+  /**
+   * Cache occupancy plus a purge control.
+   *
+   * Surfacing the numbers matters: a cache that silently serves a stale export
+   * is indistinguishable from a bug unless the user can see it exists and empty
+   * it.
+   */
+  _buildCachePanel: () => {
+    const field = document.createElement('div');
+    field.className = 'tk-settings-field';
+
+    const label = document.createElement('label');
+    label.textContent = 'Cached exports';
+
+    const summary = document.createElement('div');
+    summary.className = 'tk-settings-hint';
+
+    const refresh = () => {
+      const { sets, rows } = cache.stats(Config.global.exportCacheTtlHours);
+      summary.textContent = sets === 0
+        ? 'Nothing cached. Completed exports are stored here and reused within the lifetime above.'
+        : `${sets} set(s), ${rows} row(s) stored. Re-exporting any of them makes no requests.`;
+    };
+    refresh();
+
+    const purge = createBtn('tk-cache-purge', 'Clear cache', () => {
+      cache.clear();
+      refresh();
+      showToast({ message: 'Export cache cleared.', accent: 'var(--tk-green)' });
+    });
+
+    field.appendChild(label);
+    field.appendChild(summary);
+    field.appendChild(purge);
+    return field;
   },
 
   /**
@@ -461,8 +501,16 @@ export const GLOBAL_FIELDS = [
     hint: 'Hard stop on discovered page count — protects against a pagination-parsing bug turning into a runaway fetch loop.'
   },
   {
+    label: 'Request timeout', key: 'exportRequestTimeoutMs', min: 5000, max: 120000, step: 5000, unit: 'ms',
+    hint: 'Abandon a single request that never answers. Without this a hung request stalls the whole export queue indefinitely.'
+  },
+  {
     label: 'Anti-scraping cooldown', key: 'exportBlockCooldownMinutes', min: 0, max: 30, step: 1, unit: ' min',
     hint: 'After a detected block (captcha/verification page), refuse new exports for this long. 0 disables the cooldown.'
+  },
+  {
+    label: 'Export cache lifetime', key: 'exportCacheTtlHours', min: 0, max: 168, step: 1, unit: ' h',
+    hint: 'Re-exporting a set within this window reuses the stored result and makes no requests at all. 0 disables caching.'
   },
   {
     label: 'Toast display duration', key: 'toastDurationMs', min: 1500, max: 10000, step: 250, unit: 'ms',

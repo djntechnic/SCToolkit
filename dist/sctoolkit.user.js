@@ -113,7 +113,8 @@
     maxRetries: 3,
     backoffBaseMs: 1e3,
     backoffCapMs: 15e3,
-    maxPages: 200
+    maxPages: 200,
+    requestTimeoutMs: 3e4
   };
   var DEFAULT_CONFIG = {
     schemaVersion: 3,
@@ -170,7 +171,9 @@
       exportBackoffBaseMs: EXPORT_CONFIG.backoffBaseMs,
       exportBackoffCapMs: EXPORT_CONFIG.backoffCapMs,
       exportMaxPages: EXPORT_CONFIG.maxPages,
+      exportRequestTimeoutMs: EXPORT_CONFIG.requestTimeoutMs,
       exportBlockCooldownMinutes: 5,
+      exportCacheTtlHours: 24,
       toastDurationMs: 4e3,
       checklistFilterDebounceMs: 150,
       paginationLoaderDelayMs: 1e3,
@@ -258,6 +261,7 @@
     EXPORT_CONFIG.backoffBaseMs = Config.global.exportBackoffBaseMs;
     EXPORT_CONFIG.backoffCapMs = Config.global.exportBackoffCapMs;
     EXPORT_CONFIG.maxPages = Config.global.exportMaxPages;
+    EXPORT_CONFIG.requestTimeoutMs = Config.global.exportRequestTimeoutMs;
   }
   function initConfig() {
     const loaded = SettingsStore.load();
@@ -686,22 +690,182 @@
     }, duration);
   }
 
+  // src/net/cache.js
+  var CACHE_KEY = "tk_export_cache_v1";
+  var MAX_ENTRIES = 20;
+  var MAX_ROWS = 2e4;
+  function readAll() {
+    const raw = getValue(CACHE_KEY, {});
+    return raw && typeof raw === "object" ? raw : {};
+  }
+  function prune(entries, ttlMs2, now) {
+    const live = Object.entries(entries).filter(([, entry]) => entry && typeof entry.ts === "number" && now - entry.ts < ttlMs2).sort(([, a], [, b]) => b.ts - a.ts).slice(0, MAX_ENTRIES);
+    return Object.fromEntries(live);
+  }
+  var ttlMs = (ttlHours) => ttlHours * 36e5;
+  function read(sid, ttlHours, now = Date.now()) {
+    if (ttlHours <= 0) return null;
+    const entry = readAll()[sid];
+    if (!entry || typeof entry.ts !== "number") return null;
+    if (now - entry.ts >= ttlMs(ttlHours)) return null;
+    return entry.payload;
+  }
+  function write(sid, payload, ttlHours, now = Date.now()) {
+    if (ttlHours <= 0) return false;
+    if (payload.rows.length > MAX_ROWS) {
+      Log(`Export of ${payload.rows.length} rows exceeds the cache limit (${MAX_ROWS}) — not cached.`, "debug");
+      return false;
+    }
+    const entries = prune(readAll(), ttlMs(ttlHours), now);
+    entries[sid] = { ts: now, payload };
+    setValue(CACHE_KEY, prune(entries, ttlMs(ttlHours), now));
+    return true;
+  }
+  function stats(ttlHours, now = Date.now()) {
+    const entries = ttlHours > 0 ? prune(readAll(), ttlMs(ttlHours), now) : {};
+    const values = Object.values(entries);
+    return {
+      sets: values.length,
+      rows: values.reduce((total, e) => total + (e.payload?.rows?.length ?? 0), 0)
+    };
+  }
+  function clear() {
+    setValue(CACHE_KEY, {});
+    Log("Export cache cleared.", "info");
+  }
+
   // src/net/blockDetect.js
   var BLOCK_MARKERS = [
     "g-recaptcha",
     "cf-browser-verification",
-    "Access Denied"
+    "cf-challenge",
+    "__cf_chl",
+    "challenge-platform",
+    "Just a moment",
+    "hcaptcha",
+    "h-captcha"
   ];
+  var DENIAL_HEADINGS = [
+    /<title[^>]*>[^<]*\b(access denied|forbidden|blocked|rate limited)\b/i,
+    /<h1[^>]*>\s*(access denied|forbidden|blocked|rate limited)\b/i
+  ];
+  var BLOCK_STATUSES = [401, 403];
   function detectBlock(html) {
     if (!html) return null;
-    return BLOCK_MARKERS.find((marker) => html.includes(marker)) ?? null;
+    const marker = BLOCK_MARKERS.find((m) => html.includes(m));
+    if (marker) return marker;
+    const denial = DENIAL_HEADINGS.find((re) => re.test(html));
+    return denial ? "denial page heading" : null;
+  }
+  function isBlockedStatus(status) {
+    return BLOCK_STATUSES.includes(status);
+  }
+
+  // src/net/pacing.js
+  var PENALTY_STEP_MS = 500;
+  var PENALTY_CAP_MS = 8e3;
+  var RELIEF_STEP_MS = 100;
+  var SAMPLE_WINDOW = 10;
+  var SLOW_RESPONSE_MS = 4e3;
+  function median(values) {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  function nextPenalty(current, signal) {
+    if (signal === "throttled" || signal === "slow") {
+      return Math.min(current + PENALTY_STEP_MS, PENALTY_CAP_MS);
+    }
+    return Math.max(current - RELIEF_STEP_MS, 0);
+  }
+  var Pacing = {
+    penaltyMs: 0,
+    /** @type {number[]} */
+    samples: [],
+    reset() {
+      Pacing.penaltyMs = 0;
+      Pacing.samples = [];
+    },
+    /**
+     * Record a completed response.
+     *
+     * @param {number} latencyMs
+     * @param {boolean} [throttled] true when the response was an HTTP 429/503
+     */
+    record(latencyMs, throttled = false) {
+      Pacing.samples.push(latencyMs);
+      if (Pacing.samples.length > SAMPLE_WINDOW) Pacing.samples.shift();
+      const signal = throttled ? "throttled" : median(Pacing.samples) > SLOW_RESPONSE_MS ? "slow" : "ok";
+      Pacing.penaltyMs = nextPenalty(Pacing.penaltyMs, signal);
+      return signal;
+    },
+    /** Raise the penalty without a latency sample, for a signal that is not a response. */
+    penalize() {
+      Pacing.penaltyMs = nextPenalty(Pacing.penaltyMs, "throttled");
+    },
+    /** @returns {number} rolling median latency in ms */
+    medianLatencyMs: () => median(Pacing.samples),
+    /**
+     * Human-readable pacing state for the status readout, so a slowdown is
+     * visible rather than mysterious.
+     *
+     * @returns {string} empty when pacing is nominal
+     */
+    describe: () => Pacing.penaltyMs > 0 ? ` (pacing +${Pacing.penaltyMs}ms)` : ""
+  };
+
+  // src/net/throttle.js
+  var LAST_REQUEST_KEY = "tk_last_request_ts";
+  var MAX_SLICE_MS = 250;
+  function computeSlotWait(lastTs, intervalMs, now) {
+    if (!lastTs || lastTs > now) return lastTs > now ? intervalMs : 0;
+    const elapsed = now - lastTs;
+    return elapsed >= intervalMs ? 0 : intervalMs - elapsed;
+  }
+  async function waitForSlot(intervalMs, deps = {}) {
+    const {
+      now = () => Date.now(),
+      sleep: sleep2 = (ms) => new Promise((r) => setTimeout(r, ms)),
+      read: read2 = () => getValue(LAST_REQUEST_KEY, 0),
+      write: write2 = (ts) => setValue(LAST_REQUEST_KEY, ts)
+    } = deps;
+    let waited = 0;
+    for (; ; ) {
+      const current = now();
+      const wait = computeSlotWait(read2(), intervalMs, current);
+      if (wait === 0) {
+        write2(current);
+        return waited;
+      }
+      const slice = Math.min(wait, MAX_SLICE_MS);
+      await sleep2(slice);
+      waited += slice;
+    }
   }
 
   // src/net/fetcher.js
   var THROTTLE_STATUSES = [429, 503];
+  var AbortedError = class extends Error {
+    /** @param {string} message @param {boolean} byUser */
+    constructor(message, byUser) {
+      super(message);
+      this.name = "AbortedError";
+      this.byUser = byUser;
+    }
+  };
+  var BlockedError = class extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "BlockedError";
+    }
+  };
   var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  function jitteredDelay(baseMs = EXPORT_CONFIG.baseDelayMs, jitterMaxMs = EXPORT_CONFIG.jitterMaxMs) {
-    return sleep(baseMs + Math.random() * jitterMaxMs);
+  function currentDelayMs() {
+    return EXPORT_CONFIG.baseDelayMs + Pacing.penaltyMs + Math.random() * EXPORT_CONFIG.jitterMaxMs;
+  }
+  function jitteredDelay() {
+    return sleep(currentDelayMs());
   }
   function computeBackoff(attempt, baseMs, capMs) {
     return Math.min(baseMs * Math.pow(2, attempt - 1), capMs);
@@ -716,26 +880,72 @@
     if (Number.isNaN(asDate)) return 0;
     return Math.max(0, asDate - now);
   }
-  async function fetchPageWithRetry(fetchUrl, pageIndex, onStatus = () => {
-  }) {
+  function interruptibleSleep(ms, signal) {
+    if (!signal) return sleep(ms);
+    if (signal.aborted) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(finish, ms);
+      function finish() {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", finish);
+        resolve();
+      }
+      signal.addEventListener("abort", finish, { once: true });
+    });
+  }
+  async function timedFetch(url, runSignal) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort("timeout"), EXPORT_CONFIG.requestTimeoutMs);
+    const forward = () => controller.abort("cancelled");
+    if (runSignal) {
+      if (runSignal.aborted) throw new AbortedError("Export cancelled.", true);
+      runSignal.addEventListener("abort", forward, { once: true });
+    }
+    const startedAt = Date.now();
+    try {
+      return await fetch(url, { signal: controller.signal });
+    } catch (error) {
+      if (error.name === "AbortError") {
+        throw runSignal?.aborted ? new AbortedError("Export cancelled.", true) : new AbortedError(
+          `Request timed out after ${Math.round(EXPORT_CONFIG.requestTimeoutMs / 1e3)}s.`,
+          false
+        );
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      runSignal?.removeEventListener("abort", forward);
+      Pacing.lastLatencyMs = Date.now() - startedAt;
+    }
+  }
+  async function fetchPageWithRetry(fetchUrl, pageIndex, { onStatus = () => {
+  }, signal } = {}) {
     let attempt = 0;
     for (; ; ) {
       attempt++;
+      if (signal?.aborted) throw new AbortedError("Export cancelled.", true);
+      await waitForSlot(EXPORT_CONFIG.baseDelayMs + Pacing.penaltyMs);
       let response;
       try {
-        response = await fetch(fetchUrl);
-      } catch (networkError) {
+        response = await timedFetch(fetchUrl, signal);
+      } catch (error) {
+        if (error instanceof AbortedError) throw error;
         if (attempt > EXPORT_CONFIG.maxRetries) {
           throw new Error(
-            `Network error fetching page ${pageIndex} after ${attempt - 1} retries: ${networkError.message}`
+            `Network error fetching page ${pageIndex} after ${attempt - 1} retries: ${error.message}`
           );
         }
         const backoff = computeBackoff(attempt, EXPORT_CONFIG.backoffBaseMs, EXPORT_CONFIG.backoffCapMs);
         Log(`Network error on page ${pageIndex} (attempt ${attempt}). Retrying in ${backoff}ms.`, "warn", "server");
-        await sleep(backoff);
+        await interruptibleSleep(backoff, signal);
         continue;
       }
+      if (isBlockedStatus(response.status)) {
+        Pacing.penalize();
+        throw new BlockedError(`Server refused the request (HTTP ${response.status}).`);
+      }
       if (THROTTLE_STATUSES.includes(response.status)) {
+        Pacing.record(Pacing.lastLatencyMs ?? 0, true);
         if (attempt > EXPORT_CONFIG.maxRetries) {
           throw new Error(
             `Server rate limit persisted on page ${pageIndex} after ${attempt - 1} retries (HTTP ${response.status}).`
@@ -747,12 +957,13 @@
         }
         Log(`HTTP ${response.status} on page ${pageIndex} (attempt ${attempt}). Backing off ${backoff}ms.`, "warn", "server");
         onStatus(`Throttled — retrying in ${Math.round(backoff / 1e3)}s...`);
-        await sleep(backoff);
+        await interruptibleSleep(backoff, signal);
         continue;
       }
       if (!response.ok) {
         throw new Error(`Server returned status HTTP ${response.status} on page ${pageIndex}`);
       }
+      Pacing.record(Pacing.lastLatencyMs ?? 0, false);
       return response;
     }
   }
@@ -796,6 +1007,20 @@
   };
 
   // src/net/setExport.js
+  var CurrentRun = {
+    /** @type {AbortController|null} */
+    controller: null,
+    /** @type {(() => void)|null} set by the toolbar to show/hide its Cancel button */
+    onStart: null,
+    /** @type {(() => void)|null} */
+    onEnd: null
+  };
+  function cancelCurrentExport() {
+    if (!CurrentRun.controller) return false;
+    Log("Export cancelled by user.", "info");
+    CurrentRun.controller.abort();
+    return true;
+  }
   function cooldownRemainingMinutes(now = Date.now()) {
     const cooldownMs = (Config.global.exportBlockCooldownMinutes || 0) * 6e4;
     if (cooldownMs <= 0) return 0;
@@ -805,8 +1030,60 @@
     if (elapsed >= cooldownMs) return 0;
     return Math.ceil((cooldownMs - elapsed) / 6e4);
   }
+  function recordBlock(detail) {
+    setValue(BLOCK_TS_KEY, Date.now());
+    Log(`Anti-scraping block detected (${detail}). Cooldown started.`, "warn", "server");
+  }
   function exportSetCSV(setId, setName) {
     ExportQueue.enqueue(setName || `Set ${setId}`, () => runExportSetCSV(setId, setName));
+  }
+  function downloadResult({ identity, rows }, fallbackLabel) {
+    const filename = buildExportFilename({
+      year: identity.year,
+      baseSet: identity.baseSet,
+      setName: identity.setName,
+      fallbackLabel,
+      kind: "checklist"
+    });
+    CSV.download(CSV.toCSV(toChecklistTable(identity, rows)), filename);
+    return filename;
+  }
+  async function fetchAllPages(setId, signal) {
+    let pageIndex = 1;
+    let totalPages = 1;
+    let identity = { year: "", baseSet: "", setName: "" };
+    const rows = [];
+    do {
+      if (signal.aborted) throw new AbortedError("Export cancelled.", true);
+      if (pageIndex > 1) await jitteredDelay();
+      setStatus(
+        `Fetching Page ${pageIndex}${totalPages > 1 ? "/" + totalPages : ""}...${Pacing.describe()}`
+      );
+      const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
+      Log(`HTTP GET Request -> ${fetchUrl}`, "info", "server");
+      const response = await fetchPageWithRetry(fetchUrl, pageIndex, { onStatus: setStatus, signal });
+      const html = await response.text();
+      const blockMarker = detectBlock(html);
+      if (blockMarker) {
+        throw new BlockedError(`Challenge page received instead of content (matched '${blockMarker}').`);
+      }
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const parsed = parseChecklistDocument(doc);
+      if (pageIndex === 1) {
+        identity = { year: parsed.year, baseSet: parsed.baseSet, setName: parsed.setName };
+        totalPages = parsed.totalPages;
+        if (totalPages > EXPORT_CONFIG.maxPages) {
+          throw new Error(
+            `Discovered page count (${totalPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Likely a pagination-parsing regression — export aborted before fetching.`
+          );
+        }
+        Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, "info");
+      }
+      rows.push(...parsed.rows);
+      Log(`Page ${pageIndex}/${totalPages} parsed successfully. ${parsed.rows.length} rows retrieved.`, "info");
+      pageIndex++;
+    } while (pageIndex <= totalPages);
+    return { identity, rows, totalPages };
   }
   async function runExportSetCSV(setId, setName) {
     const remainingMin = cooldownRemainingMinutes();
@@ -819,61 +1096,59 @@
       });
       return;
     }
+    const ttlHours = Config.global.exportCacheTtlHours;
+    const cached = read(setId, ttlHours);
+    if (cached) {
+      const filename = downloadResult(cached, setName);
+      Log(`Export served from cache: ${filename} (${cached.rows.length} rows, zero requests).`, "info");
+      setStatus("Export Complete (cached)");
+      showToast({
+        message: `Exported <b>${cached.rows.length}</b> cards from cache — no requests made.`,
+        accent: "var(--tk-green)"
+      });
+      return;
+    }
+    const controller = new AbortController();
+    CurrentRun.controller = controller;
+    CurrentRun.onStart?.();
     Log(`Starting checklist fetch for set ID ${setId} (${setName})`, "info");
     setStatus(`Fetching ${setName}...`);
     try {
-      let pageIndex = 1;
-      let totalPages = 1;
-      let identity = { year: "", baseSet: "", setName: "" };
-      const allRows = [];
-      do {
-        if (pageIndex > 1) await jitteredDelay();
-        setStatus(`Fetching Page ${pageIndex}${totalPages > 1 ? "/" + totalPages : ""}...`);
-        const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
-        Log(`HTTP GET Request -> ${fetchUrl}`, "info", "server");
-        const response = await fetchPageWithRetry(fetchUrl, pageIndex, setStatus);
-        const html = await response.text();
-        const blockMarker = detectBlock(html);
-        if (blockMarker) {
-          setValue(BLOCK_TS_KEY, Date.now());
-          throw new Error(
-            `Anti-scraping protection triggered by server (matched '${blockMarker}'). Fetch aborted.`
-          );
-        }
-        const doc = new DOMParser().parseFromString(html, "text/html");
-        const parsed = parseChecklistDocument(doc);
-        if (pageIndex === 1) {
-          identity = { year: parsed.year, baseSet: parsed.baseSet, setName: parsed.setName };
-          totalPages = parsed.totalPages;
-          if (totalPages > EXPORT_CONFIG.maxPages) {
-            throw new Error(
-              `Discovered page count (${totalPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Likely a pagination-parsing regression — export aborted before fetching.`
-            );
-          }
-          Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, "info");
-        }
-        allRows.push(...parsed.rows);
-        Log(`Page ${pageIndex}/${totalPages} parsed successfully. ${parsed.rows.length} rows retrieved.`, "info");
-        pageIndex++;
-      } while (pageIndex <= totalPages);
-      if (allRows.length === 0) throw new Error("No valid checklist rows identified within tables.");
-      let setLogLabel = identity.baseSet;
-      if (identity.setName) setLogLabel += ` - ${identity.setName}`;
-      Log(`Export complete for: ${setLogLabel} (${allRows.length} cards across ${totalPages} page(s))`, "info");
-      const filename = buildExportFilename({
-        year: identity.year,
-        baseSet: identity.baseSet,
-        setName: identity.setName,
-        fallbackLabel: setName,
-        kind: "checklist"
-      });
-      CSV.download(CSV.toCSV(toChecklistTable(identity, allRows)), filename);
+      const result = await fetchAllPages(setId, controller.signal);
+      if (result.rows.length === 0) throw new Error("No valid checklist rows identified within tables.");
+      let label = result.identity.baseSet;
+      if (result.identity.setName) label += ` - ${result.identity.setName}`;
+      Log(
+        `Export complete for: ${label} (${result.rows.length} cards across ${result.totalPages} page(s), median latency ${Math.round(Pacing.medianLatencyMs())}ms)`,
+        "info"
+      );
+      write(setId, result, ttlHours);
+      downloadResult(result, setName);
       setStatus("Export Complete");
-      showToast({ message: `Exported <b>${allRows.length}</b> cards for ${escapeHtml(setLogLabel)}` });
+      showToast({ message: `Exported <b>${result.rows.length}</b> cards for ${escapeHtml(label)}` });
     } catch (error) {
-      Log(`CSV Export Failed: ${error.message}`, "error");
-      setStatus("Export Failed");
-      showToast({ message: `Export Failed: ${escapeHtml(error.message)}`, accent: "var(--tk-red)" });
+      if (error instanceof BlockedError) {
+        recordBlock(error.message);
+        setStatus("Export blocked");
+        showToast({
+          message: `Export stopped — the site returned a challenge or refused the request. ${escapeHtml(error.message)}`,
+          accent: "var(--tk-red)"
+        });
+      } else if (error instanceof AbortedError) {
+        Log(`Export stopped: ${error.message}`, error.byUser ? "info" : "warn");
+        setStatus(error.byUser ? "Export cancelled" : "Export timed out");
+        showToast({
+          message: escapeHtml(error.message),
+          accent: error.byUser ? "var(--tk-text-muted)" : "var(--tk-red)"
+        });
+      } else {
+        Log(`CSV Export Failed: ${error.message}`, "error");
+        setStatus("Export Failed");
+        showToast({ message: `Export Failed: ${escapeHtml(error.message)}`, accent: "var(--tk-red)" });
+      }
+    } finally {
+      CurrentRun.controller = null;
+      CurrentRun.onEnd?.();
     }
   }
 
@@ -1147,6 +1422,9 @@
 .sctk-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 2px 7px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1.2; }
 .sctk-btn svg { flex-shrink: 0; }
 .sctk-btn:hover:not(:disabled) { background: var(--tk-bg-hover); border-color: var(--tk-teal); color: #000000; }
+.sctk-btn-danger { border-color: var(--tk-red); color: var(--tk-red); }
+.sctk-btn-danger:hover:not(:disabled) { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
+.sctk-btn[hidden] { display: none; }
 .sctk-btn:disabled { background: var(--tk-bg-base); border-color: var(--tk-border); color: var(--tk-text-muted); cursor: not-allowed; opacity: 0.7; }
 
 /* Visible keyboard focus */
@@ -1349,6 +1627,31 @@ body { padding-top: 38px !important; }
       });
       Toolbar.renderPins();
       Toolbar.renderCenterContext();
+      Toolbar.installCancelControl();
+    },
+    /**
+     * Wire a Cancel button that appears only while an export is running.
+     *
+     * A 200-page run is three minutes or more of requests. Until now the only way
+     * to stop one was to close the tab, which is not a control — it is a
+     * workaround for the absence of one.
+     */
+    installCancelControl: () => {
+      const container = document.getElementById("tk-actions");
+      if (!container) return;
+      const btn = createBtn("tk-cancel-export", "Cancel Export", () => {
+        if (cancelCurrentExport()) btn.disabled = true;
+      });
+      btn.hidden = true;
+      btn.classList.add("sctk-btn-danger");
+      container.appendChild(btn);
+      CurrentRun.onStart = () => {
+        btn.hidden = false;
+        btn.disabled = false;
+      };
+      CurrentRun.onEnd = () => {
+        btn.hidden = true;
+      };
     },
     /**
      * @param {string} id
@@ -2031,11 +2334,41 @@ body { padding-top: 38px !important; }
       logField.appendChild(logLabel);
       logField.appendChild(logSelect);
       pane.appendChild(logField);
+      pane.appendChild(SettingsUI._buildCachePanel());
       const help = document.createElement("div");
       help.id = "tk-settings-help";
       help.innerHTML = `Module, action, route-pattern, and threshold changes apply on next page load. The log level change above applies immediately to this page’s console output.<br><br>Version: ${SettingsUI._version()}<br>Documentation and issue tracker: <a href="https://github.com/djntechnic/SCToolkit" target="_blank" rel="noopener noreferrer">github.com/djntechnic/SCToolkit</a>`;
       pane.appendChild(help);
       return pane;
+    },
+    /**
+     * Cache occupancy plus a purge control.
+     *
+     * Surfacing the numbers matters: a cache that silently serves a stale export
+     * is indistinguishable from a bug unless the user can see it exists and empty
+     * it.
+     */
+    _buildCachePanel: () => {
+      const field = document.createElement("div");
+      field.className = "tk-settings-field";
+      const label = document.createElement("label");
+      label.textContent = "Cached exports";
+      const summary = document.createElement("div");
+      summary.className = "tk-settings-hint";
+      const refresh = () => {
+        const { sets, rows } = stats(Config.global.exportCacheTtlHours);
+        summary.textContent = sets === 0 ? "Nothing cached. Completed exports are stored here and reused within the lifetime above." : `${sets} set(s), ${rows} row(s) stored. Re-exporting any of them makes no requests.`;
+      };
+      refresh();
+      const purge = createBtn("tk-cache-purge", "Clear cache", () => {
+        clear();
+        refresh();
+        showToast({ message: "Export cache cleared.", accent: "var(--tk-green)" });
+      });
+      field.appendChild(label);
+      field.appendChild(summary);
+      field.appendChild(purge);
+      return field;
     },
     /**
      * @param {{label: string, key: string, min: number, max: number, step: number,
@@ -2143,6 +2476,15 @@ body { padding-top: 38px !important; }
       hint: "Hard stop on discovered page count — protects against a pagination-parsing bug turning into a runaway fetch loop."
     },
     {
+      label: "Request timeout",
+      key: "exportRequestTimeoutMs",
+      min: 5e3,
+      max: 12e4,
+      step: 5e3,
+      unit: "ms",
+      hint: "Abandon a single request that never answers. Without this a hung request stalls the whole export queue indefinitely."
+    },
+    {
       label: "Anti-scraping cooldown",
       key: "exportBlockCooldownMinutes",
       min: 0,
@@ -2150,6 +2492,15 @@ body { padding-top: 38px !important; }
       step: 1,
       unit: " min",
       hint: "After a detected block (captcha/verification page), refuse new exports for this long. 0 disables the cooldown."
+    },
+    {
+      label: "Export cache lifetime",
+      key: "exportCacheTtlHours",
+      min: 0,
+      max: 168,
+      step: 1,
+      unit: " h",
+      hint: "Re-exporting a set within this window reuses the stored result and makes no requests at all. 0 disables caching."
     },
     {
       label: "Toast display duration",

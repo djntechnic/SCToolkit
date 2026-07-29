@@ -39,8 +39,11 @@ module importing from `ui/` is a bug.
 | `core/routes.js` | Page-shape predicates for the current URL |
 | `core/sid.js` | Set-ID extraction from either URL form |
 | `core/registry.js` | Module definitions and URL-gated resolution |
-| `net/fetcher.js` | Jittered pacing, backoff, `Retry-After`, retry loop |
-| `net/blockDetect.js` | Challenge/denial page detection |
+| `net/fetcher.js` | Timeout, retry loop, backoff, `Retry-After`; the only caller of `fetch` |
+| `net/throttle.js` | Cross-tab request slot, shared through userscript storage |
+| `net/pacing.js` | Adaptive delay penalty from observed latency and throttle signals |
+| `net/cache.js` | TTL-keyed parsed-export cache |
+| `net/blockDetect.js` | Challenge/denial page and status detection |
 | `net/queue.js` | Serialized export queue |
 | `net/setExport.js` | Multi-page checklist export orchestration |
 | `data/checklistParser.js` | Checklist markup → plain row objects |
@@ -102,19 +105,41 @@ badge click
        └─ ExportQueue.enqueue          serialized; one export at a time
             └─ runExportSetCSV
                  ├─ cooldownRemainingMinutes()      refuse if recently blocked
+                 ├─ cache.read(sid, ttl)            hit → download, zero requests
+                 ├─ new AbortController             wired to the Cancel button
                  └─ for each page:
-                      ├─ jitteredDelay()            skipped for page 1
-                      ├─ fetchPageWithRetry()       429/503 → Retry-After or backoff
-                      ├─ detectBlock(html)          → record timestamp, abort
+                      ├─ jitteredDelay()            base + pacing penalty + jitter
+                      ├─ fetchPageWithRetry()
+                      │    ├─ waitForSlot()         cross-tab gate
+                      │    ├─ timedFetch()          per-request timeout + cancel
+                      │    ├─ isBlockedStatus()     401/403 → BlockedError
+                      │    ├─ 429/503               → Retry-After or backoff
+                      │    └─ Pacing.record()       latency → future delay
+                      ├─ detectBlock(html)          → BlockedError
                       ├─ DOMParser → parseChecklistDocument()
                       │    page 1 also yields identity + totalPages
                       └─ push plain row objects; drop the Document
+                 ├─ cache.write(sid, result, ttl)
                  ├─ buildExportFilename()
                  └─ CSV.toCSV() → CSV.download()
 ```
 
 Every page is reduced to plain objects as it arrives, so a 200-page run holds
 one parsed document at a time rather than 200 live DOM trees.
+
+Three outcomes are distinguished, because they need different responses:
+`BlockedError` starts the cooldown, `AbortedError` reports a cancellation or a
+timeout, and anything else is a plain failure. Collapsing them into one generic
+"export failed" was how a challenge page previously became a mysteriously empty
+set.
+
+### The request invariant
+
+Every request passes through the slot gate, the timeout, block-status
+detection, throttle handling, and the pacing recorder — in that order, in
+`fetchPageWithRetry`. There is no other caller of `fetch` in the codebase, and
+adding one would bypass all five. If a second kind of fetch is ever needed, it
+goes through this function or extends it.
 
 ## Adding a module
 

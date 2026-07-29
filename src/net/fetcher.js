@@ -4,26 +4,56 @@
  * The pacing here is not a performance tuning knob — it is the mechanism by
  * which this script stays a well-behaved client. The floors are documented in
  * `docs/POLITE-USE.md`.
+ *
+ * Every request passes through, in order: the cross-tab slot gate, the
+ * per-request timeout, block-status detection, throttle handling, and the
+ * pacing recorder. There is no path to `fetch` that skips them.
  */
 
 import { EXPORT_CONFIG } from '../core/config.js';
 import { Log } from '../core/log.js';
+import { isBlockedStatus } from './blockDetect.js';
+import { Pacing } from './pacing.js';
+import { waitForSlot } from './throttle.js';
 
 /** HTTP statuses that mean "slow down", as opposed to "something is wrong". */
 export const THROTTLE_STATUSES = [429, 503];
+
+/** Thrown when a run is cancelled or a request times out. */
+export class AbortedError extends Error {
+  /** @param {string} message @param {boolean} byUser */
+  constructor(message, byUser) {
+    super(message);
+    this.name = 'AbortedError';
+    this.byUser = byUser;
+  }
+}
+
+/** Thrown when the server hands back a challenge or denial instead of content. */
+export class BlockedError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'BlockedError';
+  }
+}
 
 /** @param {number} ms */
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Wait a base interval plus a random margin, so request timing is not a fixed,
- * fingerprintable cadence.
+ * The delay between requests: configured base, plus any pacing penalty earned
+ * this session, plus jitter so the timing is not a fixed, fingerprintable
+ * interval.
  *
- * @param {number} [baseMs]
- * @param {number} [jitterMaxMs]
+ * @returns {number} milliseconds
  */
-export function jitteredDelay(baseMs = EXPORT_CONFIG.baseDelayMs, jitterMaxMs = EXPORT_CONFIG.jitterMaxMs) {
-  return sleep(baseMs + Math.random() * jitterMaxMs);
+export function currentDelayMs() {
+  return EXPORT_CONFIG.baseDelayMs + Pacing.penaltyMs + Math.random() * EXPORT_CONFIG.jitterMaxMs;
+}
+
+/** Wait the current inter-request delay. */
+export function jitteredDelay() {
+  return sleep(currentDelayMs());
 }
 
 /**
@@ -62,38 +92,115 @@ export function parseRetryAfter(header, now = Date.now()) {
 }
 
 /**
+ * Sleep, but wake immediately if the run is cancelled.
+ *
+ * A 15-second backoff that ignores the cancel button is a cancel button that
+ * does not work.
+ *
+ * @param {number} ms
+ * @param {AbortSignal} [signal]
+ */
+export function interruptibleSleep(ms, signal) {
+  if (!signal) return sleep(ms);
+  if (signal.aborted) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(finish, ms);
+    function finish() {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', finish);
+      resolve();
+    }
+    signal.addEventListener('abort', finish, { once: true });
+  });
+}
+
+/**
+ * Issue one request with a timeout, honouring an external cancel signal.
+ *
+ * @param {string} url
+ * @param {AbortSignal} [runSignal] cancels the whole export
+ * @returns {Promise<Response>}
+ */
+async function timedFetch(url, runSignal) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort('timeout'), EXPORT_CONFIG.requestTimeoutMs);
+  const forward = () => controller.abort('cancelled');
+
+  if (runSignal) {
+    if (runSignal.aborted) throw new AbortedError('Export cancelled.', true);
+    runSignal.addEventListener('abort', forward, { once: true });
+  }
+
+  const startedAt = Date.now();
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      // A hung request used to stall the queue forever; it now fails cleanly.
+      throw runSignal?.aborted
+        ? new AbortedError('Export cancelled.', true)
+        : new AbortedError(
+          `Request timed out after ${Math.round(EXPORT_CONFIG.requestTimeoutMs / 1000)}s.`, false
+        );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    runSignal?.removeEventListener('abort', forward);
+    Pacing.lastLatencyMs = Date.now() - startedAt;
+  }
+}
+
+/**
  * Fetch one page, retrying transient network failures and honouring throttle
  * responses. Non-throttle HTTP errors are not retried — a 404 will not become a
- * 200 by asking again.
+ * 200 by asking again — and a block is never retried at all.
  *
  * @param {string} fetchUrl
  * @param {number} pageIndex used only for log and error text
- * @param {(text: string) => void} [onStatus] surface a human-readable wait notice
+ * @param {object} [options]
+ * @param {(text: string) => void} [options.onStatus] surface a human-readable wait notice
+ * @param {AbortSignal} [options.signal] cancels the run
  * @returns {Promise<Response>}
- * @throws {Error} when retries are exhausted or the response is a hard failure
+ * @throws {AbortedError|BlockedError|Error}
  */
-export async function fetchPageWithRetry(fetchUrl, pageIndex, onStatus = () => {}) {
+export async function fetchPageWithRetry(fetchUrl, pageIndex, { onStatus = () => {}, signal } = {}) {
   let attempt = 0;
 
   for (;;) {
     attempt++;
-    let response;
+    if (signal?.aborted) throw new AbortedError('Export cancelled.', true);
 
+    // Shared across every tab running this script, so a second tab interleaves
+    // with this one rather than doubling the rate.
+    await waitForSlot(EXPORT_CONFIG.baseDelayMs + Pacing.penaltyMs);
+
+    let response;
     try {
-      response = await fetch(fetchUrl);
-    } catch (networkError) {
+      response = await timedFetch(fetchUrl, signal);
+    } catch (error) {
+      if (error instanceof AbortedError) throw error;
+
       if (attempt > EXPORT_CONFIG.maxRetries) {
         throw new Error(
-          `Network error fetching page ${pageIndex} after ${attempt - 1} retries: ${networkError.message}`
+          `Network error fetching page ${pageIndex} after ${attempt - 1} retries: ${error.message}`
         );
       }
       const backoff = computeBackoff(attempt, EXPORT_CONFIG.backoffBaseMs, EXPORT_CONFIG.backoffCapMs);
       Log(`Network error on page ${pageIndex} (attempt ${attempt}). Retrying in ${backoff}ms.`, 'warn', 'server');
-      await sleep(backoff);
+      await interruptibleSleep(backoff, signal);
       continue;
     }
 
+    if (isBlockedStatus(response.status)) {
+      Pacing.penalize();
+      throw new BlockedError(`Server refused the request (HTTP ${response.status}).`);
+    }
+
     if (THROTTLE_STATUSES.includes(response.status)) {
+      Pacing.record(Pacing.lastLatencyMs ?? 0, true);
+
       if (attempt > EXPORT_CONFIG.maxRetries) {
         throw new Error(
           `Server rate limit persisted on page ${pageIndex} after ${attempt - 1} retries (HTTP ${response.status}).`
@@ -105,7 +212,7 @@ export async function fetchPageWithRetry(fetchUrl, pageIndex, onStatus = () => {
       }
       Log(`HTTP ${response.status} on page ${pageIndex} (attempt ${attempt}). Backing off ${backoff}ms.`, 'warn', 'server');
       onStatus(`Throttled — retrying in ${Math.round(backoff / 1000)}s...`);
-      await sleep(backoff);
+      await interruptibleSleep(backoff, signal);
       continue;
     }
 
@@ -113,6 +220,7 @@ export async function fetchPageWithRetry(fetchUrl, pageIndex, onStatus = () => {
       throw new Error(`Server returned status HTTP ${response.status} on page ${pageIndex}`);
     }
 
+    Pacing.record(Pacing.lastLatencyMs ?? 0, false);
     return response;
   }
 }
