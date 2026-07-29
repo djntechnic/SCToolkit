@@ -17,7 +17,7 @@
 
 /** Column order of the exported checklist CSV. */
 export const CHECKLIST_HEADER = [
-  'Year', 'Base Set', 'Set Name', 'Card No', 'Subject', 'Tags', 'Print Run', 'Team'
+  'Year', 'Base Set', 'Set Name', 'Card No', 'Subject', 'Tags', 'Print Run', 'Team', 'Variations'
 ];
 
 /** Generational suffixes that look like all-caps tags but belong to the name. */
@@ -26,11 +26,24 @@ const NAME_SUFFIX = /^(Jr\.?|Sr\.?|II|III|IV|V)$/i;
 /** Serial-numbering token, e.g. `SN250` for a print run of 250. */
 const PRINT_RUN = /^SN\d+$/i;
 
-/** Caption prefixes that duplicate a tag already present in the subject cell. */
-const CAPTION_PREFIX = /^(VAR|ERR|UER):\s*/i;
+/**
+ * Caption keywords, each naming a distinct kind of note about a card.
+ *
+ * `COR` — a corrected print — was missing until a real capture produced
+ * captions like `COR: Batting right-handed`. Unrecognised, such a caption was
+ * either dropped or, on a suffixed card number, relabelled `VAR (COR: ...)`:
+ * a correction reported as a variation.
+ */
+export const CAPTION_TAGS = ['VAR', 'ERR', 'UER', 'COR'];
 
-/** Tags whose meaning is completed by a figcaption description. */
-const DESCRIBABLE_TAG = /^(VAR|ERR|UER)$/i;
+/** Matches a caption segment opening with one of the keywords. */
+const CAPTION_SEGMENT = new RegExp(`^(${CAPTION_TAGS.join('|')}):\\s*`, 'i');
+
+/** Tags whose meaning is completed by a caption description. */
+const DESCRIBABLE_TAG = new RegExp(`^(${CAPTION_TAGS.join('|')})$`, 'i');
+
+/** A tags cell holds only uppercase tokens, digits, and separators. */
+const TAG_CELL = /^[A-Z0-9]{1,6}(\s*,\s*[A-Z0-9]{1,6})*$/;
 
 /**
  * A card number ending in a letter marks a variation of the base card — `50b`
@@ -65,14 +78,14 @@ const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
  * Commas are stripped for *classification* only; the original token, comma and
  * all, is what lands in the name.
  *
- * @param {string} rawSubject subject-cell text with the figcaption removed
- * @param {string} [captionDesc] figcaption text, prefix already stripped
- * @param {object} [caption] what the caption was before stripping
- * @param {boolean} [caption.prefixed] whether it began `VAR:`/`ERR:`/`UER:`
+ * @param {string} rawSubject subject-cell text with the caption removed
+ * @param {object} [caption]
+ * @param {Array<{tag: string|null, desc: string}>} [caption.segments] parsed caption
  * @param {boolean} [caption.variantCardNo] whether the card number ends in a letter
+ * @param {string[]} [caption.extraTags] tags found in the row's variation panel
  * @returns {{subject: string, tags: string, printRun: string}}
  */
-export function parseSubjectCell(rawSubject, captionDesc = '', caption = {}) {
+export function parseSubjectCell(rawSubject, caption = {}) {
   const tokens = String(rawSubject || '').split(' ');
   const subjectParts = [];
   let tagParts = [];
@@ -98,29 +111,98 @@ export function parseSubjectCell(rawSubject, captionDesc = '', caption = {}) {
     }
   }
 
-  // A figcaption in the subject cell is not automatically a variation. Real
-  // checklists caption their checklist cards with the range they cover —
-  // "Checklist: 211-245" — and v2.42.0 turned every one of those into a
-  // fabricated `VAR (Checklist: 211-245)` tag. Twenty rows of a single real set
-  // were wrong this way.
-  //
-  // A caption is treated as a variation only on evidence: it said so itself,
-  // the row already carries a variation tag, or the card number is suffixed.
-  if (captionDesc) {
-    const attached = tagParts.some((t) => DESCRIBABLE_TAG.test(t));
-    tagParts = tagParts.map((tag) => (DESCRIBABLE_TAG.test(tag) ? `${tag} (${captionDesc})` : tag));
+  // Panel keywords are added before the caption is folded in, so a caption
+  // segment can attach itself to one of them rather than duplicating it.
+  (caption.extraTags ?? []).forEach((tag) => {
+    if (!tagParts.some((t) => t.toUpperCase() === tag.toUpperCase())) tagParts.push(tag);
+  });
 
-    const isVariation = caption.prefixed || attached || caption.variantCardNo;
-    if (isVariation && !tagParts.some((t) => t.includes(captionDesc))) {
-      tagParts.push(`VAR (${captionDesc})`);
-    }
-  }
+  tagParts = mergeCaption(tagParts, caption);
 
   return {
     subject: subjectParts.join(' ').replace(/,\s*$/, '').trim(),
     tags: tagParts.join(', '),
     printRun
   };
+}
+
+/**
+ * Split a caption into its keyword-led segments.
+ *
+ * A real caption carries more than one semantic at once:
+ * `VAR: Pack border; "(c) 1989 LEAF, INC." on back; ERR: Reverse image`
+ * describes both a variation and an error. Splitting on `;` and starting a new
+ * segment at each keyword keeps them distinct, so the export can say `ERR` where
+ * the page says `ERR` instead of flattening everything to `VAR`.
+ *
+ * Text before the first keyword, or a caption with no keyword at all, becomes a
+ * segment with a `null` tag — the caller decides whether that is a variation.
+ *
+ * @param {string} raw caption text
+ * @returns {Array<{tag: string|null, desc: string}>}
+ */
+export function parseCaptionSegments(raw) {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!text) return [];
+
+  const segments = [];
+  text.split(';').forEach((piece) => {
+    const part = piece.trim();
+    if (!part) return;
+
+    const match = part.match(CAPTION_SEGMENT);
+    if (match) {
+      segments.push({ tag: match[1].toUpperCase(), desc: part.slice(match[0].length).trim() });
+    } else if (segments.length > 0) {
+      // A continuation of the previous keyword, not a new note.
+      segments[segments.length - 1].desc += `; ${part}`;
+    } else {
+      segments.push({ tag: null, desc: part });
+    }
+  });
+
+  return segments.filter((s) => s.desc !== '' || s.tag);
+}
+
+/**
+ * Fold caption segments into the tag list.
+ *
+ * A caption is not automatically a variation. Real checklist cards caption
+ * themselves with the range they cover — `Checklist: 211-245` — and v2.42.0
+ * turned every one into a fabricated `VAR (Checklist: 211-245)`: twenty wrong
+ * rows in a single real set. An unkeyworded caption therefore becomes a
+ * variation only on evidence — the row already carries a variation tag, or the
+ * card number is suffixed, which is the site's own convention for a variant.
+ *
+ * @param {string[]} tagParts
+ * @param {{segments?: Array<{tag: string|null, desc: string}>, variantCardNo?: boolean}} caption
+ * @returns {string[]}
+ */
+function mergeCaption(tagParts, caption) {
+  const segments = caption.segments ?? [];
+  if (segments.length === 0) return tagParts;
+
+  let tags = [...tagParts];
+
+  segments.forEach(({ tag, desc }) => {
+    if (!desc) return;
+
+    if (tag) {
+      // Attach to an existing bare tag of the same kind, else add one.
+      const at = tags.findIndex((t) => t.toUpperCase() === tag);
+      if (at >= 0) tags[at] = `${tag} (${desc})`;
+      else tags.push(`${tag} (${desc})`);
+      return;
+    }
+
+    const attached = tags.some((t) => DESCRIBABLE_TAG.test(t));
+    if (!attached && !caption.variantCardNo) return;
+
+    tags = tags.map((t) => (DESCRIBABLE_TAG.test(t) ? `${t} (${desc})` : t));
+    if (!tags.some((t) => t.includes(desc))) tags.push(`VAR (${desc})`);
+  });
+
+  return tags;
 }
 
 /**
@@ -164,16 +246,11 @@ export function parseChecklistRow(row) {
 
   const cardNo = cardNoLink.textContent.trim();
   let rawSubject = '';
-  let captionDesc = '';
-  let prefixed = false;
+  let segments = [];
 
   if (subjectTd) {
     const figcaptionEl = subjectTd.querySelector('figcaption, .figure-caption');
-    if (figcaptionEl) {
-      const raw = norm(figcaptionEl);
-      prefixed = CAPTION_PREFIX.test(raw);
-      captionDesc = raw.replace(CAPTION_PREFIX, '').trim();
-    }
+    if (figcaptionEl) segments = parseCaptionSegments(norm(figcaptionEl));
 
     // Clone so the figcaption can be removed without mutating the source
     // document, which later rows in the same table still read from.
@@ -182,9 +259,16 @@ export function parseChecklistRow(row) {
     rawSubject = norm(cloneTd);
   }
 
-  const { subject, tags, printRun } = parseSubjectCell(rawSubject, captionDesc, {
-    prefixed,
-    variantCardNo: VARIATION_CARD_NO.test(cardNo)
+  const variations = parseVariationPanel(row);
+
+  // The panel's own keywords belong in the Tags column: they are what a reader
+  // filters on, and the main row does not repeat them.
+  const panelTags = [...new Set(variations.flatMap((v) => v.tags))];
+
+  const { subject, tags, printRun } = parseSubjectCell(rawSubject, {
+    segments,
+    variantCardNo: VARIATION_CARD_NO.test(cardNo),
+    extraTags: panelTags
   });
 
   return {
@@ -192,8 +276,50 @@ export function parseChecklistRow(row) {
     subject,
     tags,
     printRun,
-    team: teamLink ? teamLink.textContent.trim() : ''
+    team: teamLink ? teamLink.textContent.trim() : '',
+    variations: variations.map((v) => v.desc).filter(Boolean).join(' | ')
   };
+}
+
+/**
+ * Read the collapsed variation panel attached to a checklist row.
+ *
+ * The site lists a card's variations, errors, and corrections in a panel that is
+ * hidden until expanded, keyed by `aria-controls` on the row's expand toggle.
+ * Those rows carry no card number, so the row parser skips them — which meant
+ * every variation, error, and correction on a set was absent from the export.
+ * The 1990 Donruss capture has 725 such panels and produced none of this data.
+ *
+ * Each variation is one nested table row: a cell of tag tokens, and a cell of
+ * description text. The panel is found by id rather than by DOM position, so a
+ * layout change does not silently pair a row with the wrong panel.
+ *
+ * @param {Element} row a main checklist row
+ * @returns {Array<{tags: string[], desc: string}>}
+ */
+export function parseVariationPanel(row) {
+  const toggle = row.querySelector('a[aria-controls], [data-bs-toggle="collapse"][aria-controls]');
+  const panelId = toggle?.getAttribute('aria-controls');
+  if (!panelId) return [];
+
+  const panel = row.ownerDocument.getElementById(panelId);
+  if (!panel) return [];
+
+  return Array.from(panel.querySelectorAll('tr')).map((tr) => {
+    const cells = Array.from(tr.querySelectorAll('td'))
+      .map((td) => norm(td))
+      .filter((text) => text !== '' && text !== ' ');
+
+    const tags = [];
+    const description = [];
+
+    cells.forEach((text) => {
+      if (TAG_CELL.test(text)) tags.push(...text.split(',').map((t) => t.trim()));
+      else description.push(text);
+    });
+
+    return { tags, desc: description.join(' ') };
+  }).filter((v) => v.tags.length > 0 || v.desc !== '');
 }
 
 /**
@@ -294,7 +420,8 @@ export function toChecklistTable(identity, rows) {
       r.subject,
       r.tags,
       r.printRun,
-      r.team
+      r.team,
+      r.variations ?? ''
     ])
   ];
 }

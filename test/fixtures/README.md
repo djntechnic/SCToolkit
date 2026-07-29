@@ -25,6 +25,7 @@ safety ceiling and the loop cost nothing, and the site could change.
 | `print-collection.html` | `PrintYourCollectionPDF.cfm` | **a card grid with no table at all** |
 | `checklist-variations.html` | `Checklist.cfm` | **real `VAR:` captions, and checklist-range captions that are not variations**; real `SN` print runs |
 | `checklist-non-sport.html` | `Checklist.cfm` | a non-Baseball set: no team links |
+| `checklist-var-err-uer-cor.html` | `Checklist.cfm` | **all four caption keywords, multi-keyword captions, and collapsed variation panels** |
 | `inserts.html`, `inserts-basketball.html` | `Inserts.cfm` | set links on an inserts index; two sports |
 | `view-card.html` | `ViewCard.cfm` | a single card page — no rows to parse |
 | `player-collection.html` | `CollectionBrowseP.cfm` | a paginated player collection |

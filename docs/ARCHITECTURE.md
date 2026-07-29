@@ -182,6 +182,30 @@ toggle sits in storage forever, invisible to Settings and read by nothing.
   check that can catch an import cycle or a load-order fault, so **build before
   test**: `npm run check` and CI both do.
 
+## Checklist rows and variation panels
+
+A checklist row is one card: card number, subject, tags, print run, team. The
+site attaches a card's variations, errors, and corrections to a **collapsed
+panel**, one nested table row per variation, holding a tags cell and a
+description cell.
+
+Those panel rows have image-only card links and no card number, so the row
+parser rejects them — correctly, since counting them would duplicate every card
+several times over. But that also meant every variation, error, and correction
+was absent from the export. `parseVariationPanel()` reads the panel, keyed by
+the `aria-controls` id on the row's expand toggle rather than by DOM position:
+
+- its keywords are merged into the `Tags` column, which is what a reader filters
+  on;
+- its descriptions go to the `Variations` column, pipe-separated.
+
+Caption text is parsed by keyword, not flattened. `VAR`, `ERR`, `UER`, and `COR`
+each mean something different, a single caption can carry several
+(`VAR: ...; ERR: ...`), and an *unkeyworded* caption becomes a variation only on
+evidence — an existing variation tag, or a letter-suffixed card number. Without
+that last rule, checklist cards captioned with the range they cover
+(`Checklist: 211-245`) were exported as fabricated variations.
+
 ## Contract checks
 
 The main failure mode is not a crash. It is the site changing its markup so a

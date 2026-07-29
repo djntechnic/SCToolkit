@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 
 import {
+  CAPTION_TAGS,
+  CHECKLIST_HEADER,
   parseChecklistDocument,
   parseSetIdentity,
   parseTotalPages,
@@ -38,7 +40,7 @@ const doc = (name) => new JSDOM(real(name)).window.document;
 const ALL = [
   'checklist', 'checklist-variations', 'checklist-non-sport', 'view-all',
   'inserts', 'inserts-basketball', 'view-card', 'for-sale-trade', 'wantlist',
-  'add-multiples-text', 'collection-browse', 'collection-mode',
+  'checklist-var-err-uer-cor', 'add-multiples-text', 'collection-browse', 'collection-mode',
   'player-collection', 'player-wantlist', 'print-collection', 'homepage'
 ];
 
@@ -114,11 +116,11 @@ test('real checklist: the exported CSV is well formed', () => {
   const csv = toCSV(table);
   const lines = csv.split('\n');
 
-  assert.equal(lines[0], 'Year,Base Set,Set Name,Card No,Subject,Tags,Print Run,Team');
+  assert.equal(lines[0], 'Year,Base Set,Set Name,Card No,Subject,Tags,Print Run,Team,Variations');
   assert.equal(lines.length, 101);
-  assert.equal(lines[1], '2023,Bowman,,1,Byron Buxton,,,Minnesota Twins');
+  assert.equal(lines[1], '2023,Bowman,,1,Byron Buxton,,,Minnesota Twins,');
   // Every row has the full column count, including any that needed quoting.
-  table.forEach((row) => assert.equal(row.length, 8));
+  table.forEach((row) => assert.equal(row.length, CHECKLIST_HEADER.length));
 });
 
 test('real checklist: the filename derives from the parsed header', () => {
@@ -351,4 +353,92 @@ test('real player collection views expose a filterable table', () => {
     assert.ok(scope, `no filter container on ${name}`);
     assert.ok(buildRowIndex(scope).length > 5, `too few rows indexed on ${name}`);
   });
+});
+
+// --- VAR / ERR / UER / COR, and the collapsed variation panels --------------
+
+test('real set: every caption keyword reaches the export', () => {
+  // Before the variation panels were read, this set exported none of this:
+  // the keywords live in collapsed panels attached to each row, and the row
+  // parser skips those because they carry no card number.
+  const parsed = parseChecklistDocument(doc('checklist-var-err-uer-cor'));
+  const tagged = (keyword) => parsed.rows.filter((r) =>
+    r.tags.split(/,\s*/).some((t) => t.split(' ')[0] === keyword));
+
+  CAPTION_TAGS.forEach((keyword) => {
+    assert.ok(tagged(keyword).length > 0, `no row carries ${keyword}`);
+  });
+});
+
+test('real set: a card with an error and a correction reports both', () => {
+  const parsed = parseChecklistDocument(doc('checklist-var-err-uer-cor'));
+  const card = parsed.rows.find((r) => r.cardNo === '10');
+
+  assert.equal(card.subject, 'Brian Downing');
+  assert.equal(card.team, 'California Angels');
+  // DK from the subject cell; ERR/VAR/COR from the variation panel.
+  ['DK', 'ERR', 'VAR', 'COR'].forEach((t) => {
+    assert.ok(card.tags.split(/,\s*/).includes(t), `missing ${t} in "${card.tags}"`);
+  });
+});
+
+test('real set: variation descriptions are carried in their own column', () => {
+  const parsed = parseChecklistDocument(doc('checklist-var-err-uer-cor'));
+  const card = parsed.rows.find((r) => r.cardNo === '10');
+
+  assert.match(card.variations, /Pack border/);
+  assert.match(card.variations, /Reverse image/);
+  // One entry per variation, pipe-separated.
+  assert.ok(card.variations.split(' | ').length >= 3);
+});
+
+test('real set: the variation panels do not become extra card rows', () => {
+  // Each panel row has image-only card links and no card number. Counting them
+  // as cards would duplicate every card in the set several times over.
+  const d = doc('checklist-var-err-uer-cor');
+  const parsed = parseChecklistDocument(d);
+
+  assert.ok(d.querySelectorAll('div.collapse[id^=collapseArea]').length > 0,
+    'fixture should contain variation panels');
+
+  // The rows that legitimately count are those outside a collapse panel with a
+  // card link carrying text. Panel rows have image-only links and no number.
+  const mainRows = Array.from(d.querySelectorAll('#main-content-area table tr')).filter((tr) =>
+    !tr.closest('div.collapse')
+    && Array.from(tr.querySelectorAll('a[href*="ViewCard.cfm"]')).some((a) => a.textContent.trim())
+  );
+
+  assert.equal(parsed.rows.length, mainRows.length, 'row count must match the main rows exactly');
+  assert.ok(parsed.rows.every((r) => /\d/.test(r.cardNo)), 'a row has no card number');
+});
+
+test('real set: multiple plain tags on one card survive intact', () => {
+  const parsed = parseChecklistDocument(doc('checklist-var-err-uer-cor'));
+  const multi = parsed.rows.filter((r) => r.tags.split(/,\s*/).length >= 3);
+
+  assert.ok(multi.length > 5, `only ${multi.length} rows had three or more tags`);
+});
+
+test('real set: a keyworded caption keeps its own keyword', () => {
+  // An ERR is an error, not a variation. The parser used to flatten every
+  // caption to VAR, which discarded a distinction the page makes explicitly.
+  const parsed = parseChecklistDocument(doc('checklist-var-err-uer-cor'));
+  const errRows = parsed.rows.filter((r) => /\bERR\b/.test(r.tags));
+
+  assert.ok(errRows.length > 0);
+  errRows.forEach((r) => {
+    assert.equal(/VAR \(ERR:/.test(r.tags), false, `ERR mislabelled as VAR on ${r.cardNo}`);
+  });
+});
+
+test('real set: the CSV keeps a stable column count with variation text', () => {
+  const parsed = parseChecklistDocument(doc('checklist-var-err-uer-cor'));
+  const table = toChecklistTable(parsed, parsed.rows);
+
+  assert.deepEqual(table[0], CHECKLIST_HEADER);
+  table.forEach((row) => assert.equal(row.length, CHECKLIST_HEADER.length));
+
+  // Descriptions contain commas and quotes; the CSV must quote them.
+  const csv = toCSV(table);
+  assert.equal(csv.split('\n').length, parsed.rows.length + 1);
 });
