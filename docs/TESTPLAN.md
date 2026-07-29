@@ -37,16 +37,24 @@ both order the steps `lint → build → test → verify-dist`.
 | Cross-tab throttle timing, incl. another tab claiming mid-wait | `antiScraping.test.js` | ✅ Phase 4 |
 | Adaptive pacing: rise, decay, clamps, bounded sample window | `antiScraping.test.js` | ✅ Phase 4 |
 | Cache read/write/TTL/eviction, and corrupt-data tolerance | `antiScraping.test.js` | ✅ Phase 4 |
+| Real checklist → CSV, incl. suffixes, tags, and thumbnail-link rejection | `realPages.test.js` | ✅ |
+| Real 18-page pagination control read from the last-page link | `realPages.test.js` | ✅ |
+| Filter container resolution across all four listing routes | `realPages.test.js` | ✅ |
+| Print-view export is non-empty | `realPages.test.js` | ✅ |
+| Fixtures carry no account handle, script tag, or inline handler | `realPages.test.js` | ✅ |
 | Block detection vs. captured *real* challenge pages | — | needs a real capture |
 
 ### Fixture status
 
-The committed fixtures are **synthetic** — they reproduce the markup shapes the
-parser depends on without being copies of any real page. They prove the parser
-handles the shapes we believe exist, which is not the same as proving those are
-the shapes that do exist. Replacing them with sanitized real captures is
-outstanding work; see [`test/fixtures/README.md`](../test/fixtures/README.md)
-for the sanitization procedure.
+`test/fixtures/real/` holds **sanitized captures of live pages** — these are the
+authority, and they overturned two assumptions the synthetic fixtures could not
+see. `test/fixtures/` also keeps hand-written pages for shapes a capture happens
+not to contain (a figcaption variation row, challenge and denial pages).
+
+Sanitization is a script, not a checklist, and the suite asserts that no fixture
+contains an account handle, a `<script>` tag, or an inline handler — a capture
+that slipped through fails the build. See
+[`test/fixtures/README.md`](../test/fixtures/README.md).
 
 The golden-file test is the regression tripwire for the parser. If a change to
 `checklistParser.js` breaks it, the change is wrong until proven otherwise.

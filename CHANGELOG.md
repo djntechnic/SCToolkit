@@ -173,10 +173,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `docs/POLITE-USE.md` has no outstanding items left. Every commitment in it is
   now implemented and tested.
 
+### Real-page fixtures
+
+**Added**
+- Sanitized captures of nine live pages under `test/fixtures/real/`, and
+  `scripts/sanitize-fixture.js` to produce them. The sanitizer strips scripts,
+  styles, and inline handlers; pseudonymises every account handle including
+  third parties who appear in a listing; blanks prices; and trims repeated
+  blocks through a real DOM rather than a regex, so a fixture cannot end up
+  parsing differently from the page it came from.
+- `test/realPages.test.js`, including an assertion that no fixture contains an
+  account handle, a `<script>` tag, or an inline event handler — a capture that
+  slipped through sanitization fails the build instead of reaching the repo.
+
+**Fixed** — both found by the captures, both invisible to synthetic fixtures:
+- **The checklist filter never appeared on for-sale, wantlist, or add-multiples
+  pages.** It required `#main-content-area`, which only exists on checklist and
+  set-index pages; the other three routes in the module's own `urlMatch` use
+  `#content`. Three of its four configured routes had silently done nothing
+  since v2.42.0.
+- **The print-view export wrote an empty CSV.** That page is a card grid with no
+  table at all, and the exporter only read `table tr`. It now falls back to the
+  grid, and refuses with a message rather than downloading an empty file.
+
+**Confirmed by capture, not assumed**
+- Pagination discovery is correct on a control that lists 10 numbered links for
+  an 18-page listing: the true total comes from the last-page link, which the
+  max-across-all-links approach picks up. Reading only the numbered links would
+  have exported 10 of 18 pages and reported success.
+- Scoping page discovery to `.pagination` is what keeps the `?PageIndex=1` on
+  every card link out of the page count.
+
 ### Known issues
-- Test fixtures for *checklist markup* are synthetic rather than sanitized real
-  captures. The challenge-page fixtures are generic by nature and are not
-  affected by this.
+- No capture of a **multi-page `Checklist.cfm`** yet; pagination on that exact
+  route is proven by the shared control markup, not directly.
 
 ## [2.42.0] — prior single-file releases
 

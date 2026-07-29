@@ -16,3 +16,9 @@ coverage/
 # Pre-port reference copy of the v2.42.0 single-file script. Kept on disk for
 # diffing during the port, deliberately not published.
 legacy/
+
+# Raw page captures. These are unsanitized: they contain the capturing
+# account's handle, third-party user handles, and the browser's saved asset
+# directories. Run them through scripts/sanitize-fixture.js and commit the
+# output under test/fixtures/real/ instead.
+test/fixtures/submitted/
