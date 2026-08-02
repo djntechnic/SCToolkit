@@ -3,7 +3,7 @@
  * route rules on the other.
  */
 
-import { Config, SettingsStore, syncExportConfig } from '../core/config.js';
+import { Config, SettingsStore, syncExportConfig, configToXml, xmlToConfig } from '../core/config.js';
 import { Log, RuntimeSettings } from '../core/log.js';
 import { ModuleRegistry } from '../core/registry.js';
 import * as cache from '../net/cache.js';
@@ -16,6 +16,8 @@ import { resolveModules } from '../core/registry.js';
 import { BLOCK_TS_KEY, getValue } from '../core/storage.js';
 import { getContractResults } from '../core/contracts.js';
 import { showToast } from './toast.js';
+import { Toolbar } from './toolbar.js';
+import { reinjectSetActions } from '../modules/setListEnhancer.js';
 
 export const SettingsUI = {
   overlayId: 'tk-settings-overlay',
@@ -33,7 +35,7 @@ export const SettingsUI = {
     trigger.id = 'tk-settings-trigger';
     trigger.type = 'button';
     trigger.className = 'tk-scroll-btn';
-    trigger.innerHTML = icon('gear');
+    trigger.innerHTML = `${icon('gear')}<span>SETTINGS</span>`;
     trigger.title = 'SCToolkit Settings';
     trigger.setAttribute('aria-label', 'SCToolkit Settings');
     trigger.addEventListener('click', () => SettingsUI.open());
@@ -291,7 +293,7 @@ export const SettingsUI = {
 
     const title = document.createElement('div');
     title.className = 'tk-route-editor-title';
-    title.textContent = 'Route patterns';
+    title.textContent = 'Route Patterns';
     wrap.appendChild(title);
 
     const rowsEl = document.createElement('div');
@@ -358,8 +360,8 @@ export const SettingsUI = {
       removeBtn.type = 'button';
       removeBtn.className = 'tk-route-remove-btn';
       removeBtn.innerHTML = icon('x');
-      removeBtn.title = 'Remove this pattern';
-      removeBtn.setAttribute('aria-label', 'Remove this pattern');
+      removeBtn.title = 'Remove This Pattern';
+      removeBtn.setAttribute('aria-label', 'Remove This Pattern');
       removeBtn.addEventListener('click', () => {
         rowEl.remove();
         commit();
@@ -381,7 +383,7 @@ export const SettingsUI = {
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'tk-route-add-btn';
-    addBtn.innerHTML = `${icon('plus')}<span>Add pattern</span>`;
+    addBtn.innerHTML = `${icon('plus')}<span>Add Pattern</span>`;
     addBtn.addEventListener('click', () => addRow('', false));
 
     wrap.appendChild(errorEl);
@@ -409,7 +411,7 @@ export const SettingsUI = {
     THEMES.forEach((value) => {
       const opt = document.createElement('option');
       opt.value = value;
-      opt.textContent = value;
+      opt.textContent = value.charAt(0).toUpperCase() + value.slice(1);
       if (Config.global.theme === value) opt.selected = true;
       themeSelect.appendChild(opt);
     });
@@ -427,13 +429,13 @@ export const SettingsUI = {
     const logField = document.createElement('div');
     logField.className = 'tk-settings-field';
     const logLabel = document.createElement('label');
-    logLabel.textContent = 'Console log level';
+    logLabel.textContent = 'Console Log Level';
     const logSelect = document.createElement('select');
     logSelect.title = 'debug: everything. info: normal operation (default). warn: only problems worth noticing. error: only failures.';
     ['debug', 'info', 'warn', 'error'].forEach((lvl) => {
       const opt = document.createElement('option');
       opt.value = lvl;
-      opt.textContent = lvl;
+      opt.textContent = lvl.charAt(0).toUpperCase() + lvl.slice(1);
       if (Config.global.logLevel === lvl) opt.selected = true;
       logSelect.appendChild(opt);
     });
@@ -447,6 +449,73 @@ export const SettingsUI = {
     logField.appendChild(logSelect);
     pane.appendChild(logField);
 
+    const displaySectionTitle = document.createElement('div');
+    displaySectionTitle.className = 'tk-settings-section-title';
+    displaySectionTitle.textContent = 'Button Display Settings';
+    displaySectionTitle.style.marginTop = '14px';
+    displaySectionTitle.style.paddingTop = '10px';
+    displaySectionTitle.style.borderTop = '1px solid var(--tk-border)';
+    pane.appendChild(displaySectionTitle);
+
+    const DISPLAY_MODES = [
+      { value: 'both', label: 'Icon & Text' },
+      { value: 'icon', label: 'Icon Only' },
+      { value: 'text', label: 'Text Only' }
+    ];
+
+    const displayFields = [
+      {
+        key: 'toolbarButtonDisplay',
+        label: 'Toolbar Button Display',
+        title: 'Choose whether toolbar shortcut buttons show icons, text, or both.',
+        onUpdate: () => Toolbar.renderCenterContext()
+      },
+      {
+        key: 'pinButtonDisplay',
+        label: 'Pinned Set Button Display',
+        title: 'Choose whether buttons in pinned set dropdowns show icons, text, or both.',
+        onUpdate: () => Toolbar.renderPins()
+      },
+      {
+        key: 'setButtonDisplay',
+        label: 'Injected Set Button Display',
+        title: 'Choose whether buttons injected beside set links on pages show icons, text, or both.',
+        onUpdate: () => reinjectSetActions()
+      }
+    ];
+
+    displayFields.forEach(({ key, label: fieldLabelText, title: fieldTitleText, onUpdate }) => {
+      const field = document.createElement('div');
+      field.className = 'tk-settings-field';
+
+      const fieldLabel = document.createElement('label');
+      fieldLabel.textContent = fieldLabelText;
+
+      const select = document.createElement('select');
+      select.title = fieldTitleText;
+
+      DISPLAY_MODES.forEach(({ value, label: optLabel }) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = optLabel;
+        if ((Config.global[key] || 'both') === value) opt.selected = true;
+        select.appendChild(opt);
+      });
+
+      select.addEventListener('change', () => {
+        Config.global[key] = select.value;
+        Log(`Config change: global.${key} = ${select.value}`, 'info');
+        if (onUpdate) onUpdate();
+        SettingsUI._persist();
+      });
+
+      field.appendChild(fieldLabel);
+      field.appendChild(select);
+      pane.appendChild(field);
+    });
+
+    pane.appendChild(SettingsUI._buildXmlPanel());
+
     const help = document.createElement('div');
     help.id = 'tk-settings-help';
     help.innerHTML =
@@ -458,6 +527,95 @@ export const SettingsUI = {
     pane.appendChild(help);
 
     return pane;
+  },
+
+  _buildXmlPanel: () => {
+    const field = document.createElement('div');
+    field.className = 'tk-settings-field';
+    field.style.marginTop = '14px';
+    field.style.paddingTop = '10px';
+    field.style.borderTop = '1px solid var(--tk-border)';
+
+    const label = document.createElement('label');
+    label.textContent = 'XML Import / Export Settings';
+
+    const hint = document.createElement('div');
+    hint.className = 'tk-settings-hint';
+    hint.textContent = 'Backup all SCToolkit settings (globals, module states, sub-actions, route rules) to XML or restore from file.';
+
+    const btnGroup = document.createElement('div');
+    btnGroup.style.display = 'flex';
+    btnGroup.style.gap = '8px';
+    btnGroup.style.marginTop = '6px';
+
+    const exportBtn = createBtn('tk-xml-export', 'Export XML', () => {
+      try {
+        const xml = configToXml(Config);
+        const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sctoolkit-settings-v${Config.schemaVersion || 3}.xml`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast({ message: 'Settings exported to XML file.', variant: 'success' });
+      } catch (err) {
+        showToast({ message: `Export failed: ${err.message}`, variant: 'error' });
+      }
+    });
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.xml,text/xml';
+    fileInput.style.display = 'none';
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new window.FileReader();
+      reader.onload = (evt) => {
+        try {
+          const xmlText = evt.target.result;
+          const imported = xmlToConfig(xmlText);
+          Config.schemaVersion = imported.schemaVersion;
+          Config.global = imported.global;
+          Config.modules = imported.modules;
+
+          syncExportConfig();
+          applyTheme();
+          SettingsStore.save(Config);
+          Log('Settings successfully imported from XML file.', 'info');
+          showToast({ message: 'Settings imported from XML! Reload page for full module updates.', variant: 'success' });
+
+          const body = document.getElementById('tk-settings-body');
+          if (body) {
+            const activeTab = body.querySelector('.tk-settings-tab.active')?.textContent?.toLowerCase() || 'global';
+            const newBody = SettingsUI._buildTabbedBody();
+            body.replaceWith(newBody);
+            const targetTabName = activeTab.includes('module') ? 'routes' : activeTab.includes('diag') ? 'diagnostics' : 'global';
+            newBody.querySelector(`.tk-settings-tab:${targetTabName === 'routes' ? 'nth-child(2)' : targetTabName === 'diagnostics' ? 'nth-child(3)' : 'first-child'}`)?.click();
+          }
+        } catch (err) {
+          showToast({ message: `Import failed: ${err.message}`, variant: 'error' });
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    const importBtn = createBtn('tk-xml-import', 'Import XML', () => {
+      fileInput.value = '';
+      fileInput.click();
+    });
+
+    btnGroup.appendChild(exportBtn);
+    btnGroup.appendChild(importBtn);
+    btnGroup.appendChild(fileInput);
+
+    field.appendChild(label);
+    field.appendChild(hint);
+    field.appendChild(btnGroup);
+    return field;
   },
 
   /**
@@ -483,13 +641,17 @@ export const SettingsUI = {
       try { return Routes[key](); } catch { return false; }
     });
 
+    const themeFormatted = (Config.global.theme || 'auto').charAt(0).toUpperCase() + (Config.global.theme || 'auto').slice(1);
+    const resolvedTheme = document.documentElement.getAttribute('data-sctk-theme') || '';
+    const resolvedFormatted = resolvedTheme ? (resolvedTheme.charAt(0).toUpperCase() + resolvedTheme.slice(1)) : '';
+
     const rows = [
       ['Version', SettingsUI._version()],
       ['URL', window.location.pathname + window.location.search],
-      ['Matched routes', routes.length ? routes.join(', ') : 'none'],
-      ['Active modules', active.length ? `${active.length}: ${active.join(', ')}` : 'none on this page'],
-      ['Last block detected', lastBlock ? new Date(lastBlock).toLocaleString() : 'never'],
-      ['Theme', `${Config.global.theme} (resolved: ${document.documentElement.getAttribute('data-sctk-theme')})`]
+      ['Matched Routes', routes.length ? routes.join(', ') : 'none'],
+      ['Active Modules', active.length ? `${active.length}: ${active.join(', ')}` : 'none on this page'],
+      ['Last Block Detected', lastBlock ? new Date(lastBlock).toLocaleString() : 'never'],
+      ['Theme', `${themeFormatted}${resolvedFormatted ? ` (Resolved: ${resolvedFormatted})` : ''}`]
     ];
 
     const table = document.createElement('dl');
@@ -520,7 +682,7 @@ export const SettingsUI = {
     field.className = 'tk-settings-field';
 
     const label = document.createElement('label');
-    label.textContent = 'Page contract checks';
+    label.textContent = 'Page Contract Checks';
     field.appendChild(label);
 
     const checks = getContractResults();
@@ -566,7 +728,7 @@ export const SettingsUI = {
     field.className = 'tk-settings-field';
 
     const label = document.createElement('label');
-    label.textContent = 'Cached exports';
+    label.textContent = 'Cached Exports';
 
     const summary = document.createElement('div');
     summary.className = 'tk-settings-hint';
@@ -579,7 +741,7 @@ export const SettingsUI = {
     };
     refresh();
 
-    const purge = createBtn('tk-cache-purge', 'Clear cache', () => {
+    const purge = createBtn('tk-cache-purge', 'Clear Cache', () => {
       cache.clear();
       refresh();
       showToast({ message: 'Export cache cleared.', variant: 'success' });
@@ -649,55 +811,55 @@ export const SettingsUI = {
 /** Declarative spec for every numeric global setting. */
 export const GLOBAL_FIELDS = [
   {
-    label: 'Export base delay', key: 'exportBaseDelayMs', min: 200, max: 2000, step: 50, unit: 'ms',
+    label: 'Export Base Delay', key: 'exportBaseDelayMs', min: 200, max: 2000, step: 50, unit: 'ms',
     hint: 'Minimum wait between paginated checklist-fetch requests.'
   },
   {
-    label: 'Export jitter', key: 'exportJitterMaxMs', min: 0, max: 2000, step: 50, unit: 'ms',
+    label: 'Export Jitter', key: 'exportJitterMaxMs', min: 0, max: 2000, step: 50, unit: 'ms',
     hint: 'Random amount added on top of the base delay, so request timing isn’t a fixed, fingerprintable interval.'
   },
   {
-    label: 'Max retries per page', key: 'exportMaxRetries', min: 0, max: 8, step: 1, unit: '',
+    label: 'Max Retries Per Page', key: 'exportMaxRetries', min: 0, max: 8, step: 1, unit: '',
     hint: 'Retry attempts for a single page on HTTP 429/503 before the export fails.'
   },
   {
-    label: 'Retry backoff — base', key: 'exportBackoffBaseMs', min: 250, max: 5000, step: 250, unit: 'ms',
+    label: 'Retry Backoff — Base', key: 'exportBackoffBaseMs', min: 250, max: 5000, step: 250, unit: 'ms',
     hint: 'Starting wait before the first retry; doubles on each subsequent attempt up to the cap below.'
   },
   {
-    label: 'Retry backoff — cap', key: 'exportBackoffCapMs', min: 2000, max: 60000, step: 1000, unit: 'ms',
+    label: 'Retry Backoff — Cap', key: 'exportBackoffCapMs', min: 2000, max: 60000, step: 1000, unit: 'ms',
     hint: 'Upper limit on the doubling backoff delay, regardless of retry count.'
   },
   {
-    label: 'Pagination safety ceiling', key: 'exportMaxPages', min: 20, max: 500, step: 10, unit: ' pages',
+    label: 'Pagination Safety Ceiling', key: 'exportMaxPages', min: 20, max: 500, step: 10, unit: ' pages',
     hint: 'Hard stop on discovered page count — protects against a pagination-parsing bug turning into a runaway fetch loop.'
   },
   {
-    label: 'Request timeout', key: 'exportRequestTimeoutMs', min: 5000, max: 120000, step: 5000, unit: 'ms',
+    label: 'Request Timeout', key: 'exportRequestTimeoutMs', min: 5000, max: 120000, step: 5000, unit: 'ms',
     hint: 'Abandon a single request that never answers. Without this a hung request stalls the whole export queue indefinitely.'
   },
   {
-    label: 'Anti-scraping cooldown', key: 'exportBlockCooldownMinutes', min: 0, max: 30, step: 1, unit: ' min',
+    label: 'Anti-Scraping Cooldown', key: 'exportBlockCooldownMinutes', min: 0, max: 30, step: 1, unit: ' min',
     hint: 'After a detected block (captcha/verification page), refuse new exports for this long. 0 disables the cooldown.'
   },
   {
-    label: 'Export cache lifetime', key: 'exportCacheTtlHours', min: 0, max: 168, step: 1, unit: ' h',
+    label: 'Export Cache Lifetime', key: 'exportCacheTtlHours', min: 0, max: 168, step: 1, unit: ' h',
     hint: 'Re-exporting a set within this window reuses the stored result and makes no requests at all. 0 disables caching.'
   },
   {
-    label: 'Toast display duration', key: 'toastDurationMs', min: 1500, max: 10000, step: 250, unit: 'ms',
+    label: 'Toast Display Duration', key: 'toastDurationMs', min: 1500, max: 10000, step: 250, unit: 'ms',
     hint: 'How long status/confirmation toasts stay visible before fading out.'
   },
   {
-    label: 'Checklist filter debounce', key: 'checklistFilterDebounceMs', min: 0, max: 500, step: 25, unit: 'ms',
+    label: 'Checklist Filter Debounce', key: 'checklistFilterDebounceMs', min: 0, max: 500, step: 25, unit: 'ms',
     hint: 'Delay after typing stops before the real-time table filter re-scans rows.'
   },
   {
-    label: 'Pagination loader delay', key: 'paginationLoaderDelayMs', min: 300, max: 3000, step: 100, unit: 'ms',
+    label: 'Pagination Loader Delay', key: 'paginationLoaderDelayMs', min: 300, max: 3000, step: 100, unit: 'ms',
     hint: 'Fixed wait before the CSV export button is enabled on paginated pages. Not a real completion signal — still a timing guess, just a configurable one.'
   },
   {
-    label: 'Settings save debounce', key: 'settingsSaveDebounceMs', min: 100, max: 2000, step: 100, unit: 'ms',
+    label: 'Settings Save Debounce', key: 'settingsSaveDebounceMs', min: 100, max: 2000, step: 100, unit: 'ms',
     hint: 'How long to wait after the last settings change before writing to storage.'
   }
 ];

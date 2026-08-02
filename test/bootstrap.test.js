@@ -170,8 +170,8 @@ test('the settings pane exposes the cache and timeout controls', async () => {
   doc.getElementById('tk-settings-trigger').click();
 
   const labels = Array.from(doc.querySelectorAll('#tk-settings-global label'), (l) => l.textContent);
-  assert.ok(labels.some((t) => t.startsWith('Request timeout')), 'timeout slider missing');
-  assert.ok(labels.some((t) => t.startsWith('Export cache lifetime')), 'cache TTL slider missing');
+  assert.ok(labels.some((t) => /^Request Timeout/i.test(t)), 'timeout slider missing');
+  assert.ok(labels.some((t) => /^Export Cache Lifetime/i.test(t)), 'cache TTL slider missing');
   assert.ok(doc.getElementById('tk-cache-purge'), 'cache purge button missing');
 
   dom.window.close();

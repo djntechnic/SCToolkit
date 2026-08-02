@@ -13,29 +13,34 @@ export const TOOLBAR_CSS = `
    The --tk- prefix is specific enough that collision with the site's own
    variables is not a real risk. Dark values override by attribute below. */
 :root {
-    --tk-bg-base: #f8f9fa;
+    /* Surfaces & Neutrals (Light Mode - Deep Blue Slate Tint) */
+    --tk-bg-base: #f0f4f8;
     --tk-bg-elevated: #ffffff;
-    --tk-bg-hover: #e9ecef;
-    --tk-border: #dee2e6;
-    --tk-border-strong: #ced4da;
-    --tk-text: #212529;
-    --tk-text-muted: #6c757d;
-    --tk-accent: #d97706;
-    --tk-teal: #0d9488;
-    --tk-blue: #0d6efd;
+    --tk-bg-hover: #e2e8f0;
+    --tk-border: #7d8597;
+    --tk-border-strong: #5c677d;
+    --tk-text: #001233;
+    --tk-text-muted: #33415c;
+
+    /* Accents & Signals (Palette: #0466c8, #0353a4, #023e7d) */
+    --tk-accent: #0466c8;
+    --tk-teal: #0891b2;
+    --tk-blue: #0353a4;
     --tk-violet: #7c3aed;
     --tk-magenta: #db2777;
-    --tk-green: #198754;
-    --tk-red: #dc3545;
-    --tk-font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --tk-font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+    --tk-green: #059669;
+    --tk-red: #dc2626;
+
+    /* Typography & Elevation */
+    --tk-font-ui: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --tk-font-mono: "JetBrains Mono", "Geist Mono", "SF Mono", "Cascadia Code", monospace;
     --tk-radius-sm: 4px;
     --tk-radius-md: 6px;
-    --tk-shadow-elevated: 0 4px 16px rgba(0,0,0,0.12);
+    --tk-shadow-elevated: 0 10px 25px -5px rgba(2, 62, 125, 0.15), 0 8px 10px -6px rgba(2, 62, 125, 0.08);
 }
 
 /* Icons are <use> references into the injected sprite. */
-.tk-icon { flex-shrink: 0; display: inline-block; vertical-align: middle; }
+.tk-icon { flex-shrink: 0; display: block; align-self: center; }
 
 /* Filter hiding. A class rather than an inline style so the filter never has
    to read or restore a row's own display value. */
@@ -43,21 +48,25 @@ export const TOOLBAR_CSS = `
 
 /* Dark palette. Only the values change; every rule below is theme-agnostic. */
 :root[data-sctk-theme="dark"] {
-    --tk-bg-base: #16181b;
-    --tk-bg-elevated: #1f2225;
-    --tk-bg-hover: #2a2e33;
-    --tk-border: #33383d;
-    --tk-border-strong: #464c53;
-    --tk-text: #e6e8ea;
-    --tk-text-muted: #9aa2ab;
-    --tk-accent: #f0a437;
+    /* Surfaces & Neutrals (Dark Mode - Midnight Navy Deep) */
+    --tk-bg-base: #001233;
+    --tk-bg-elevated: #001845;
+    --tk-bg-hover: #002855;
+    --tk-border: #002855;
+    --tk-border-strong: #33415c;
+    --tk-text: #f1f5f9;
+    --tk-text-muted: #979dac;
+
+    /* Accents & Signals */
+    --tk-accent: #0466c8;
     --tk-teal: #2dd4bf;
-    --tk-blue: #60a5fa;
-    --tk-violet: #a78bfa;
+    --tk-blue: #0353a4;
+    --tk-violet: #c084fc;
     --tk-magenta: #f472b6;
-    --tk-green: #4ade80;
+    --tk-green: #34d399;
     --tk-red: #f87171;
-    --tk-shadow-elevated: 0 4px 16px rgba(0,0,0,0.55);
+
+    --tk-shadow-elevated: 0 20px 25px -5px rgba(0, 18, 51, 0.7), 0 8px 10px -6px rgba(0, 18, 51, 0.5);
 }
 
 /* Solid-fill badges need dark text against the brighter dark-mode accents. */
@@ -66,7 +75,9 @@ export const TOOLBAR_CSS = `
 :root[data-sctk-theme="dark"] .sctk-btn:hover:not(:disabled),
 :root[data-sctk-theme="dark"] #tk-center-context .tk-scroll-btn:hover { color: #ffffff; }
 
-#sctk-toolbar { position: fixed; top: 0; left: 0; width: 100%; z-index: 99999; background: var(--tk-bg-base); color: var(--tk-text); display: flex; align-items: center; min-height: 34px; padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 11px; border-bottom: 1px solid var(--tk-border); box-shadow: 0 2px 8px rgba(0,0,0,0.06); box-sizing: border-box; flex-wrap: nowrap; }
+#sctk-toolbar { position: fixed; top: 0; left: 0; width: 100%; z-index: 99999; background: linear-gradient(180deg, #e4eef8 0%, #d1e2f3 100%); color: var(--tk-text); display: flex; align-items: center; min-height: 34px; padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 11px; border-bottom: 2px solid var(--tk-accent); box-shadow: 0 3px 10px rgba(4, 102, 200, 0.18); box-sizing: border-box; flex-wrap: nowrap; }
+
+:root[data-sctk-theme="dark"] #sctk-toolbar { background: linear-gradient(180deg, #001845 0%, #001233 100%); border-bottom: 2px solid var(--tk-accent); box-shadow: 0 4px 14px rgba(0, 18, 51, 0.6); }
 
 /* Wordmark */
 #sctk-toolbar .tk-wordmark { display: flex; flex-direction: column; justify-content: center; padding: 2px 6px; margin-right: 8px; flex-shrink: 0; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-top: 2px solid var(--tk-accent); border-radius: 0 0 3px 3px; line-height: 1.1; }
@@ -77,18 +88,24 @@ export const TOOLBAR_CSS = `
 
 /* Responsive Center Context Bar */
 #tk-center-context { flex-grow: 1; flex-shrink: 1; display: flex; align-items: center; justify-content: center; gap: 4px; overflow: hidden; min-width: 120px; padding: 0 4px; }
-#tk-center-context .tk-scroll-btn { background: var(--tk-bg-elevated); color: var(--tk-teal); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 2px 6px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; user-select: none; display: inline-flex; align-items: center; gap: 3px; line-height: 1.2; }
-#tk-center-context .tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-teal); color: #000000; }
-#tk-center-context .context-label { font-family: var(--tk-font-mono); font-weight: 600; color: var(--tk-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+#tk-center-context .tk-scroll-btn { background: var(--tk-bg-elevated); color: var(--tk-blue); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 6px 0 6px; height: 20px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; user-select: none; display: inline-flex; align-items: center; justify-content: center; gap: 3px; line-height: 1; box-sizing: border-box; }
+#tk-center-context .tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
+#tk-center-context .context-label { display: inline-flex; align-items: center; height: 20px; font-family: var(--tk-font-mono); font-weight: 600; color: var(--tk-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1; margin: 0 2px; padding-top: 1px; box-sizing: border-box; }
 
 /* Right-Aligned Status Bar */
-#tk-status { flex-shrink: 0; border-right: none; margin: 0; font-family: var(--tk-font-mono); font-weight: 700; font-size: 10px; letter-spacing: 0.02em; color: var(--tk-teal); cursor: pointer; text-align: right; justify-content: flex-end; padding-left: 4px; white-space: nowrap; }
+#tk-status-wrap { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; }
+#tk-status { flex-shrink: 0; background: transparent; border: none; margin: 0; font-family: var(--tk-font-mono); font-weight: 700; font-size: 10px; letter-spacing: 0.02em; color: var(--tk-accent); cursor: pointer; text-align: right; justify-content: flex-end; padding: 1px 4px 0 4px; white-space: nowrap; display: inline-flex; align-items: center; height: 20px; box-sizing: border-box; }
+#tk-status:hover { color: var(--tk-blue); text-decoration: underline; }
+:root[data-sctk-theme="dark"] #tk-status:hover { color: var(--tk-teal); }
 
-#tk-settings-trigger.tk-scroll-btn { margin-left: 4px; padding: 2px 5px; }
+#tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #000000; border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 20px; margin-left: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; cursor: pointer; box-sizing: border-box; }
+#tk-settings-trigger.tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
+:root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #ffffff; border-color: var(--tk-border-strong); }
+:root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #ffffff; }
 
-.sctk-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 2px 7px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1.2; }
+.sctk-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 22px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; }
 .sctk-btn svg { flex-shrink: 0; }
-.sctk-btn:hover:not(:disabled) { background: var(--tk-bg-hover); border-color: var(--tk-teal); color: #000000; }
+.sctk-btn:hover:not(:disabled) { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
 .sctk-btn-danger { border-color: var(--tk-red); color: var(--tk-red); }
 .sctk-btn-danger:hover:not(:disabled) { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
 .sctk-btn[hidden] { display: none; }
@@ -112,27 +129,30 @@ export const TOOLBAR_CSS = `
 
 /* Dropdown Styling for Pins */
 .tk-dropdown { position: relative; display: inline-block; }
-.tk-dropdown-content { display: none; position: absolute; left: 0; top: 100%; margin-top: 2px; background-color: var(--tk-bg-elevated); min-width: 320px; box-shadow: var(--tk-shadow-elevated); z-index: 100000; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); max-height: 450px; overflow-y: auto; text-align: left; }
+.tk-dropdown-content { display: none; position: absolute; left: 0; top: 100%; margin-top: 2px; background-color: var(--tk-bg-elevated); min-width: 460px; max-width: 640px; box-shadow: var(--tk-shadow-elevated); z-index: 100000; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); max-height: 450px; overflow-y: auto; text-align: left; }
 /* Click-only. Hover-open cannot be dismissed on a touch device and fires by
    accident on the way to something else on desktop. */
 .tk-dropdown.tk-show .tk-dropdown-content { display: block; }
 
-.tk-dropdown-content .tk-pin-item { color: var(--tk-text); padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; border-bottom: 1px solid var(--tk-border); }
+.tk-dropdown-content .tk-pin-item { color: var(--tk-text); padding: 5px 8px; display: flex; flex-direction: column; gap: 1.5px; font-size: 10.5px; border-bottom: 1px solid var(--tk-border); }
 .tk-dropdown-content .tk-pin-item:last-child { border-bottom: none; }
 .tk-dropdown-content .tk-pin-item:hover { background-color: var(--tk-bg-hover); }
-.tk-dropdown-content .tk-pin-header { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 6px; }
-.tk-dropdown-content .tk-pin-title { font-family: var(--tk-font-mono); font-weight: 700; font-size: 10.5px; color: var(--tk-accent); text-decoration: none; flex-grow: 1; text-align: left; line-height: 1.2; white-space: normal; }
-.tk-dropdown-content .tk-pin-title:hover { text-decoration: underline; color: #b45309; }
+.tk-dropdown-content .tk-pin-header { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; gap: 6px; }
+.tk-dropdown-content .tk-pin-title { font-family: var(--tk-font-mono); font-weight: 700; font-size: 10.5px; color: var(--tk-accent); text-decoration: none; flex: 1 1 auto; min-width: 0; word-break: break-word; text-align: left; line-height: 1.2; white-space: normal; }
+.tk-dropdown-content .tk-pin-title:hover { text-decoration: underline; color: var(--tk-blue); }
 
-.tk-dropdown-content .tk-pin-actions { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; margin-top: 1px; }
+.tk-dropdown-content .tk-pin-actions { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; margin-top: 0; }
 .tk-dropdown-content .tk-pin-actions .sctk-badge { margin-left: 0; margin-right: 0; flex-shrink: 0; }
 
 .tk-pin-remove { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid var(--tk-red); background: transparent; color: var(--tk-red); border-radius: var(--tk-radius-sm); cursor: pointer; flex-shrink: 0; }
 .tk-pin-remove:hover { background: var(--tk-red); color: #fff; }
 
-.tk-dropbtn { display: inline-flex; align-items: center; gap: 3px; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); color: var(--tk-text); border-radius: var(--tk-radius-sm); padding: 2px 6px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; line-height: 1.2; }
+.tk-dropbtn { display: inline-flex; align-items: center; gap: 3px; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); color: var(--tk-text); border-radius: var(--tk-radius-sm); padding: 1px 6px 0 6px; height: 20px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; line-height: 1; box-sizing: border-box; }
 .tk-dropbtn:hover { border-color: var(--tk-accent); color: var(--tk-accent); background: var(--tk-bg-hover); }
 .tk-dropbtn:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
+
+/* Injected Badge Group Container */
+.tk-injected-badge-group { margin-left: 8px; vertical-align: middle; }
 
 /* Overflow menu — the toolbar no longer wraps, so anything that does not fit
    moves in here rather than pushing page content down. */
@@ -142,10 +162,13 @@ export const TOOLBAR_CSS = `
 #tk-overflow .tk-dropdown-content .sctk-btn { width: 100%; justify-content: flex-start; margin: 2px 0; }
 
 /* Compact Badge Styles */
-.sctk-badge { display: inline-flex; align-items: center; gap: 3px; font-family: var(--tk-font-mono); padding: 2px 5px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; vertical-align: middle; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
+.sctk-badge { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-family: var(--tk-font-mono); padding: 1px 5px 0 5px; height: 20px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
 
 .tk-badge-action { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
 .tk-badge-action:hover { background: var(--tk-blue); color: #ffffff; }
+
+.tk-badge-link-c { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
+.tk-badge-link-c:hover { background: var(--tk-blue); color: #ffffff; }
 
 .tk-badge-link-i { background: var(--tk-bg-elevated); border-color: var(--tk-violet); color: var(--tk-violet); }
 .tk-badge-link-i:hover { background: var(--tk-violet); color: #ffffff; }
@@ -224,48 +247,53 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
 /** Settings modal styling. */
 export const SETTINGS_CSS = `
 #tk-settings-overlay { position: fixed; inset: 0; z-index: 200000; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-family: var(--tk-font-ui); }
-#tk-settings-panel { background: var(--tk-bg-elevated); color: var(--tk-text); width: min(720px, 92vw); max-height: 85vh; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); box-shadow: var(--tk-shadow-elevated); display: flex; flex-direction: column; overflow: hidden; }
-#tk-settings-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--tk-border); flex-shrink: 0; background: var(--tk-bg-base); }
-#tk-settings-header h2 { margin: 0; font-family: var(--tk-font-mono); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--tk-accent); }
+#tk-settings-panel { background: var(--tk-bg-elevated); color: var(--tk-text); width: min(560px, 92vw); max-height: 85vh; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); box-shadow: var(--tk-shadow-elevated); display: flex; flex-direction: column; overflow: hidden; text-align: left; }
+#tk-settings-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--tk-border); flex-shrink: 0; background: var(--tk-bg-base); text-align: left; }
+#tk-settings-header h2 { margin: 0; font-family: var(--tk-font-mono); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--tk-accent); text-align: left; }
 #tk-settings-close { display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid var(--tk-border-strong); color: var(--tk-text-muted); border-radius: var(--tk-radius-sm); width: 22px; height: 22px; cursor: pointer; }
 #tk-settings-close:hover { background: var(--tk-red); border-color: var(--tk-red); color: #fff; }
 #tk-settings-close:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
-#tk-settings-body { display: flex; flex-direction: column; overflow: hidden; flex-grow: 1; }
-#tk-settings-tabs { display: flex; gap: 2px; padding: 4px 14px 0; border-bottom: 1px solid var(--tk-border); flex-shrink: 0; background: var(--tk-bg-base); }
+#tk-settings-body { display: flex; flex-direction: column; overflow: hidden; flex-grow: 1; text-align: left; }
+#tk-settings-tabs { display: flex; gap: 2px; padding: 4px 14px 0; border-bottom: 1px solid var(--tk-border); flex-shrink: 0; background: var(--tk-bg-base); text-align: left; }
 .tk-settings-tab { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--tk-text-muted); font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 6px 8px; cursor: pointer; }
 .tk-settings-tab:hover { color: var(--tk-text); }
 .tk-settings-tab.active { color: var(--tk-accent); border-bottom-color: var(--tk-accent); }
 .tk-settings-tab:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: -2px; }
-#tk-settings-tab-content { overflow-y: auto; flex-grow: 1; padding: 12px 14px; }
-#tk-settings-modules, #tk-settings-global { width: 100%; }
-.tk-settings-section-title { font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; color: var(--tk-teal); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px 0; }
-.tk-settings-module-row { border-bottom: 1px solid var(--tk-border); padding: 6px 0; }
+#tk-settings-tab-content { overflow-y: auto; flex-grow: 1; padding: 14px 16px; text-align: left; }
+#tk-settings-modules, #tk-settings-global { width: 100%; text-align: left; }
+.tk-settings-section-title { font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; color: var(--tk-teal); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px 0; text-align: left; }
+.tk-settings-module-row { border-bottom: 1px solid var(--tk-border); padding: 8px 0; text-align: left; }
 .tk-settings-module-row:last-child { border-bottom: none; }
-.tk-settings-module-row label.tk-module-label { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; font-size: 11.5px; font-weight: 700; }
-.tk-settings-module-desc { font-size: 10.5px; color: var(--tk-text-muted); margin: 2px 0 0 20px; line-height: 1.35; }
-.tk-settings-actions { margin: 4px 0 0 20px; display: flex; flex-direction: column; gap: 3px; }
-.tk-settings-actions label { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 400; cursor: pointer; color: var(--tk-text-muted); }
-.tk-settings-field { margin-bottom: 10px; }
-.tk-settings-field label { display: block; font-size: 10.5px; font-weight: 700; margin-bottom: 3px; }
+.tk-settings-module-row label.tk-module-label { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; font-size: 11.5px; font-weight: 700; text-align: left; }
+.tk-settings-module-desc { font-size: 10.5px; color: var(--tk-text-muted); margin: 2px 0 0 20px; line-height: 1.35; text-align: left; }
+.tk-settings-actions { margin: 4px 0 0 20px; display: flex; flex-direction: column; gap: 3px; text-align: left; }
+.tk-settings-actions label { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 400; cursor: pointer; color: var(--tk-text-muted); text-align: left; }
+.tk-settings-field { margin-bottom: 12px; text-align: left; }
+.tk-settings-field label { display: block; font-size: 10.5px; font-weight: 700; margin-bottom: 3px; text-align: left; }
 .tk-settings-field .tk-field-value { color: var(--tk-teal); font-weight: 400; font-family: var(--tk-font-mono); }
 .tk-settings-field input[type="range"] { width: 100%; accent-color: var(--tk-accent); }
 .tk-settings-field select { width: 100%; padding: 4px; background: var(--tk-bg-base); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); font-size: 11px; }
 .tk-settings-field select:focus-visible,
 #tk-settings-panel input[type="checkbox"]:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
 #tk-settings-panel input[type="checkbox"] { accent-color: var(--tk-accent); }
-.tk-contract-list { list-style: none; margin: 4px 0 0 0; padding: 0; font-family: var(--tk-font-mono); font-size: 10px; line-height: 1.5; }
+.tk-contract-list { list-style: none; margin: 4px 0 0 0; padding: 0; font-family: var(--tk-font-mono); font-size: 10px; line-height: 1.5; text-align: left; }
+.tk-contract-list li { text-align: left; }
 .tk-contract-list li.ok { color: var(--tk-text-muted); }
 .tk-contract-list li.bad { color: var(--tk-red); font-weight: 700; }
-.tk-diag-list { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 12px 0; font-size: 11px; }
-.tk-diag-list dt { font-family: var(--tk-font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tk-text-muted); }
-.tk-diag-list dd { margin: 0; word-break: break-word; }
-#tk-settings-help { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--tk-border); font-size: 10.5px; color: var(--tk-text-muted); line-height: 1.5; }
+#tk-settings-diagnostics { text-align: left; }
+#tk-settings-diagnostics .tk-settings-section-title { text-align: left; }
+#tk-settings-diagnostics .tk-settings-field { text-align: left; }
+#tk-settings-diagnostics .tk-settings-field label { text-align: left; }
+.tk-diag-list { display: grid; grid-template-columns: 140px 1fr; gap: 6px 16px; margin: 0 0 14px 0; font-size: 11px; text-align: left; align-items: baseline; }
+.tk-diag-list dt { font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tk-text-muted); text-align: left; }
+.tk-diag-list dd { margin: 0; word-break: break-word; text-align: left; color: var(--tk-text); }
+#tk-settings-help { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--tk-border); font-size: 10.5px; color: var(--tk-text-muted); line-height: 1.5; text-align: left; }
 #tk-settings-help a { color: var(--tk-blue); }
 
-.tk-settings-hint { font-size: 10px; color: var(--tk-text-muted); margin-top: 2px; line-height: 1.3; }
+.tk-settings-hint { font-size: 10px; color: var(--tk-text-muted); margin-top: 2px; line-height: 1.3; text-align: left; }
 
-.tk-route-editor { margin: 8px 0 4px 20px; }
-.tk-route-editor-title { font-family: var(--tk-font-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tk-text-muted); margin-bottom: 4px; }
+.tk-route-editor { margin: 6px 0 4px 16px; text-align: left; }
+.tk-route-editor-title { font-family: var(--tk-font-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tk-text-muted); margin-bottom: 4px; text-align: left; }
 .tk-route-rows { display: flex; flex-direction: column; gap: 4px; }
 .tk-route-row { display: flex; gap: 4px; align-items: center; }
 .tk-route-row input[type="text"] { flex: 1 1 auto; min-width: 0; padding: 4px 6px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); font-family: var(--tk-font-mono); font-size: 10px; }

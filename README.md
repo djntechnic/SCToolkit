@@ -1,8 +1,8 @@
 # SCToolkit
 
-A userscript toolkit for sports card database browsing: instant table filtering, keyboard-first data entry, set shortcut badges, and a polite, rate-limited CSV export.
+A userscript toolkit for sports card database browsing: instant table & set list filtering, keyboard-first data entry, set shortcut badges, checklist links, customizable button display modes, and polite, rate-limited CSV export.
 
-> **Status:** v3.0 is in active development. The full v2.42 feature set is ported and under test; UI redesign and anti-scraping hardening land in later phases.
+> **Status:** v3.0.1 is available. Featuring universal real-time filtering, checklist shortcuts, Title Case standardized controls, and configurable button display modes (Icon Only, Text Only, Both).
 
 ---
 
@@ -16,15 +16,16 @@ A userscript toolkit for sports card database browsing: instant table filtering,
 
 | Feature | Where |
 |---|---|
-| Fixed toolbar with page context, pinned sets grouped by year, and a status readout | every page |
-| Shortcut badges — inserts, parallels, for-sale, add-multiples, wantlist | set-scoped pages |
-| Pin / CSV / shortcut badges beside every set link | set listings |
-| Real-time table filter | checklist, for-sale, wantlist, add-multiples |
+| Fixed toolbar with page context, pinned sets grouped by year, active module status popover, and checklist shortcut button | every page |
+| Shortcut badges — checklist, inserts, parallels, for-sale, add-multiples, wantlist | set-scoped pages |
+| Pin / CSV / shortcut badges beside set links | set listings & index pages |
+| Real-time table & list filter bar | checklist, inserts, viewall/viewallc, for-sale, wantlist, add-multiples |
+| Customizable button display modes (Icon Only, Text Only, Both) | Toolbar, Pinned Sets, and Injected Set links |
 | Enter-to-Tab across text and number inputs | any page with inputs |
 | Sale-type defaults and first-empty-field focus | add-multiples |
 | Multi-page checklist export to CSV — paced, retrying, and queued one at a time | set-scoped pages |
 | Raw-table CSV export | collection, player collection, print views |
-| Settings: per-module enablement, editable route patterns, thresholds, log level | toolbar gear icon |
+| Settings: per-module enablement, editable route patterns, Title Case thresholds, log level | toolbar gear icon |
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed and what is still outstanding.
 

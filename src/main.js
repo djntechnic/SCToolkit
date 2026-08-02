@@ -60,7 +60,8 @@ async function boot() {
 
   setStatus(
     `${loadedModuleNames.length} Modules Active`,
-    `Active Modules:\n• ${loadedModuleNames.join('\n• ')}`
+    `Active Modules:\n• ${loadedModuleNames.join('\n• ')}`,
+    loadedModuleNames
   );
 
   showToast({

@@ -47,7 +47,7 @@ test('actionLabels only name toggles that exist in config', () => {
 });
 
 test('the checklist filter resolves on every listing route', () => {
-  [URL_CHECKLIST, URL_WANTLIST, URL_ADD_MULTIPLES].forEach((url) => {
+  [URL_CHECKLIST, URL_WANTLIST, URL_ADD_MULTIPLES, URL_VIEWALL, 'https://example.test/Inserts.cfm/sid/1/'].forEach((url) => {
     assert.ok(ids(url).includes('checklistEnhancer'), url);
   });
 });

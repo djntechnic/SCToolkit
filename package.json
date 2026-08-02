@@ -1,6 +1,6 @@
 {
   "name": "sctoolkit",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Userscript toolkit for sports card database browsing: filtering, shortcuts, and polite CSV export.",
   "type": "module",
   "private": false,
@@ -20,6 +20,7 @@
   "scripts": {
     "banner": "node scripts/banner.js",
     "build": "node scripts/build.js",
+    "dev": "node scripts/build.js --watch",
     "lint": "eslint .",
     "test": "node --test \"test/**/*.test.js\"",
     "check": "npm run lint && npm run build && npm test && node scripts/verify-dist.js"

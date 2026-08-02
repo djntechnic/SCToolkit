@@ -42,7 +42,7 @@ export const ModuleRegistry = [
     init: initChecklistEnhancer,
     isAsync: false,
     actionLabels: {
-      realtimeFilter: 'Real-time table filter bar'
+      realtimeFilter: 'Real-Time Table Filter Bar'
     }
   },
   {

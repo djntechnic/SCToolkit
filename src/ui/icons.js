@@ -16,54 +16,70 @@
  * @type {Record<string, {size: number, strokeWidth: number, body: string}>}
  */
 export const ICONS = {
+  list: {
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+  },
   bolt: {
-    size: 12, strokeWidth: 1.5,
-    body: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M15.914 4a1.5 1.5 0 0 0-2.474-1.561l-9 9A1.5 1.5 0 0 0 5.5 14h4.002a.5.5 0 0 1 .471.666L8.086 20a1.5 1.5 0 0 0 2.475 1.56l9-9A1.5 1.5 0 0 0 18.5 10h-3.997a.5.5 0 0 1-.472-.667z"/>',
   },
   gem: {
-    size: 12, strokeWidth: 1.5,
-    body: '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3 8 9l3 12"/><path d="M13 3l3 6-3 12"/><path d="M2 9h20"/>'
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M10.5 3 8 9l4 13 4-13-2.5-6"/><path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z"/><path d="M2 9h20"/>',
   },
   tag: {
-    size: 12, strokeWidth: 1.5,
-    body: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>'
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
   },
   layers: {
-    size: 12, strokeWidth: 1.5,
-    body: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>'
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/>',
   },
   star: {
-    size: 12, strokeWidth: 1.5,
-    body: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
   },
   download: {
-    size: 12, strokeWidth: 1.5,
-    body: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
   },
   pin: {
-    size: 12, strokeWidth: 1.5,
-    body: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
   },
   x: {
-    size: 11, strokeWidth: 2,
-    body: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
+    size: 11,
+    strokeWidth: 2,
+    body: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   },
   chevronUp: {
-    size: 12, strokeWidth: 2,
-    body: '<polyline points="18 15 12 9 6 15"/>'
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="m18 15-6-6-6 6"/>',
   },
   plus: {
-    size: 11, strokeWidth: 2,
-    body: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'
+    size: 11,
+    strokeWidth: 2,
+    body: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   },
   gear: {
-    size: 12, strokeWidth: 1.5,
-    body: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
-  }
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/>',
+  },
 };
 
 /** DOM id of the injected sprite, so a second injection can be skipped. */
-export const SPRITE_ID = 'sctk-icon-sprite';
+export const SPRITE_ID = "sctk-icon-sprite";
 
 /** @param {string} name @returns {string} the symbol's element id */
 export const symbolId = (name) => `tk-i-${name}`;
@@ -78,10 +94,13 @@ export const symbolId = (name) => `tk-i-${name}`;
  * @returns {string}
  */
 export function buildSprite() {
-  const symbols = Object.entries(ICONS).map(([name, { strokeWidth, body }]) =>
-    `<symbol id="${symbolId(name)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
-    `stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${body}</symbol>`
-  ).join('');
+  const symbols = Object.entries(ICONS)
+    .map(
+      ([name, { strokeWidth, body }]) =>
+        `<symbol id="${symbolId(name)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+        `stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${body}</symbol>`,
+    )
+    .join("");
 
   return `<svg id="${SPRITE_ID}" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">${symbols}</svg>`;
 }
@@ -92,8 +111,9 @@ export function buildSprite() {
  * Must run before any icon is rendered; the bootstrap does it first thing.
  */
 export function installIconSprite() {
-  if (document.getElementById(SPRITE_ID)) return;
-  const holder = document.createElement('div');
+  const existing = document.getElementById(SPRITE_ID);
+  if (existing) existing.remove();
+  const holder = document.createElement("div");
   holder.innerHTML = buildSprite();
   document.body.prepend(holder.firstChild);
 }
@@ -107,6 +127,6 @@ export function installIconSprite() {
  */
 export function icon(name) {
   const def = ICONS[name];
-  if (!def) return '';
+  if (!def) return "";
   return `<svg class="tk-icon" width="${def.size}" height="${def.size}" aria-hidden="true"><use href="#${symbolId(name)}"/></svg>`;
 }
