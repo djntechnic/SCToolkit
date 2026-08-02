@@ -42,5 +42,5 @@ export const Routes = {
    */
   isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()),
 
-  hasPagination: () => !!document.querySelector('.pagination') && !path().includes('addmultiples')
+  hasPagination: (root = document) => !path().includes('addmultiples') && (!!root.querySelector('.pagination') || Routes.isSetPage() || Routes.isCollection() || Routes.isPlayerCollection())
 };

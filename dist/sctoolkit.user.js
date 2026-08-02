@@ -253,7 +253,17 @@
         });
         merged.modules[id] = { ...defaults, ...stored.modules[id], actions };
       });
-      merged.global = { ...merged.global, ...stored.global || {} };
+      const validGlobalKeys = new Set(Object.keys(DEFAULT_CONFIG.global));
+      const storedGlobal = stored.global || {};
+      const global = { ...merged.global };
+      Object.keys(storedGlobal).forEach((key) => {
+        if (validGlobalKeys.has(key)) {
+          global[key] = storedGlobal[key];
+        } else {
+          Log(`Stored config contains obsolete global setting '${key}' — pruned during migration.`, "warn");
+        }
+      });
+      merged.global = global;
       return merged;
     },
     save: (config) => {
@@ -1661,7 +1671,7 @@
      * a set-scoped route cannot leave this out of date.
      */
     isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()),
-    hasPagination: () => !!document.querySelector(".pagination") && !path().includes("addmultiples")
+    hasPagination: (root = document) => !path().includes("addmultiples") && (!!root.querySelector(".pagination") || Routes.isSetPage() || Routes.isCollection() || Routes.isPlayerCollection())
   };
 
   // src/ui/styles.js
@@ -2489,11 +2499,24 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   var EXPORT_BUTTON_IDS = ["btn-csv-coll", "btn-csv-player", "btn-csv-pdf"];
 
   // src/modules/paginationLoader.js
-  function initPaginationLoader() {
-    if (!Routes.hasPagination()) return Promise.resolve();
+  function initPaginationLoader(root = document) {
+    if (!Routes.hasPagination(root)) return Promise.resolve();
     setStatus("Loading Pagination...");
+    const delayMs = Config.global.paginationLoaderDelayMs || 1e3;
+    const pollIntervalMs = 50;
     return new Promise((resolve) => {
-      setTimeout(resolve, Config.global.paginationLoaderDelayMs);
+      if (root.querySelector(".pagination")) {
+        resolve();
+        return;
+      }
+      const startTime = Date.now();
+      const timer = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        if (root.querySelector(".pagination") || elapsed >= delayMs) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, pollIntervalMs);
     });
   }
 
