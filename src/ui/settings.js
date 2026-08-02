@@ -18,6 +18,7 @@ import { getContractResults } from '../core/contracts.js';
 import { showToast } from './toast.js';
 import { Toolbar } from './toolbar.js';
 import { reinjectSetActions } from '../modules/setListEnhancer.js';
+import { DiagnosticTests } from '../core/diagnostics.js';
 
 export const SettingsUI = {
   overlayId: 'tk-settings-overlay',
@@ -665,9 +666,36 @@ export const SettingsUI = {
     });
     pane.appendChild(table);
 
+    pane.appendChild(SettingsUI._buildDiagnosticsTestPanel());
     pane.appendChild(SettingsUI._buildContractPanel());
     pane.appendChild(SettingsUI._buildCachePanel());
     return pane;
+  },
+
+  /**
+   * Render diagnostic self-test results for CSV escaping, Pacing state, and route matching.
+   */
+  _buildDiagnosticsTestPanel: () => {
+    const field = document.createElement('div');
+    field.className = 'tk-settings-field';
+
+    const label = document.createElement('label');
+    label.textContent = 'Diagnostic Self-Tests';
+    field.appendChild(label);
+
+    const testResults = DiagnosticTests.run();
+    const list = document.createElement('ul');
+    list.className = 'tk-contract-list';
+
+    testResults.forEach(({ name, pass, detail }) => {
+      const item = document.createElement('li');
+      item.className = pass ? 'ok' : 'bad';
+      item.textContent = `${pass ? 'PASS' : 'FAIL'} · ${name} · ${detail}`;
+      list.appendChild(item);
+    });
+
+    field.appendChild(list);
+    return field;
   },
 
   /**

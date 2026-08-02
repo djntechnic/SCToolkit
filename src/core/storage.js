@@ -65,6 +65,20 @@ export const Pins = {
   }
 };
 
+/** Four-digit year regex pattern matching years at the start of a string. */
+export const SET_YEAR_REGEX = /^(\d{4})/;
+
+/**
+ * Extract a four-digit set year from a text string or title.
+ *
+ * @param {string} str
+ * @returns {string|null} four-digit year string, or null if no year is found
+ */
+export function extractSetYear(str) {
+  const match = String(str || '').match(SET_YEAR_REGEX);
+  return match ? match[1] : null;
+}
+
 /**
  * Derive the display year for a pinned set.
  *
@@ -80,6 +94,6 @@ export const Pins = {
 export function deriveSetYear(name, href = '') {
   const fromHref = href.match(/\/sid\/\d+\/(\d{4})/i) || href.match(/sid=\d+.*?(\d{4})/i);
   if (fromHref) return fromHref[1];
-  const fromName = String(name || '').match(/^(\d{4})/);
-  return fromName ? fromName[1] : 'Misc';
+  const fromName = extractSetYear(name);
+  return fromName || 'Misc';
 }
