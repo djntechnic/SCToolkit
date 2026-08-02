@@ -7,7 +7,7 @@ import { Config } from '../core/config.js';
 import { Routes } from '../core/routes.js';
 import { extractSid } from '../core/sid.js';
 import { Log } from '../core/log.js';
-import { Pins, deriveSetYear } from '../core/storage.js';
+import { Pins, SET_YEAR_REGEX, deriveSetYear } from '../core/storage.js';
 import { CurrentRun, cancelCurrentExport, exportSetCSV } from '../net/setExport.js';
 import { TOOLBAR_BADGES, createBadge, renderBadgeSet } from './badges.js';
 import { createBtn, injectStyle } from './dom.js';
@@ -184,7 +184,7 @@ export const Toolbar = {
     if (pins.length === 0) return;
 
     const grouped = pins.reduce((acc, pin) => {
-      const year = /^\d{4}$/.test(pin.year) ? pin.year : deriveSetYear(pin.name, pin.url);
+      const year = SET_YEAR_REGEX.test(pin.year) ? pin.year : deriveSetYear(pin.name, pin.url);
       (acc[year] ||= []).push(pin);
       return acc;
     }, {});

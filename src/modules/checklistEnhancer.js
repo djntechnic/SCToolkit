@@ -64,11 +64,26 @@ export function buildRowIndex(mainContent) {
  */
 export function applyFilter(index, term) {
   let visible = 0;
+  const updates = [];
+
   index.forEach(({ el, haystack }) => {
     const match = term === '' || haystack.includes(term);
-    el.classList.toggle(HIDDEN_CLASS, !match);
+    updates.push({ el, match });
     if (match) visible++;
   });
+
+  const updateVisibility = () => {
+    updates.forEach(({ el, match }) => {
+      el.classList.toggle(HIDDEN_CLASS, !match);
+    });
+  };
+
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(updateVisibility);
+  } else {
+    updateVisibility();
+  }
+
   return visible;
 }
 

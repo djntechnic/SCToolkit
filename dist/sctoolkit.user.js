@@ -99,11 +99,16 @@
       setValue(PINNED_SETS_KEY, Pins.all().filter((p) => p.id !== id));
     }
   };
+  var SET_YEAR_REGEX = /^(\d{4})/;
+  function extractSetYear(str) {
+    const match = String(str || "").match(SET_YEAR_REGEX);
+    return match ? match[1] : null;
+  }
   function deriveSetYear(name, href = "") {
     const fromHref = href.match(/\/sid\/\d+\/(\d{4})/i) || href.match(/sid=\d+.*?(\d{4})/i);
     if (fromHref) return fromHref[1];
-    const fromName = String(name || "").match(/^(\d{4})/);
-    return fromName ? fromName[1] : "Misc";
+    const fromName = extractSetYear(name);
+    return fromName || "Misc";
   }
 
   // src/core/config.js
@@ -525,11 +530,22 @@
   }
   function applyFilter(index, term) {
     let visible = 0;
+    const updates = [];
     index.forEach(({ el, haystack }) => {
       const match = term === "" || haystack.includes(term);
-      el.classList.toggle(HIDDEN_CLASS, !match);
+      updates.push({ el, match });
       if (match) visible++;
     });
+    const updateVisibility = () => {
+      updates.forEach(({ el, match }) => {
+        el.classList.toggle(HIDDEN_CLASS, !match);
+      });
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(updateVisibility);
+    } else {
+      updateVisibility();
+    }
     return visible;
   }
   function findFilterScope(root = document) {
@@ -644,7 +660,7 @@
     fallbackLabel = "",
     kind = "checklist"
   } = {}) {
-    const cleanYear = year || (String(fallbackLabel || "").match(/^(\d{4})/)?.[1] ?? "");
+    const cleanYear = year || extractSetYear(fallbackLabel) || "";
     const cleanBaseSet = sanitizeSegment(baseSet);
     const cleanSubSet = setName ? `_${compactSegment(setName)}` : "";
     const suffix = EXPORT_KIND_SUFFIX[kind] ?? EXPORT_KIND_SUFFIX.checklist;
@@ -808,10 +824,10 @@
       const h1 = setnameContent.querySelector("h1");
       if (h1) {
         const h1Text = norm(h1).replace(/\s*-\s*Cards$/i, "").trim();
-        const yearMatch = h1Text.match(/^(\d{4})\s+(.+)/);
-        if (yearMatch) {
-          year = yearMatch[1];
-          baseSet = yearMatch[2];
+        const yearStr = extractSetYear(h1Text);
+        if (yearStr && h1Text.startsWith(yearStr)) {
+          year = yearStr;
+          baseSet = h1Text.slice(yearStr.length).trim();
         } else {
           baseSet = h1Text;
         }
@@ -2160,7 +2176,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       const pins = Pins.all();
       if (pins.length === 0) return;
       const grouped = pins.reduce((acc, pin) => {
-        const year = /^\d{4}$/.test(pin.year) ? pin.year : deriveSetYear(pin.name, pin.url);
+        const year = SET_YEAR_REGEX.test(pin.year) ? pin.year : deriveSetYear(pin.name, pin.url);
         (acc[year] ||= []).push(pin);
         return acc;
       }, {});
@@ -2604,6 +2620,54 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       if (Config.global.theme === "auto") applyTheme();
     });
   }
+
+  // src/core/diagnostics.js
+  var DiagnosticTests = {
+    /**
+     * Run lightweight self-tests on key runtime systems.
+     *
+     * @returns {Array<{ name: string, pass: boolean, detail: string }>}
+     */
+    run: () => {
+      const results2 = [];
+      try {
+        const quoted = escapeField("hello, world");
+        const plain = escapeField("plain");
+        const pass = quoted === '"hello, world"' && plain === "plain";
+        results2.push({
+          name: "CSV Field Escaping",
+          pass,
+          detail: pass ? "RFC 4180 escaping operational" : `Unexpected result: ${quoted}`
+        });
+      } catch (err) {
+        results2.push({ name: "CSV Field Escaping", pass: false, detail: err.message });
+      }
+      try {
+        const pass = typeof Pacing.penaltyMs === "number" && typeof Pacing.lastLatencyMs === "number" && Array.isArray(Pacing.samples);
+        results2.push({
+          name: "Pacing State Initialization",
+          pass,
+          detail: pass ? `Penalty ${Pacing.penaltyMs}ms, Latency ${Pacing.lastLatencyMs}ms` : "Pacing state structure invalid"
+        });
+      } catch (err) {
+        results2.push({ name: "Pacing State Initialization", pass: false, detail: err.message });
+      }
+      try {
+        const pass = testUrlMatch(
+          [{ pattern: "/checklist\\.cfm", exclude: false }],
+          "https://www.tcdb.com/Checklist.cfm/sid/1/"
+        );
+        results2.push({
+          name: "Route Pattern Matching",
+          pass,
+          detail: pass ? "Pattern resolution operational" : "URL pattern matching failed"
+        });
+      } catch (err) {
+        results2.push({ name: "Route Pattern Matching", pass: false, detail: err.message });
+      }
+      return results2;
+    }
+  };
 
   // src/ui/settings.js
   var SettingsUI = {
@@ -3145,9 +3209,31 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         table.append(dt, dd);
       });
       pane.appendChild(table);
+      pane.appendChild(SettingsUI._buildDiagnosticsTestPanel());
       pane.appendChild(SettingsUI._buildContractPanel());
       pane.appendChild(SettingsUI._buildCachePanel());
       return pane;
+    },
+    /**
+     * Render diagnostic self-test results for CSV escaping, Pacing state, and route matching.
+     */
+    _buildDiagnosticsTestPanel: () => {
+      const field = document.createElement("div");
+      field.className = "tk-settings-field";
+      const label = document.createElement("label");
+      label.textContent = "Diagnostic Self-Tests";
+      field.appendChild(label);
+      const testResults = DiagnosticTests.run();
+      const list = document.createElement("ul");
+      list.className = "tk-contract-list";
+      testResults.forEach(({ name, pass, detail }) => {
+        const item = document.createElement("li");
+        item.className = pass ? "ok" : "bad";
+        item.textContent = `${pass ? "PASS" : "FAIL"} · ${name} · ${detail}`;
+        list.appendChild(item);
+      });
+      field.appendChild(list);
+      return field;
     },
     /**
      * Every DOM assumption checked on this page, and whether it held.

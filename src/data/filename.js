@@ -49,6 +49,8 @@ export const EXPORT_KIND_SUFFIX = {
   addMultiples: '_AddMultiples'
 };
 
+import { extractSetYear } from '../core/storage.js';
+
 /**
  * Build the download filename for a set export.
  *
@@ -72,7 +74,7 @@ export function buildExportFilename({
   fallbackLabel = '',
   kind = 'checklist'
 } = {}) {
-  const cleanYear = year || (String(fallbackLabel || '').match(/^(\d{4})/)?.[1] ?? '');
+  const cleanYear = year || extractSetYear(fallbackLabel) || '';
   const cleanBaseSet = sanitizeSegment(baseSet);
   const cleanSubSet = setName ? `_${compactSegment(setName)}` : '';
   const suffix = EXPORT_KIND_SUFFIX[kind] ?? EXPORT_KIND_SUFFIX.checklist;

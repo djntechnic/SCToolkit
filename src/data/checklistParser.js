@@ -15,6 +15,8 @@
  * minus a dependence on layout that no rendered layout ever provides.
  */
 
+import { extractSetYear } from '../core/storage.js';
+
 /** Column order of the exported checklist CSV. */
 export const CHECKLIST_HEADER = [
   'Year', 'Base Set', 'Set Name', 'Card No', 'Subject', 'Tags', 'Print Run', 'Team', 'Variations'
@@ -342,10 +344,10 @@ export function parseSetIdentity(doc) {
     const h1 = setnameContent.querySelector('h1');
     if (h1) {
       const h1Text = norm(h1).replace(/\s*-\s*Cards$/i, '').trim();
-      const yearMatch = h1Text.match(/^(\d{4})\s+(.+)/);
-      if (yearMatch) {
-        year = yearMatch[1];
-        baseSet = yearMatch[2];
+      const yearStr = extractSetYear(h1Text);
+      if (yearStr && h1Text.startsWith(yearStr)) {
+        year = yearStr;
+        baseSet = h1Text.slice(yearStr.length).trim();
       } else {
         baseSet = h1Text;
       }
