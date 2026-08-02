@@ -146,16 +146,25 @@ async function fetchAllPages(setId, signal, progress) {
 
     if (pageIndex === 1) {
       identity = { year: parsed.year, baseSet: parsed.baseSet, setName: parsed.setName };
-      totalPages = parsed.totalPages;
+      const discoveredPages = parsed.totalPages;
 
-      if (totalPages > EXPORT_CONFIG.maxPages) {
-        throw new Error(
-          `Discovered page count (${totalPages}) exceeds safety ceiling ` +
-          `(${EXPORT_CONFIG.maxPages}). Likely a pagination-parsing regression — export aborted before fetching.`
+      // If discovered pages exceed safety ceiling, cap to maxPages and warn user via toast instead of throwing a fatal error
+      if (discoveredPages > EXPORT_CONFIG.maxPages) {
+        totalPages = EXPORT_CONFIG.maxPages;
+        Log(
+          `Discovered page count (${discoveredPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
+          'warn'
         );
+        showToast({
+          message:
+            `Set has <b>${discoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). ` +
+            `Exporting first ${EXPORT_CONFIG.maxPages} pages only.`,
+          variant: 'warn'
+        });
+      } else {
+        totalPages = discoveredPages;
+        Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, 'info');
       }
-
-      Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, 'info');
     }
 
     rows.push(...parsed.rows);

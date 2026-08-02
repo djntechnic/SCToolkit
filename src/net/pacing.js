@@ -69,11 +69,15 @@ export function nextPenalty(current, signal) {
  */
 export const Pacing = {
   penaltyMs: 0,
+  /** Latency of the most recent response in ms. */
+  lastLatencyMs: 0,
   /** @type {number[]} */
   samples: [],
 
   reset() {
+    // Reset accumulated penalty, last response latency, and sample history
     Pacing.penaltyMs = 0;
+    Pacing.lastLatencyMs = 0;
     Pacing.samples = [];
   },
 
@@ -84,6 +88,8 @@ export const Pacing = {
    * @param {boolean} [throttled] true when the response was an HTTP 429/503
    */
   record(latencyMs, throttled = false) {
+    // Store latest response latency state
+    Pacing.lastLatencyMs = latencyMs;
     Pacing.samples.push(latencyMs);
     if (Pacing.samples.length > SAMPLE_WINDOW) Pacing.samples.shift();
 

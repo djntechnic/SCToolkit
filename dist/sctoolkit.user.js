@@ -597,7 +597,8 @@
     return rows.map(buildRow).join("\n");
   }
   function download(csvContent, filename) {
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const bom = new Uint8Array([239, 187, 191]);
+    const blob = new Blob([bom, csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
@@ -1048,10 +1049,13 @@
   }
   var Pacing = {
     penaltyMs: 0,
+    /** Latency of the most recent response in ms. */
+    lastLatencyMs: 0,
     /** @type {number[]} */
     samples: [],
     reset() {
       Pacing.penaltyMs = 0;
+      Pacing.lastLatencyMs = 0;
       Pacing.samples = [];
     },
     /**
@@ -1061,6 +1065,7 @@
      * @param {boolean} [throttled] true when the response was an HTTP 429/503
      */
     record(latencyMs, throttled = false) {
+      Pacing.lastLatencyMs = latencyMs;
       Pacing.samples.push(latencyMs);
       if (Pacing.samples.length > SAMPLE_WINDOW) Pacing.samples.shift();
       const signal = throttled ? "throttled" : median(Pacing.samples) > SLOW_RESPONSE_MS ? "slow" : "ok";
@@ -1338,13 +1343,21 @@
       const parsed = parseChecklistDocument(doc);
       if (pageIndex === 1) {
         identity = { year: parsed.year, baseSet: parsed.baseSet, setName: parsed.setName };
-        totalPages = parsed.totalPages;
-        if (totalPages > EXPORT_CONFIG.maxPages) {
-          throw new Error(
-            `Discovered page count (${totalPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Likely a pagination-parsing regression — export aborted before fetching.`
+        const discoveredPages = parsed.totalPages;
+        if (discoveredPages > EXPORT_CONFIG.maxPages) {
+          totalPages = EXPORT_CONFIG.maxPages;
+          Log(
+            `Discovered page count (${discoveredPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
+            "warn"
           );
+          showToast({
+            message: `Set has <b>${discoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). Exporting first ${EXPORT_CONFIG.maxPages} pages only.`,
+            variant: "warn"
+          });
+        } else {
+          totalPages = discoveredPages;
+          Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, "info");
         }
-        Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, "info");
       }
       rows.push(...parsed.rows);
       Log(`Page ${pageIndex}/${totalPages} parsed successfully. ${parsed.rows.length} rows retrieved.`, "info");
