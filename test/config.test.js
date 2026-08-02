@@ -60,6 +60,23 @@ test('migrate: a current-version config keeps its stored values', () => {
   assert.equal(result.global.toastDurationMs, 9000);
 });
 
+test('migrate: obsolete global settings present in stored config are pruned', () => {
+  const stored = {
+    schemaVersion: DEFAULT_CONFIG.schemaVersion,
+    modules: {},
+    global: {
+      toastDurationMs: 8000,
+      obsoleteGlobalSetting: 'should_be_pruned',
+      anotherDeadKey: 123
+    }
+  };
+  const result = SettingsStore.migrate(stored);
+
+  assert.equal(result.global.toastDurationMs, 8000);
+  assert.equal('obsoleteGlobalSetting' in result.global, false);
+  assert.equal('anotherDeadKey' in result.global, false);
+});
+
 test('migrate: fields absent from storage are filled from defaults', () => {
   const result = SettingsStore.migrate({
     schemaVersion: DEFAULT_CONFIG.schemaVersion, modules: {}, global: {}

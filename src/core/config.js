@@ -174,7 +174,19 @@ export const SettingsStore = {
       merged.modules[id] = { ...defaults, ...stored.modules[id], actions };
     });
 
-    merged.global = { ...merged.global, ...(stored.global || {}) };
+    const validGlobalKeys = new Set(Object.keys(DEFAULT_CONFIG.global));
+    const storedGlobal = stored.global || {};
+    const global = { ...merged.global };
+
+    Object.keys(storedGlobal).forEach((key) => {
+      if (validGlobalKeys.has(key)) {
+        global[key] = storedGlobal[key];
+      } else {
+        Log(`Stored config contains obsolete global setting '${key}' — pruned during migration.`, 'warn');
+      }
+    });
+
+    merged.global = global;
     return merged;
   },
 
