@@ -203,6 +203,20 @@ test('Pacing: recovery decays the penalty back to zero', () => {
   assert.equal(Pacing.penaltyMs, 0);
 });
 
+test('Pacing: lastLatencyMs is initialized to 0, updated on record, and cleared on reset', () => {
+  Pacing.reset();
+  assert.equal(Pacing.lastLatencyMs, 0);
+
+  Pacing.record(350);
+  assert.equal(Pacing.lastLatencyMs, 350);
+
+  Pacing.record(800, true);
+  assert.equal(Pacing.lastLatencyMs, 800);
+
+  Pacing.reset();
+  assert.equal(Pacing.lastLatencyMs, 0);
+});
+
 test('Pacing: the sample window is bounded', () => {
   Pacing.reset();
   for (let i = 0; i < 50; i++) Pacing.record(100);

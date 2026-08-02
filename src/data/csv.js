@@ -42,7 +42,10 @@ export function toCSV(rows) {
  * @param {string} filename
  */
 export function download(csvContent, filename) {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  // Prepend UTF-8 BOM (\uFEFF) to guarantee proper character rendering in MS Excel
+  const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+  const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
   link.setAttribute('href', url);
