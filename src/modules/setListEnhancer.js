@@ -8,6 +8,7 @@
  * chunks so a large page stays responsive while they appear.
  */
 
+import { Config } from '../core/config.js';
 import { Log } from '../core/log.js';
 import { extractSid } from '../core/sid.js';
 import { Pins, deriveSetYear } from '../core/storage.js';
@@ -17,9 +18,6 @@ import { assertContract, recordContract } from '../core/contracts.js';
 import { escapeHtml } from '../ui/dom.js';
 import { showToast } from '../ui/toast.js';
 import { Toolbar } from '../ui/toolbar.js';
-
-/** How long to wait for lazily rendered set links before giving up. */
-const LATE_RENDER_TIMEOUT_MS = 3000;
 
 /** Links processed per idle slice. */
 const CHUNK_SIZE = 25;
@@ -44,8 +42,28 @@ const onIdle = typeof requestIdleCallback === 'function'
  * @returns {HTMLAnchorElement[]}
  */
 export function findSetLinks(root = document) {
-  return Array.from(root.querySelectorAll(SET_LINK_SELECTOR))
-    .filter((link) => link.textContent.trim().length > 0 && !link.querySelector('img, i, svg'));
+  return Array.from(root.querySelectorAll(SET_LINK_SELECTOR)).filter((link) => {
+    if (link.closest('#sctk-toolbar')) return false;
+    if (!extractSid(link.href)) return false;
+
+    const text = link.textContent.trim();
+    if (text.length === 0) return false;
+
+    // Exclude links that consist purely of expand/collapse carets or symbols (e.g. ▶, ▼, +)
+    if (/^[\u25B6\u25C0\u25BC\u25B2►◄▼▲\s+-]+$/.test(text)) return false;
+
+    return true;
+  });
+}
+
+/**
+ * Set links that have not yet been enhanced with badge groups.
+ *
+ * @param {Document|HTMLElement} [root]
+ * @returns {HTMLAnchorElement[]}
+ */
+export function findUninjectedSetLinks(root = document) {
+  return findSetLinks(root).filter((link) => !link.dataset.tkInjected);
 }
 
 /**
@@ -85,8 +103,10 @@ function buildBadgeGroup(link, setId, currentPageSid) {
   const setName = link.textContent.trim();
 
   const container = document.createElement('span');
+  container.className = 'tk-injected-badge-group';
   container.style.display = 'inline-flex';
   container.style.alignItems = 'center';
+  container.style.marginLeft = '8px';
 
   // Inserts and Parallels only mean something for a link that heads a group
   // of sub-sets; on a leaf set they would point at empty pages.
@@ -112,10 +132,23 @@ function buildBadgeGroup(link, setId, currentPageSid) {
     onExport: (e) => {
       e.preventDefault();
       exportSetCSV(setId, setName);
-    }
+    },
+    displayMode: Config.global?.setButtonDisplay || 'both'
   });
 
   return container;
+}
+
+/**
+ * Re-render all injected badge groups on the current page to apply updated settings.
+ */
+export function reinjectSetActions() {
+  document.querySelectorAll('.tk-injected-badge-group').forEach((el) => el.remove());
+  document.querySelectorAll('[data-tk-injected]').forEach((el) => {
+    delete el.dataset.tkInjected;
+  });
+  const links = findSetLinks();
+  injectSetActions(links);
 }
 
 /**
@@ -180,58 +213,47 @@ function injectInChunks(links, onDone = () => {}) {
   step();
 }
 
+/** @type {MutationObserver|null} */
+let pageObserver = null;
+
 /**
- * Watch for set links that render after page load, and inject once they exist.
- *
- * v2.42.0 used a flat `setTimeout(500)` — too early on a slow page, and
- * pointlessly late on a fast one. The observer fires as soon as the links are
- * actually there, and disconnects on the first hit so it does not keep
- * inspecting mutations for the life of the page.
+ * Watch for set links that render dynamically or arrive via late DOM updates.
  */
-function waitForLateLinks() {
-  let settled = false;
+function observeSetLinks() {
+  if (pageObserver || typeof MutationObserver !== 'function' || typeof document === 'undefined') return;
 
-  const finish = (links) => {
-    if (settled) return;
-    settled = true;
-    observer.disconnect();
-    clearTimeout(timer);
-
-    if (links.length === 0) {
-      // Either this page genuinely has no set links, or the selectors no
-      // longer match the site's markup. Say so; the failure is otherwise
-      // completely silent.
-      assertContract('setListEnhancer', [
-        { selector: SET_LINK_SELECTOR, label: 'set links (pin/export badge anchors)' }
-      ]);
-      return;
-    }
-
-    injectInChunks(links, (n) => {
-      Log(`Set List Enhancer: badges injected for ${n} late-rendered link(s).`, 'debug');
-    });
-  };
-
-  const observer = new MutationObserver(() => {
-    const links = findSetLinks();
-    if (links.length > 0) finish(links);
+  let debounceTimer = null;
+  pageObserver = new MutationObserver(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      const pending = findUninjectedSetLinks();
+      if (pending.length > 0) {
+        injectInChunks(pending, (n) => {
+          Log(`Set List Enhancer: Enhanced ${n} late-rendered / dynamic set link(s).`, 'info');
+        });
+      }
+    }, 150);
   });
 
-  const timer = setTimeout(() => finish(findSetLinks()), LATE_RENDER_TIMEOUT_MS);
-  observer.observe(document.body, { childList: true, subtree: true });
+  pageObserver.observe(document.body, { childList: true, subtree: true });
 }
 
 export function initSetListEnhancer() {
   const setLinks = findSetLinks();
 
   if (setLinks.length === 0) {
-    waitForLateLinks();
-    return;
+    Log('Set List Enhancer: Waiting for set links to render...', 'info');
+    assertContract('setListEnhancer', [
+      { selector: SET_LINK_SELECTOR, label: 'set links (pin/export badge anchors)', optional: true }
+    ]);
+  } else {
+    const pending = findUninjectedSetLinks();
+    injectInChunks(pending, (n) => {
+      Log(`Set List Enhancer: Enhanced ${n} of ${setLinks.length} set link(s).`, 'info');
+      recordContract('setListEnhancer', `badges on ${n} of ${setLinks.length} set link(s)`, n > 0);
+    });
   }
 
-  injectInChunks(setLinks, (n) => {
-    Log(`Set List Enhancer: badges injected for ${n} of ${setLinks.length} link(s).`, 'debug');
-    // Links found but none carrying a set id means the URL shape changed.
-    recordContract('setListEnhancer', `badges on ${n} of ${setLinks.length} link(s)`, n > 0);
-  });
+  // Always observe DOM mutations to handle dynamic expansions, accordion toggles, or late renders.
+  observeSetLinks();
 }

@@ -38,7 +38,10 @@ export const DEFAULT_CONFIG = {
         { pattern: '/checklist\\.cfm', exclude: false },
         { pattern: '/viewcollectionforsaletrade\\.cfm', exclude: false },
         { pattern: '/viewcollectionwantlist\\.cfm', exclude: false },
-        { pattern: '/collectionaddmultiples', exclude: false }
+        { pattern: '/collectionaddmultiples', exclude: false },
+        { pattern: '/inserts\\.cfm', exclude: false },
+        { pattern: '/viewall\\.cfm', exclude: false },
+        { pattern: '/viewallc\\.cfm', exclude: false }
       ],
       actions: {
         realtimeFilter: true
@@ -88,7 +91,10 @@ export const DEFAULT_CONFIG = {
     paginationLoaderDelayMs: 1000,
     settingsSaveDebounceMs: 400,
     theme: 'auto',
-    logLevel: 'info'
+    logLevel: 'info',
+    toolbarButtonDisplay: 'both',
+    pinButtonDisplay: 'both',
+    setButtonDisplay: 'both'
   }
 };
 
@@ -240,3 +246,136 @@ export function testUrlMatch(rules, url) {
   const excluded = excludeRules.some((r) => safeTest(r.pattern));
   return included && !excluded;
 }
+
+function escapeXml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Serialize configuration object to XML string.
+ * @param {object} config
+ * @returns {string}
+ */
+export function configToXml(config) {
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += `<sctoolkit-settings schemaVersion="${config.schemaVersion || DEFAULT_CONFIG.schemaVersion}">\n`;
+
+  // Global settings
+  xml += '  <global>\n';
+  if (config.global) {
+    Object.entries(config.global).forEach(([k, v]) => {
+      xml += `    <${k}>${escapeXml(v)}</${k}>\n`;
+    });
+  }
+  xml += '  </global>\n';
+
+  // Modules settings
+  xml += '  <modules>\n';
+  if (config.modules) {
+    Object.entries(config.modules).forEach(([id, modCfg]) => {
+      xml += `    <module id="${escapeXml(id)}" enabled="${!!modCfg.enabled}">\n`;
+      xml += '      <urlMatch>\n';
+      (modCfg.urlMatch || []).forEach((rule) => {
+        xml += `        <rule pattern="${escapeXml(rule.pattern)}" exclude="${!!rule.exclude}" />\n`;
+      });
+      xml += '      </urlMatch>\n';
+      xml += '      <actions>\n';
+      Object.entries(modCfg.actions || {}).forEach(([actionKey, actionVal]) => {
+        xml += `        <action key="${escapeXml(actionKey)}" enabled="${!!actionVal}" />\n`;
+      });
+      xml += '      </actions>\n';
+      xml += '    </module>\n';
+    });
+  }
+  xml += '  </modules>\n';
+  xml += '</sctoolkit-settings>';
+  return xml;
+}
+
+/**
+ * Parse XML string into configuration object and migrate to current schema.
+ * @param {string} xmlText
+ * @returns {object}
+ */
+export function xmlToConfig(xmlText) {
+  const ParserClass = typeof DOMParser !== 'undefined'
+    ? DOMParser
+    : (typeof globalThis !== 'undefined' && globalThis.DOMParser)
+    ? globalThis.DOMParser
+    : (typeof window !== 'undefined' && window.DOMParser)
+    ? window.DOMParser
+    : null;
+
+  if (!ParserClass) {
+    throw new Error('DOMParser is not available in this environment');
+  }
+
+  const parser = new ParserClass();
+  const doc = parser.parseFromString(xmlText, 'text/xml');
+  const errorNode = doc.querySelector('parsererror');
+  if (errorNode) {
+    throw new Error(`XML Parse Error: ${errorNode.textContent}`);
+  }
+
+  const root = doc.querySelector('sctoolkit-settings') || doc.documentElement;
+  if (!root || root.nodeName !== 'sctoolkit-settings') {
+    throw new Error('Invalid XML: Root element must be <sctoolkit-settings>');
+  }
+
+  const schemaVersion = parseInt(root.getAttribute('schemaVersion') || '3', 10);
+  const config = {
+    schemaVersion,
+    global: {},
+    modules: {}
+  };
+
+  const globalNode = root.querySelector('global');
+  if (globalNode) {
+    Array.from(globalNode.children).forEach((child) => {
+      const key = child.tagName;
+      const valText = child.textContent.trim();
+      if (valText === 'true' || valText === 'false') {
+        config.global[key] = valText === 'true';
+      } else if (!isNaN(Number(valText)) && valText !== '') {
+        config.global[key] = Number(valText);
+      } else {
+        config.global[key] = valText;
+      }
+    });
+  }
+
+  const modulesNode = root.querySelector('modules');
+  if (modulesNode) {
+    const modNodes = modulesNode.querySelectorAll('module');
+    modNodes.forEach((modNode) => {
+      const id = modNode.getAttribute('id');
+      if (!id) return;
+      const enabled = modNode.getAttribute('enabled') === 'true';
+
+      const urlMatch = [];
+      modNode.querySelectorAll('urlMatch rule').forEach((ruleNode) => {
+        const pattern = ruleNode.getAttribute('pattern') || '';
+        const exclude = ruleNode.getAttribute('exclude') === 'true';
+        urlMatch.push({ pattern, exclude });
+      });
+
+      const actions = {};
+      modNode.querySelectorAll('actions action').forEach((actNode) => {
+        const actKey = actNode.getAttribute('key');
+        if (actKey) {
+          actions[actKey] = actNode.getAttribute('enabled') === 'true';
+        }
+      });
+
+      config.modules[id] = { enabled, urlMatch, actions };
+    });
+  }
+
+  return SettingsStore.migrate(config);
+}
+

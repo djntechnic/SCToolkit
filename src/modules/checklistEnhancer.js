@@ -23,42 +23,40 @@ import { debounce } from '../ui/dom.js';
  */
 export const FILTER_SCOPES = ['#main-content-area', '#content'];
 
-/** Rows carrying one of these are data rows; anything else is chrome. */
-const DATA_ROW_SELECTOR = 'a[href*="ViewCard.cfm"], input, select';
+/** Rows and list items carrying one of these are data items; anything else is chrome. */
+const DATA_ROW_SELECTOR = 'a[href*="ViewCard.cfm"], a[href*="Checklist.cfm"], a[href*="ViewSet.cfm"], a[href*="/sid/"], a[href*="ViewAll.cfm"], a[href*="Person.cfm"], a[href*="Team.cfm"], input, select';
+
+/** Elements that represent rows or list items in listing containers. */
+const ITEM_ELEMENT_SELECTOR = 'table tr, ul > li, ol > li';
 
 /** Applied to filtered-out rows. Defined in `ui/styles.js`. */
 const HIDDEN_CLASS = 'tk-hidden';
 
+/** Selectors for navigation, dropdown pickers, or sidebar chrome that must never receive filter bars or indexed rows. */
+const SIDEBAR_CHROME_SELECTOR = '.col-md-3, .col-md-4, nav, .breadcrumb, .navbar, #topnav, #sctk-toolbar, .menu-linksV, .list-unstyled, .set-wrapper, .set-dropdown, #setDropdown, #setList, .offcanvas';
+
 /**
- * Build the searchable index of data rows, once.
- *
- * This is the whole performance story for the filter. v2.42.0 re-ran
- * `querySelectorAll('table tr')`, then a per-row `querySelector`, then read
- * `row.innerText` — a layout-forcing property — on *every* debounce tick. On a
- * thousand-row checklist that is a thousand forced reflows per keystroke.
- *
- * Reading `textContent` instead of `innerText` is safe here because the rows
- * are visible when the index is built; nothing about the search text depends
- * on rendering.
+ * Build the searchable index of data rows and list items, once.
  *
  * @param {HTMLElement} mainContent
  * @returns {Array<{el: HTMLElement, haystack: string}>}
  */
 export function buildRowIndex(mainContent) {
   const index = [];
-  mainContent.querySelectorAll('table tr').forEach((el) => {
+  const elements = mainContent.querySelectorAll(ITEM_ELEMENT_SELECTOR);
+
+  elements.forEach((el) => {
+    if (el.closest(SIDEBAR_CHROME_SELECTOR)) return;
+    if (el.tagName === 'TR' && el.querySelector('th')) return;
     if (!el.querySelector(DATA_ROW_SELECTOR)) return;
     index.push({ el, haystack: el.textContent.replace(/\s+/g, ' ').toLowerCase() });
   });
+
   return index;
 }
 
 /**
  * Show rows matching `term`, hide the rest.
- *
- * Toggling one class writes nothing when a row's state is unchanged, so a
- * keystroke that narrows the results only touches the rows that just left the
- * result set. No layout is read at any point.
  *
  * @param {Array<{el: HTMLElement, haystack: string}>} index
  * @param {string} term already lowercased and trimmed
@@ -75,7 +73,7 @@ export function applyFilter(index, term) {
 }
 
 /**
- * Find the narrowest container that holds a listing table.
+ * Find the narrowest container that holds a listing table or list.
  *
  * @param {Document|HTMLElement} [root]
  * @returns {HTMLElement|null}
@@ -83,35 +81,56 @@ export function applyFilter(index, term) {
 export function findFilterScope(root = document) {
   for (const selector of FILTER_SCOPES) {
     const el = root.querySelector(selector);
-    if (el && el.querySelector('table')) return el;
+    if (el && (el.querySelector('table') || el.querySelector('ul, ol'))) return el;
   }
   return null;
 }
 
 /**
- * Insert the filter box above the first content table and wire it up.
+ * Find the target element inside mainContent to position the filter bar.
+ *
+ * On ViewAll/ViewAllC set listing pages, placing the filter before `div.more`
+ * positions it inside the header card box below the year title and above category links.
+ * On other listing routes, it positions before the first content table or list outside nav or sidebar chrome.
+ *
+ * @param {HTMLElement} mainContent
+ * @returns {HTMLElement|null}
+ */
+export function findFilterTarget(mainContent) {
+  const moreDiv = mainContent.querySelector('div.more');
+  if (moreDiv && !moreDiv.closest(SIDEBAR_CHROME_SELECTOR)) return moreDiv;
+
+  const targets = mainContent.querySelectorAll('table, ul, ol');
+  for (const el of targets) {
+    if (el.closest(SIDEBAR_CHROME_SELECTOR)) continue;
+    return el;
+  }
+
+  return null;
+}
+
+/**
+ * Insert the filter box above the first content table or list and wire it up.
  *
  * @param {HTMLElement} mainContent
  */
 function installFilter(mainContent) {
-  const targetTable = mainContent.querySelector('table');
-  if (!targetTable) return;
+  const targetElement = findFilterTarget(mainContent);
+  if (!targetElement) return;
 
   const index = buildRowIndex(mainContent);
-  Log(`Checklist filter indexed ${index.length} data row(s).`, 'debug');
-  // A filter over zero rows is a filter that does nothing. That is a markup
-  // change, not an empty page — the module only runs where a table was found.
-  recordContract('checklistEnhancer', `indexed ${index.length} data row(s)`, index.length > 0);
+  Log(`Checklist filter indexed ${index.length} data item(s).`, 'info');
+  recordContract('checklistEnhancer', `indexed ${index.length} data item(s)`, index.length > 0);
 
   const filterWrap = document.createElement('div');
   filterWrap.id = 'tk-checklist-filter-wrap';
   filterWrap.innerHTML = `
     <strong>Filter Items:</strong>
-    <input type="text" id="tk-checklist-filter" placeholder="Filter by Player, Card #, Tag, Team..."
-           title="Type to filter active table rows in real time" aria-label="Filter table rows">
+    <input type="text" id="tk-checklist-filter" placeholder="Filter by Player, Card #, Set Name, Tag, Team..."
+           title="Type to filter active listing items in real time" aria-label="Filter items">
     <span id="tk-filter-count" aria-live="polite"></span>
   `;
-  targetTable.before(filterWrap);
+  targetElement.before(filterWrap);
 
   const countEl = filterWrap.querySelector('#tk-filter-count');
   const input = filterWrap.querySelector('#tk-checklist-filter');
@@ -131,7 +150,7 @@ export function initChecklistEnhancer() {
   const scope = findFilterScope();
   if (!scope) {
     assertContract('checklistEnhancer', [
-      { selector: FILTER_SCOPES.join(', '), label: 'a listing container holding a table' }
+      { selector: FILTER_SCOPES.join(', '), label: 'a listing container holding a table or list' }
     ]);
     return;
   }

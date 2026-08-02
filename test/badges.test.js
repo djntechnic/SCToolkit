@@ -38,23 +38,23 @@ test('createBadge: an unknown key yields null rather than throwing', () => {
 
 test('renderBadgeSet: toolbar order, with the export action last', () => {
   const el = renderBadgeSet(container(), '4001', { onExport: () => {} });
-  assert.deepEqual(labels(el), ['INS', 'PAR', 'FS', 'MULTI', 'WANT', 'CSV']);
+  assert.deepEqual(labels(el), ['CHK', 'INS', 'PAR', 'FS', 'MULTI', 'WANT', 'CSV']);
 });
 
-test('renderBadgeSet: set-link order leads with the two actions', () => {
+test('renderBadgeSet: set-link order leads with checklist', () => {
   const el = renderBadgeSet(container(), '4001', {
     include: SET_LINK_BADGES,
     onPin: () => {},
     onExport: () => {}
   });
-  assert.deepEqual(labels(el), ['PIN', 'CSV', 'INS', 'PAR', 'FS', 'MULTI', 'WANT']);
+  assert.deepEqual(labels(el), ['CHK', 'PIN', 'CSV', 'INS', 'PAR', 'FS', 'MULTI', 'WANT']);
 });
 
 test('renderBadgeSet: an action with no handler is skipped, not rendered dead', () => {
   // This is the guarantee the helper exists to provide: a caller cannot emit a
   // PIN or CSV badge that looks clickable and does nothing.
   const el = renderBadgeSet(container(), '4001', { include: SET_LINK_BADGES });
-  assert.deepEqual(labels(el), ['INS', 'PAR', 'FS', 'MULTI', 'WANT']);
+  assert.deepEqual(labels(el), ['CHK', 'INS', 'PAR', 'FS', 'MULTI', 'WANT']);
 });
 
 test('renderBadgeSet: include controls exactly what is rendered', () => {
@@ -67,6 +67,24 @@ test('renderBadgeSet: the export handler is wired to the CSV badge', () => {
   const el = renderBadgeSet(container(), '4001', { onExport: () => { clicked++; } });
   el.querySelector('[role="button"]').dispatchEvent(new dom.window.Event('click'));
   assert.equal(clicked, 1);
+});
+
+test('createBadge: displayMode icon renders icon only without text label', () => {
+  const badge = createBadge('INSERTS', '4001', null, 'icon');
+  assert.equal(badge.querySelector('svg') !== null, true);
+  assert.equal(badge.querySelector('.tk-badge-label'), null);
+});
+
+test('createBadge: displayMode text renders text label without icon', () => {
+  const badge = createBadge('INSERTS', '4001', null, 'text');
+  assert.equal(badge.querySelector('svg'), null);
+  assert.equal(badge.querySelector('.tk-badge-label').textContent, 'INS');
+});
+
+test('createBadge: displayMode both renders both icon and text label', () => {
+  const badge = createBadge('INSERTS', '4001', null, 'both');
+  assert.equal(badge.querySelector('svg') !== null, true);
+  assert.equal(badge.querySelector('.tk-badge-label').textContent, 'INS');
 });
 
 test('every badge key in both orders is a real definition', () => {

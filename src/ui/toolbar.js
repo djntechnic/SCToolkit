@@ -3,6 +3,7 @@
  * context, and status readout.
  */
 
+import { Config } from '../core/config.js';
 import { Routes } from '../core/routes.js';
 import { extractSid } from '../core/sid.js';
 import { Log } from '../core/log.js';
@@ -20,27 +21,45 @@ import { initDropdown, initDropdownDismissal } from './dropdown.js';
  * @param {HTMLElement} container
  * @param {string} sid
  * @param {string} [label] name used in the export's log and filename fallback
+ * @param {'both'|'icon'|'text'} [displayMode] display mode for icons and text
  */
-export function appendShortcutBadges(container, sid, label = 'Set') {
+export function appendShortcutBadges(container, sid, label = 'Set', displayMode = Config.global?.toolbarButtonDisplay || 'both') {
   renderBadgeSet(container, sid, {
     include: TOOLBAR_BADGES,
     onExport: (e) => {
       e.preventDefault();
       exportSetCSV(sid, label);
-    }
+    },
+    displayMode
   });
 }
 
 /**
- * Strip site boilerplate off `document.title` to get a usable page label.
+ * Smart page title parser.
+ * Dynamically cleans site boilerplate, collection prefixes, and generic page
+ * qualifiers off document.title to produce an accurate title label for the Toolbar.
  *
+ * @param {string} [rawTitle] defaults to `document.title`
  * @returns {string}
  */
-function cleanDocTitle() {
-  let t = document.title || '';
-  t = t.replace(/\s*\|\s*Trading Card Database.*/i, '');
-  t = t.replace(/\s*(Baseball|Basketball|Football|Hockey|Gaming|Boxing|Cricket|Golf|MMA|Multi-Sport|Non-Sport|Racing|Soccer|Tennis|Wrestling)?\s*(Checklist|Inserts and Related Sets|Overview|Cards)?$/i, '');
-  t = t.replace(/\s*-\s*(Cards|Checklist|Overview|For Sale\/Trade|Wantlist)$/i, '');
+export function cleanDocTitle(rawTitle) {
+  let t = (rawTitle !== undefined ? rawTitle : (typeof document !== 'undefined' ? document.title : '')) || '';
+
+  // 1. Strip site branding / suffix (e.g. "| Trading Card Database", "- Trading Card Database", "| TCDB", "- TCDB")
+  t = t.replace(/\s*([|-])\s*(Trading Card Database|TCDB).*/i, '');
+
+  // 2. Strip collection navigation prefix at start (e.g. "Collection - ", "Collection For Sale/Trade - ", "Collection Wantlist - ", "SuperDan's Collection - ")
+  t = t.replace(/^(Collection(\s+[^-\n]+)?|.*?'s\s+Collection)\s*-\s*/i, '');
+
+  // 3. Strip page context / qualifier suffix preceded by " - " (e.g. " - Inserts and Related Sets", " - For Sale/Trade", " - Wantlist", " - Add Multiples")
+  t = t.replace(
+    /\s*-\s*(Inserts and Related Sets|Inserts & Related Sets|Inserts|Checklist|Overview|Cards|For Sale\/Trade|For Sale|Trade|Wantlist|Add Multiples(\s+Text)?|Add\/Edit|Member Ratings|Ratings|User Comments|Comments|Price Guide|Trivia|Gallery|Errors\s*\/\s*Variations|Packaging|Documentation)\s*$/i,
+    ''
+  );
+
+  // 4. Strip any leftover trailing dashes, pipes, colons, or slashes
+  t = t.replace(/\s*[-|:/]\s*$/g, '');
+
   return t.trim();
 }
 
@@ -68,9 +87,24 @@ export const Toolbar = {
       <div id="tk-actions" class="toolbar-group"></div>
       <div id="tk-pinned" class="toolbar-group"></div>
       <div id="tk-center-context"></div>
-      <div id="tk-status">Initializing...</div>
+      <div id="tk-status-wrap" class="tk-dropdown">
+        <button id="tk-status" type="button" class="tk-status-btn" aria-haspopup="true" aria-expanded="false">Initializing...</button>
+        <div id="tk-status-dropdown" class="tk-dropdown-content" style="right: 0; left: auto; padding: 8px 12px; min-width: 220px; text-align: left;">
+          <div id="tk-status-popover-title" style="font-weight: 700; font-family: var(--tk-font-mono); font-size: 11px; color: var(--tk-accent); border-bottom: 1px solid var(--tk-border); padding-bottom: 4px; margin-bottom: 6px;">
+            Active Modules
+          </div>
+          <ul id="tk-status-popover-list" style="margin: 0; padding-left: 16px; font-family: var(--tk-font-mono); font-size: 10.5px; color: var(--tk-text); line-height: 1.5;">
+          </ul>
+        </div>
+      </div>
     `;
     document.body.prepend(bar);
+
+    const wrap = bar.querySelector('#tk-status-wrap');
+    const statusBtn = bar.querySelector('#tk-status');
+    if (wrap && statusBtn) {
+      initDropdown(wrap, statusBtn);
+    }
 
     initDropdownDismissal();
     Toolbar.observeHeight(bar);
@@ -196,7 +230,7 @@ export const Toolbar = {
 
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'tk-pin-actions';
-        appendShortcutBadges(actionsDiv, pin.id, pin.name);
+        appendShortcutBadges(actionsDiv, pin.id, pin.name, Config.global?.pinButtonDisplay || 'both');
 
         itemDiv.appendChild(headerDiv);
         itemDiv.appendChild(actionsDiv);

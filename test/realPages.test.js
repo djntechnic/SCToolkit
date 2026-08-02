@@ -163,7 +163,7 @@ test('real pages: the filter finds a container on every route it is configured f
   // The bug these captures exposed. #main-content-area exists only on
   // checklist and set-index pages; the other three routes in the module's own
   // urlMatch use #content, so the filter silently never appeared there.
-  ['checklist', 'for-sale-trade', 'wantlist', 'add-multiples-text'].forEach((name) => {
+  ['checklist', 'inserts', 'inserts-basketball', 'view-all', 'for-sale-trade', 'wantlist', 'add-multiples-text'].forEach((name) => {
     assert.ok(findFilterScope(doc(name)), `no filter container found on ${name}`);
   });
 });
@@ -174,7 +174,7 @@ test('real pages: the filter prefers the narrower container when both exist', ()
 });
 
 test('real pages: the row index picks up data rows on each listing route', () => {
-  ['checklist', 'for-sale-trade', 'wantlist', 'add-multiples-text'].forEach((name) => {
+  ['checklist', 'inserts', 'inserts-basketball', 'view-all', 'for-sale-trade', 'wantlist', 'add-multiples-text'].forEach((name) => {
     const index = buildRowIndex(findFilterScope(doc(name)));
     assert.ok(index.length > 5, `${name} indexed only ${index.length} rows`);
   });
@@ -187,6 +187,27 @@ test('real pages: filtering a real checklist narrows to the matching rows', () =
   assert.equal(applyFilter(index, 'byron buxton'), 1);
   assert.equal(applyFilter(index, ''), all);
   assert.equal(applyFilter(index, 'zzzznotacard'), 0);
+});
+
+test('real pages: filtering an inserts page narrows to the matching insert sets', () => {
+  const index = buildRowIndex(findFilterScope(doc('inserts')));
+  const all = index.length;
+
+  assert.ok(all > 5, `inserts indexed ${all} rows`);
+  assert.ok(applyFilter(index, 'autograph') < all, 'filtering by autograph should narrow results');
+  assert.equal(applyFilter(index, ''), all);
+  assert.equal(applyFilter(index, 'zzzznotaninsert'), 0);
+});
+
+test('real pages: findFilterTarget selects the main listing element, avoiding sidebar/dropdown chrome', () => {
+  import('../src/modules/checklistEnhancer.js').then(({ findFilterTarget }) => {
+    ['checklist', 'inserts', 'inserts-basketball', 'view-all', 'for-sale-trade', 'wantlist', 'add-multiples-text'].forEach((name) => {
+      const scope = findFilterScope(doc(name));
+      const target = findFilterTarget(scope);
+      assert.ok(target, `no filter target found on ${name}`);
+      assert.equal(target.closest('.set-dropdown, .col-md-3, .col-md-4, nav, .breadcrumb'), null, `filter target on ${name} fell into sidebar/nav chrome`);
+    });
+  });
 });
 
 // --- set links --------------------------------------------------------------

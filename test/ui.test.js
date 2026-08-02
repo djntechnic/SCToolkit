@@ -11,6 +11,7 @@ import { THEMES, resolveTheme } from '../src/ui/theme.js';
 import { fuzzyScore, rankCommands } from '../src/ui/palette.js';
 import { STACK_LIMIT, TOAST_VARIANTS } from '../src/ui/toast.js';
 import { SHORTCUT_KEYS, BADGES } from '../src/ui/badges.js';
+import { cleanDocTitle } from '../src/ui/toolbar.js';
 
 // --- theme ------------------------------------------------------------------
 
@@ -204,4 +205,57 @@ test('recordContract captures non-selector assumptions', async () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.moduleId, 'demo');
+});
+
+// --- cleanDocTitle smart title parser ---------------------------------------
+
+test('cleanDocTitle: ViewAll.cfm / ViewAllC.cfm', () => {
+  assert.equal(
+    cleanDocTitle('2022 Baseball Sets | Trading Card Database'),
+    '2022 Baseball Sets'
+  );
+});
+
+test('cleanDocTitle: ViewSet.cfm', () => {
+  assert.equal(
+    cleanDocTitle('2022 Bowman Baseball - Trading Card Database'),
+    '2022 Bowman Baseball'
+  );
+});
+
+test('cleanDocTitle: Inserts.cfm', () => {
+  assert.equal(
+    cleanDocTitle('2022 Bowman Baseball - Inserts and Related Sets - Trading Card Database'),
+    '2022 Bowman Baseball'
+  );
+  assert.equal(
+    cleanDocTitle('2022 Bowman Baseball - Inserts and Related Sets'),
+    '2022 Bowman Baseball'
+  );
+});
+
+test('cleanDocTitle: Checklist.cfm', () => {
+  assert.equal(
+    cleanDocTitle('2022 Bowman - Bowman Buybacks Autographs'),
+    '2022 Bowman - Bowman Buybacks Autographs'
+  );
+});
+
+test('cleanDocTitle: ViewCollectionForSaleTrade.cfm / CollectionAddMultiplesText.cfm / ViewCollectionWantlist.cfm', () => {
+  assert.equal(
+    cleanDocTitle('Collection - 2022 Bowman - Bowman Buybacks Autographs'),
+    '2022 Bowman - Bowman Buybacks Autographs'
+  );
+  assert.equal(
+    cleanDocTitle('Collection For Sale/Trade - 2022 Bowman - Bowman Buybacks Autographs'),
+    '2022 Bowman - Bowman Buybacks Autographs'
+  );
+  assert.equal(
+    cleanDocTitle('Collection Wantlist - 2022 Bowman'),
+    '2022 Bowman'
+  );
+  assert.equal(
+    cleanDocTitle('Collection Add Multiples - 2022 Bowman'),
+    '2022 Bowman'
+  );
 });

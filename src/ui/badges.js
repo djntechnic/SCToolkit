@@ -9,6 +9,13 @@ import { icon } from './icons.js';
  * without renders as a keyboard-operable `role="button"` span.
  */
 export const BADGES = {
+  CHECKLIST: {
+    icon: 'list',
+    text: 'CHK',
+    cssClass: 'tk-badge-link-c',
+    title: 'View Set Checklist',
+    getUrl: (sid) => `/Checklist.cfm/sid/${sid}`
+  },
   INSERTS: {
     icon: 'bolt',
     text: 'INS',
@@ -64,28 +71,36 @@ export const BADGES = {
   }
 };
 
-/** The five navigation shortcuts, without the actions. */
-export const SHORTCUT_KEYS = ['INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
+/** The six navigation shortcuts, without the actions. */
+export const SHORTCUT_KEYS = ['CHECKLIST', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
 
 /** Toolbar order: navigation shortcuts, then the export action. */
-export const TOOLBAR_BADGES = ['INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST', 'CSV'];
+export const TOOLBAR_BADGES = ['CHECKLIST', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST', 'CSV'];
 
-/** Set-link order: the two actions lead, because they are the reason to look. */
-export const SET_LINK_BADGES = ['PIN', 'CSV', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
+/** Set-link order: checklist leads, followed by actions and set shortcuts. */
+export const SET_LINK_BADGES = ['CHECKLIST', 'PIN', 'CSV', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
 
 /**
  * @param {keyof BADGES} badgeKey
  * @param {string|null} [sid]
  * @param {((e: Event) => void)|null} [onClickOverride] forces a button rather
  *   than a link, even for a definition that has a URL
+ * @param {'both'|'icon'|'text'} [displayMode='both']
  * @returns {HTMLElement|null} `null` for an unknown badge key
  */
-export function createBadge(badgeKey, sid = null, onClickOverride = null) {
+export function createBadge(badgeKey, sid = null, onClickOverride = null, displayMode = 'both') {
   const config = BADGES[badgeKey];
   if (!config) return null;
 
-  const iconSvg = icon(config.icon);
-  const inner = `${iconSvg}${config.text ? `<span class="tk-badge-label">${config.text}</span>` : ''}`;
+  const showIcon = displayMode === 'both' || displayMode === 'icon';
+  const showText = (displayMode === 'both' || displayMode === 'text') && !!config.text;
+
+  // Fallback: if displayMode is 'text' but config has no text (e.g. REMOVE_PIN), show icon so element is not empty
+  const actualShowIcon = showIcon || (!showText && !config.text);
+
+  const iconSvg = actualShowIcon ? icon(config.icon) : '';
+  const textSpan = showText ? `<span class="tk-badge-label">${config.text}</span>` : '';
+  const inner = `${iconSvg}${textSpan}`;
 
   if (config.getUrl && !onClickOverride) {
     const link = document.createElement('a');
@@ -133,12 +148,14 @@ export function createBadge(badgeKey, sid = null, onClickOverride = null) {
  * @param {string[]} [options.include] ordered badge keys
  * @param {((e: Event) => void)|null} [options.onExport] handler for `CSV`
  * @param {((e: Event) => void)|null} [options.onPin] handler for `PIN`
+ * @param {'both'|'icon'|'text'} [options.displayMode] icon/text combination mode
  * @returns {HTMLElement} the container, for chaining
  */
 export function renderBadgeSet(container, sid, {
   include = TOOLBAR_BADGES,
   onExport = null,
-  onPin = null
+  onPin = null,
+  displayMode = 'both'
 } = {}) {
   const handlers = { CSV: onExport, PIN: onPin };
 
@@ -146,7 +163,7 @@ export function renderBadgeSet(container, sid, {
     const isAction = key in handlers;
     if (isAction && !handlers[key]) return;
 
-    const badge = createBadge(key, sid, isAction ? handlers[key] : null);
+    const badge = createBadge(key, sid, isAction ? handlers[key] : null, displayMode);
     if (badge) container.appendChild(badge);
   });
 

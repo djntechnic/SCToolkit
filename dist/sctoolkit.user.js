@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SCToolkit
 // @namespace    https://github.com/djntechnic/SCToolkit
-// @version      3.0.0
+// @version      3.0.1
 // @description  Userscript toolkit for sports card database browsing: filtering, shortcuts, and polite CSV export.
 // @author       djntechnic
 // @license      MIT
@@ -129,7 +129,10 @@
           { pattern: "/checklist\\.cfm", exclude: false },
           { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
           { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
-          { pattern: "/collectionaddmultiples", exclude: false }
+          { pattern: "/collectionaddmultiples", exclude: false },
+          { pattern: "/inserts\\.cfm", exclude: false },
+          { pattern: "/viewall\\.cfm", exclude: false },
+          { pattern: "/viewallc\\.cfm", exclude: false }
         ],
         actions: {
           realtimeFilter: true
@@ -179,7 +182,10 @@
       paginationLoaderDelayMs: 1e3,
       settingsSaveDebounceMs: 400,
       theme: "auto",
-      logLevel: "info"
+      logLevel: "info",
+      toolbarButtonDisplay: "both",
+      pinButtonDisplay: "both",
+      setButtonDisplay: "both"
     }
   };
   var SettingsStore = {
@@ -288,6 +294,105 @@
     const excluded = excludeRules.some((r) => safeTest(r.pattern));
     return included && !excluded;
   }
+  function escapeXml(str) {
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+  }
+  function configToXml(config) {
+    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    xml += `<sctoolkit-settings schemaVersion="${config.schemaVersion || DEFAULT_CONFIG.schemaVersion}">
+`;
+    xml += "  <global>\n";
+    if (config.global) {
+      Object.entries(config.global).forEach(([k, v]) => {
+        xml += `    <${k}>${escapeXml(v)}</${k}>
+`;
+      });
+    }
+    xml += "  </global>\n";
+    xml += "  <modules>\n";
+    if (config.modules) {
+      Object.entries(config.modules).forEach(([id, modCfg]) => {
+        xml += `    <module id="${escapeXml(id)}" enabled="${!!modCfg.enabled}">
+`;
+        xml += "      <urlMatch>\n";
+        (modCfg.urlMatch || []).forEach((rule) => {
+          xml += `        <rule pattern="${escapeXml(rule.pattern)}" exclude="${!!rule.exclude}" />
+`;
+        });
+        xml += "      </urlMatch>\n";
+        xml += "      <actions>\n";
+        Object.entries(modCfg.actions || {}).forEach(([actionKey, actionVal]) => {
+          xml += `        <action key="${escapeXml(actionKey)}" enabled="${!!actionVal}" />
+`;
+        });
+        xml += "      </actions>\n";
+        xml += "    </module>\n";
+      });
+    }
+    xml += "  </modules>\n";
+    xml += "</sctoolkit-settings>";
+    return xml;
+  }
+  function xmlToConfig(xmlText) {
+    const ParserClass = typeof DOMParser !== "undefined" ? DOMParser : typeof globalThis !== "undefined" && globalThis.DOMParser ? globalThis.DOMParser : typeof window !== "undefined" && window.DOMParser ? window.DOMParser : null;
+    if (!ParserClass) {
+      throw new Error("DOMParser is not available in this environment");
+    }
+    const parser = new ParserClass();
+    const doc = parser.parseFromString(xmlText, "text/xml");
+    const errorNode = doc.querySelector("parsererror");
+    if (errorNode) {
+      throw new Error(`XML Parse Error: ${errorNode.textContent}`);
+    }
+    const root = doc.querySelector("sctoolkit-settings") || doc.documentElement;
+    if (!root || root.nodeName !== "sctoolkit-settings") {
+      throw new Error("Invalid XML: Root element must be <sctoolkit-settings>");
+    }
+    const schemaVersion = parseInt(root.getAttribute("schemaVersion") || "3", 10);
+    const config = {
+      schemaVersion,
+      global: {},
+      modules: {}
+    };
+    const globalNode = root.querySelector("global");
+    if (globalNode) {
+      Array.from(globalNode.children).forEach((child) => {
+        const key = child.tagName;
+        const valText = child.textContent.trim();
+        if (valText === "true" || valText === "false") {
+          config.global[key] = valText === "true";
+        } else if (!isNaN(Number(valText)) && valText !== "") {
+          config.global[key] = Number(valText);
+        } else {
+          config.global[key] = valText;
+        }
+      });
+    }
+    const modulesNode = root.querySelector("modules");
+    if (modulesNode) {
+      const modNodes = modulesNode.querySelectorAll("module");
+      modNodes.forEach((modNode) => {
+        const id = modNode.getAttribute("id");
+        if (!id) return;
+        const enabled = modNode.getAttribute("enabled") === "true";
+        const urlMatch = [];
+        modNode.querySelectorAll("urlMatch rule").forEach((ruleNode) => {
+          const pattern = ruleNode.getAttribute("pattern") || "";
+          const exclude = ruleNode.getAttribute("exclude") === "true";
+          urlMatch.push({ pattern, exclude });
+        });
+        const actions = {};
+        modNode.querySelectorAll("actions action").forEach((actNode) => {
+          const actKey = actNode.getAttribute("key");
+          if (actKey) {
+            actions[actKey] = actNode.getAttribute("enabled") === "true";
+          }
+        });
+        config.modules[id] = { enabled, urlMatch, actions };
+      });
+    }
+    return SettingsStore.migrate(config);
+  }
 
   // src/core/contracts.js
   var results = [];
@@ -393,11 +498,16 @@
 
   // src/modules/checklistEnhancer.js
   var FILTER_SCOPES = ["#main-content-area", "#content"];
-  var DATA_ROW_SELECTOR = 'a[href*="ViewCard.cfm"], input, select';
+  var DATA_ROW_SELECTOR = 'a[href*="ViewCard.cfm"], a[href*="Checklist.cfm"], a[href*="ViewSet.cfm"], a[href*="/sid/"], a[href*="ViewAll.cfm"], a[href*="Person.cfm"], a[href*="Team.cfm"], input, select';
+  var ITEM_ELEMENT_SELECTOR = "table tr, ul > li, ol > li";
   var HIDDEN_CLASS = "tk-hidden";
+  var SIDEBAR_CHROME_SELECTOR = ".col-md-3, .col-md-4, nav, .breadcrumb, .navbar, #topnav, #sctk-toolbar, .menu-linksV, .list-unstyled, .set-wrapper, .set-dropdown, #setDropdown, #setList, .offcanvas";
   function buildRowIndex(mainContent) {
     const index = [];
-    mainContent.querySelectorAll("table tr").forEach((el) => {
+    const elements = mainContent.querySelectorAll(ITEM_ELEMENT_SELECTOR);
+    elements.forEach((el) => {
+      if (el.closest(SIDEBAR_CHROME_SELECTOR)) return;
+      if (el.tagName === "TR" && el.querySelector("th")) return;
       if (!el.querySelector(DATA_ROW_SELECTOR)) return;
       index.push({ el, haystack: el.textContent.replace(/\s+/g, " ").toLowerCase() });
     });
@@ -415,25 +525,35 @@
   function findFilterScope(root = document) {
     for (const selector of FILTER_SCOPES) {
       const el = root.querySelector(selector);
-      if (el && el.querySelector("table")) return el;
+      if (el && (el.querySelector("table") || el.querySelector("ul, ol"))) return el;
+    }
+    return null;
+  }
+  function findFilterTarget(mainContent) {
+    const moreDiv = mainContent.querySelector("div.more");
+    if (moreDiv && !moreDiv.closest(SIDEBAR_CHROME_SELECTOR)) return moreDiv;
+    const targets = mainContent.querySelectorAll("table, ul, ol");
+    for (const el of targets) {
+      if (el.closest(SIDEBAR_CHROME_SELECTOR)) continue;
+      return el;
     }
     return null;
   }
   function installFilter(mainContent) {
-    const targetTable = mainContent.querySelector("table");
-    if (!targetTable) return;
+    const targetElement = findFilterTarget(mainContent);
+    if (!targetElement) return;
     const index = buildRowIndex(mainContent);
-    Log(`Checklist filter indexed ${index.length} data row(s).`, "debug");
-    recordContract("checklistEnhancer", `indexed ${index.length} data row(s)`, index.length > 0);
+    Log(`Checklist filter indexed ${index.length} data item(s).`, "info");
+    recordContract("checklistEnhancer", `indexed ${index.length} data item(s)`, index.length > 0);
     const filterWrap = document.createElement("div");
     filterWrap.id = "tk-checklist-filter-wrap";
     filterWrap.innerHTML = `
     <strong>Filter Items:</strong>
-    <input type="text" id="tk-checklist-filter" placeholder="Filter by Player, Card #, Tag, Team..."
-           title="Type to filter active table rows in real time" aria-label="Filter table rows">
+    <input type="text" id="tk-checklist-filter" placeholder="Filter by Player, Card #, Set Name, Tag, Team..."
+           title="Type to filter active listing items in real time" aria-label="Filter items">
     <span id="tk-filter-count" aria-live="polite"></span>
   `;
-    targetTable.before(filterWrap);
+    targetElement.before(filterWrap);
     const countEl = filterWrap.querySelector("#tk-filter-count");
     const input = filterWrap.querySelector("#tk-checklist-filter");
     const run = debounce((term) => {
@@ -448,7 +568,7 @@
     const scope = findFilterScope();
     if (!scope) {
       assertContract("checklistEnhancer", [
-        { selector: FILTER_SCOPES.join(", "), label: "a listing container holding a table" }
+        { selector: FILTER_SCOPES.join(", "), label: "a listing container holding a table or list" }
       ]);
       return;
     }
@@ -733,11 +853,23 @@
   }
 
   // src/ui/status.js
-  function setStatus(text, tooltipText = "") {
+  function setStatus(text, tooltipText = "", modulesList = []) {
     const status = document.getElementById("tk-status");
     if (!status) return;
     status.textContent = text;
     if (tooltipText) status.title = tooltipText;
+    const titleEl = document.getElementById("tk-status-popover-title");
+    const listEl = document.getElementById("tk-status-popover-list");
+    if (titleEl && listEl) {
+      const list = Array.isArray(modulesList) && modulesList.length > 0 ? modulesList : [];
+      if (list.length > 0) {
+        titleEl.textContent = `Active Modules (${list.length})`;
+        listEl.innerHTML = list.map((m) => `<li>${escapeHtml(m)}</li>`).join("");
+      } else {
+        titleEl.textContent = "Status Details";
+        listEl.innerHTML = `<li>${escapeHtml(text)}</li>`;
+      }
+    }
   }
   function enableAction(id) {
     const btn = document.getElementById(id);
@@ -1287,60 +1419,65 @@
 
   // src/ui/icons.js
   var ICONS = {
+    list: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'
+    },
     bolt: {
       size: 12,
-      strokeWidth: 1.5,
-      body: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
+      strokeWidth: 2,
+      body: '<path d="M15.914 4a1.5 1.5 0 0 0-2.474-1.561l-9 9A1.5 1.5 0 0 0 5.5 14h4.002a.5.5 0 0 1 .471.666L8.086 20a1.5 1.5 0 0 0 2.475 1.56l9-9A1.5 1.5 0 0 0 18.5 10h-3.997a.5.5 0 0 1-.472-.667z"/>'
     },
     gem: {
       size: 12,
-      strokeWidth: 1.5,
-      body: '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3 8 9l3 12"/><path d="M13 3l3 6-3 12"/><path d="M2 9h20"/>'
+      strokeWidth: 2,
+      body: '<path d="M10.5 3 8 9l4 13 4-13-2.5-6"/><path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z"/><path d="M2 9h20"/>'
     },
     tag: {
       size: 12,
-      strokeWidth: 1.5,
-      body: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>'
+      strokeWidth: 2,
+      body: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>'
     },
     layers: {
       size: 12,
-      strokeWidth: 1.5,
-      body: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>'
+      strokeWidth: 2,
+      body: '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/>'
     },
     star: {
       size: 12,
-      strokeWidth: 1.5,
-      body: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'
+      strokeWidth: 2,
+      body: '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>'
     },
     download: {
       size: 12,
-      strokeWidth: 1.5,
-      body: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
+      strokeWidth: 2,
+      body: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>'
     },
     pin: {
       size: 12,
-      strokeWidth: 1.5,
-      body: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'
+      strokeWidth: 2,
+      body: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>'
     },
     x: {
       size: 11,
       strokeWidth: 2,
-      body: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
+      body: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
     },
     chevronUp: {
       size: 12,
       strokeWidth: 2,
-      body: '<polyline points="18 15 12 9 6 15"/>'
+      body: '<path d="m18 15-6-6-6 6"/>'
     },
     plus: {
       size: 11,
       strokeWidth: 2,
-      body: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'
+      body: '<path d="M5 12h14"/><path d="M12 5v14"/>'
     },
     gear: {
       size: 12,
-      strokeWidth: 1.5,
-      body: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
+      strokeWidth: 2,
+      body: '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/>'
     }
   };
   var SPRITE_ID = "sctk-icon-sprite";
@@ -1352,7 +1489,8 @@
     return `<svg id="${SPRITE_ID}" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">${symbols}</svg>`;
   }
   function installIconSprite() {
-    if (document.getElementById(SPRITE_ID)) return;
+    const existing = document.getElementById(SPRITE_ID);
+    if (existing) existing.remove();
     const holder = document.createElement("div");
     holder.innerHTML = buildSprite();
     document.body.prepend(holder.firstChild);
@@ -1365,6 +1503,13 @@
 
   // src/ui/badges.js
   var BADGES = {
+    CHECKLIST: {
+      icon: "list",
+      text: "CHK",
+      cssClass: "tk-badge-link-c",
+      title: "View Set Checklist",
+      getUrl: (sid) => `/Checklist.cfm/sid/${sid}`
+    },
     INSERTS: {
       icon: "bolt",
       text: "INS",
@@ -1419,14 +1564,18 @@
       title: "Remove Pin"
     }
   };
-  var SHORTCUT_KEYS = ["INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
-  var TOOLBAR_BADGES = ["INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST", "CSV"];
-  var SET_LINK_BADGES = ["PIN", "CSV", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
-  function createBadge(badgeKey, sid = null, onClickOverride = null) {
+  var SHORTCUT_KEYS = ["CHECKLIST", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
+  var TOOLBAR_BADGES = ["CHECKLIST", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST", "CSV"];
+  var SET_LINK_BADGES = ["CHECKLIST", "PIN", "CSV", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
+  function createBadge(badgeKey, sid = null, onClickOverride = null, displayMode = "both") {
     const config = BADGES[badgeKey];
     if (!config) return null;
-    const iconSvg = icon(config.icon);
-    const inner = `${iconSvg}${config.text ? `<span class="tk-badge-label">${config.text}</span>` : ""}`;
+    const showIcon = displayMode === "both" || displayMode === "icon";
+    const showText = (displayMode === "both" || displayMode === "text") && !!config.text;
+    const actualShowIcon = showIcon || !showText && !config.text;
+    const iconSvg = actualShowIcon ? icon(config.icon) : "";
+    const textSpan = showText ? `<span class="tk-badge-label">${config.text}</span>` : "";
+    const inner = `${iconSvg}${textSpan}`;
     if (config.getUrl && !onClickOverride) {
       const link = document.createElement("a");
       link.href = config.getUrl(sid);
@@ -1456,13 +1605,14 @@
   function renderBadgeSet(container, sid, {
     include = TOOLBAR_BADGES,
     onExport = null,
-    onPin = null
+    onPin = null,
+    displayMode = "both"
   } = {}) {
     const handlers = { CSV: onExport, PIN: onPin };
     include.forEach((key) => {
       const isAction = key in handlers;
       if (isAction && !handlers[key]) return;
-      const badge = createBadge(key, sid, isAction ? handlers[key] : null);
+      const badge = createBadge(key, sid, isAction ? handlers[key] : null, displayMode);
       if (badge) container.appendChild(badge);
     });
     return container;
@@ -1509,29 +1659,34 @@
    The --tk- prefix is specific enough that collision with the site's own
    variables is not a real risk. Dark values override by attribute below. */
 :root {
-    --tk-bg-base: #f8f9fa;
+    /* Surfaces & Neutrals (Light Mode - Deep Blue Slate Tint) */
+    --tk-bg-base: #f0f4f8;
     --tk-bg-elevated: #ffffff;
-    --tk-bg-hover: #e9ecef;
-    --tk-border: #dee2e6;
-    --tk-border-strong: #ced4da;
-    --tk-text: #212529;
-    --tk-text-muted: #6c757d;
-    --tk-accent: #d97706;
-    --tk-teal: #0d9488;
-    --tk-blue: #0d6efd;
+    --tk-bg-hover: #e2e8f0;
+    --tk-border: #7d8597;
+    --tk-border-strong: #5c677d;
+    --tk-text: #001233;
+    --tk-text-muted: #33415c;
+
+    /* Accents & Signals (Palette: #0466c8, #0353a4, #023e7d) */
+    --tk-accent: #0466c8;
+    --tk-teal: #0891b2;
+    --tk-blue: #0353a4;
     --tk-violet: #7c3aed;
     --tk-magenta: #db2777;
-    --tk-green: #198754;
-    --tk-red: #dc3545;
-    --tk-font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --tk-font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+    --tk-green: #059669;
+    --tk-red: #dc2626;
+
+    /* Typography & Elevation */
+    --tk-font-ui: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --tk-font-mono: "JetBrains Mono", "Geist Mono", "SF Mono", "Cascadia Code", monospace;
     --tk-radius-sm: 4px;
     --tk-radius-md: 6px;
-    --tk-shadow-elevated: 0 4px 16px rgba(0,0,0,0.12);
+    --tk-shadow-elevated: 0 10px 25px -5px rgba(2, 62, 125, 0.15), 0 8px 10px -6px rgba(2, 62, 125, 0.08);
 }
 
 /* Icons are <use> references into the injected sprite. */
-.tk-icon { flex-shrink: 0; display: inline-block; vertical-align: middle; }
+.tk-icon { flex-shrink: 0; display: block; align-self: center; }
 
 /* Filter hiding. A class rather than an inline style so the filter never has
    to read or restore a row's own display value. */
@@ -1539,21 +1694,25 @@
 
 /* Dark palette. Only the values change; every rule below is theme-agnostic. */
 :root[data-sctk-theme="dark"] {
-    --tk-bg-base: #16181b;
-    --tk-bg-elevated: #1f2225;
-    --tk-bg-hover: #2a2e33;
-    --tk-border: #33383d;
-    --tk-border-strong: #464c53;
-    --tk-text: #e6e8ea;
-    --tk-text-muted: #9aa2ab;
-    --tk-accent: #f0a437;
+    /* Surfaces & Neutrals (Dark Mode - Midnight Navy Deep) */
+    --tk-bg-base: #001233;
+    --tk-bg-elevated: #001845;
+    --tk-bg-hover: #002855;
+    --tk-border: #002855;
+    --tk-border-strong: #33415c;
+    --tk-text: #f1f5f9;
+    --tk-text-muted: #979dac;
+
+    /* Accents & Signals */
+    --tk-accent: #0466c8;
     --tk-teal: #2dd4bf;
-    --tk-blue: #60a5fa;
-    --tk-violet: #a78bfa;
+    --tk-blue: #0353a4;
+    --tk-violet: #c084fc;
     --tk-magenta: #f472b6;
-    --tk-green: #4ade80;
+    --tk-green: #34d399;
     --tk-red: #f87171;
-    --tk-shadow-elevated: 0 4px 16px rgba(0,0,0,0.55);
+
+    --tk-shadow-elevated: 0 20px 25px -5px rgba(0, 18, 51, 0.7), 0 8px 10px -6px rgba(0, 18, 51, 0.5);
 }
 
 /* Solid-fill badges need dark text against the brighter dark-mode accents. */
@@ -1562,7 +1721,9 @@
 :root[data-sctk-theme="dark"] .sctk-btn:hover:not(:disabled),
 :root[data-sctk-theme="dark"] #tk-center-context .tk-scroll-btn:hover { color: #ffffff; }
 
-#sctk-toolbar { position: fixed; top: 0; left: 0; width: 100%; z-index: 99999; background: var(--tk-bg-base); color: var(--tk-text); display: flex; align-items: center; min-height: 34px; padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 11px; border-bottom: 1px solid var(--tk-border); box-shadow: 0 2px 8px rgba(0,0,0,0.06); box-sizing: border-box; flex-wrap: nowrap; }
+#sctk-toolbar { position: fixed; top: 0; left: 0; width: 100%; z-index: 99999; background: linear-gradient(180deg, #e4eef8 0%, #d1e2f3 100%); color: var(--tk-text); display: flex; align-items: center; min-height: 34px; padding: 2px 8px; font-family: var(--tk-font-ui); font-size: 11px; border-bottom: 2px solid var(--tk-accent); box-shadow: 0 3px 10px rgba(4, 102, 200, 0.18); box-sizing: border-box; flex-wrap: nowrap; }
+
+:root[data-sctk-theme="dark"] #sctk-toolbar { background: linear-gradient(180deg, #001845 0%, #001233 100%); border-bottom: 2px solid var(--tk-accent); box-shadow: 0 4px 14px rgba(0, 18, 51, 0.6); }
 
 /* Wordmark */
 #sctk-toolbar .tk-wordmark { display: flex; flex-direction: column; justify-content: center; padding: 2px 6px; margin-right: 8px; flex-shrink: 0; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-top: 2px solid var(--tk-accent); border-radius: 0 0 3px 3px; line-height: 1.1; }
@@ -1573,18 +1734,24 @@
 
 /* Responsive Center Context Bar */
 #tk-center-context { flex-grow: 1; flex-shrink: 1; display: flex; align-items: center; justify-content: center; gap: 4px; overflow: hidden; min-width: 120px; padding: 0 4px; }
-#tk-center-context .tk-scroll-btn { background: var(--tk-bg-elevated); color: var(--tk-teal); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 2px 6px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; user-select: none; display: inline-flex; align-items: center; gap: 3px; line-height: 1.2; }
-#tk-center-context .tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-teal); color: #000000; }
-#tk-center-context .context-label { font-family: var(--tk-font-mono); font-weight: 600; color: var(--tk-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+#tk-center-context .tk-scroll-btn { background: var(--tk-bg-elevated); color: var(--tk-blue); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 6px 0 6px; height: 20px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; user-select: none; display: inline-flex; align-items: center; justify-content: center; gap: 3px; line-height: 1; box-sizing: border-box; }
+#tk-center-context .tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
+#tk-center-context .context-label { display: inline-flex; align-items: center; height: 20px; font-family: var(--tk-font-mono); font-weight: 600; color: var(--tk-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1; margin: 0 2px; padding-top: 1px; box-sizing: border-box; }
 
 /* Right-Aligned Status Bar */
-#tk-status { flex-shrink: 0; border-right: none; margin: 0; font-family: var(--tk-font-mono); font-weight: 700; font-size: 10px; letter-spacing: 0.02em; color: var(--tk-teal); cursor: pointer; text-align: right; justify-content: flex-end; padding-left: 4px; white-space: nowrap; }
+#tk-status-wrap { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; }
+#tk-status { flex-shrink: 0; background: transparent; border: none; margin: 0; font-family: var(--tk-font-mono); font-weight: 700; font-size: 10px; letter-spacing: 0.02em; color: var(--tk-accent); cursor: pointer; text-align: right; justify-content: flex-end; padding: 1px 4px 0 4px; white-space: nowrap; display: inline-flex; align-items: center; height: 20px; box-sizing: border-box; }
+#tk-status:hover { color: var(--tk-blue); text-decoration: underline; }
+:root[data-sctk-theme="dark"] #tk-status:hover { color: var(--tk-teal); }
 
-#tk-settings-trigger.tk-scroll-btn { margin-left: 4px; padding: 2px 5px; }
+#tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #000000; border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 20px; margin-left: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; cursor: pointer; box-sizing: border-box; }
+#tk-settings-trigger.tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
+:root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #ffffff; border-color: var(--tk-border-strong); }
+:root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #ffffff; }
 
-.sctk-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 2px 7px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1.2; }
+.sctk-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 22px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; }
 .sctk-btn svg { flex-shrink: 0; }
-.sctk-btn:hover:not(:disabled) { background: var(--tk-bg-hover); border-color: var(--tk-teal); color: #000000; }
+.sctk-btn:hover:not(:disabled) { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
 .sctk-btn-danger { border-color: var(--tk-red); color: var(--tk-red); }
 .sctk-btn-danger:hover:not(:disabled) { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
 .sctk-btn[hidden] { display: none; }
@@ -1608,27 +1775,30 @@
 
 /* Dropdown Styling for Pins */
 .tk-dropdown { position: relative; display: inline-block; }
-.tk-dropdown-content { display: none; position: absolute; left: 0; top: 100%; margin-top: 2px; background-color: var(--tk-bg-elevated); min-width: 320px; box-shadow: var(--tk-shadow-elevated); z-index: 100000; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); max-height: 450px; overflow-y: auto; text-align: left; }
+.tk-dropdown-content { display: none; position: absolute; left: 0; top: 100%; margin-top: 2px; background-color: var(--tk-bg-elevated); min-width: 460px; max-width: 640px; box-shadow: var(--tk-shadow-elevated); z-index: 100000; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); max-height: 450px; overflow-y: auto; text-align: left; }
 /* Click-only. Hover-open cannot be dismissed on a touch device and fires by
    accident on the way to something else on desktop. */
 .tk-dropdown.tk-show .tk-dropdown-content { display: block; }
 
-.tk-dropdown-content .tk-pin-item { color: var(--tk-text); padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; border-bottom: 1px solid var(--tk-border); }
+.tk-dropdown-content .tk-pin-item { color: var(--tk-text); padding: 5px 8px; display: flex; flex-direction: column; gap: 1.5px; font-size: 10.5px; border-bottom: 1px solid var(--tk-border); }
 .tk-dropdown-content .tk-pin-item:last-child { border-bottom: none; }
 .tk-dropdown-content .tk-pin-item:hover { background-color: var(--tk-bg-hover); }
-.tk-dropdown-content .tk-pin-header { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 6px; }
-.tk-dropdown-content .tk-pin-title { font-family: var(--tk-font-mono); font-weight: 700; font-size: 10.5px; color: var(--tk-accent); text-decoration: none; flex-grow: 1; text-align: left; line-height: 1.2; white-space: normal; }
-.tk-dropdown-content .tk-pin-title:hover { text-decoration: underline; color: #b45309; }
+.tk-dropdown-content .tk-pin-header { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; gap: 6px; }
+.tk-dropdown-content .tk-pin-title { font-family: var(--tk-font-mono); font-weight: 700; font-size: 10.5px; color: var(--tk-accent); text-decoration: none; flex: 1 1 auto; min-width: 0; word-break: break-word; text-align: left; line-height: 1.2; white-space: normal; }
+.tk-dropdown-content .tk-pin-title:hover { text-decoration: underline; color: var(--tk-blue); }
 
-.tk-dropdown-content .tk-pin-actions { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; margin-top: 1px; }
+.tk-dropdown-content .tk-pin-actions { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; margin-top: 0; }
 .tk-dropdown-content .tk-pin-actions .sctk-badge { margin-left: 0; margin-right: 0; flex-shrink: 0; }
 
 .tk-pin-remove { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid var(--tk-red); background: transparent; color: var(--tk-red); border-radius: var(--tk-radius-sm); cursor: pointer; flex-shrink: 0; }
 .tk-pin-remove:hover { background: var(--tk-red); color: #fff; }
 
-.tk-dropbtn { display: inline-flex; align-items: center; gap: 3px; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); color: var(--tk-text); border-radius: var(--tk-radius-sm); padding: 2px 6px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; line-height: 1.2; }
+.tk-dropbtn { display: inline-flex; align-items: center; gap: 3px; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); color: var(--tk-text); border-radius: var(--tk-radius-sm); padding: 1px 6px 0 6px; height: 20px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; line-height: 1; box-sizing: border-box; }
 .tk-dropbtn:hover { border-color: var(--tk-accent); color: var(--tk-accent); background: var(--tk-bg-hover); }
 .tk-dropbtn:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
+
+/* Injected Badge Group Container */
+.tk-injected-badge-group { margin-left: 8px; vertical-align: middle; }
 
 /* Overflow menu — the toolbar no longer wraps, so anything that does not fit
    moves in here rather than pushing page content down. */
@@ -1638,10 +1808,13 @@
 #tk-overflow .tk-dropdown-content .sctk-btn { width: 100%; justify-content: flex-start; margin: 2px 0; }
 
 /* Compact Badge Styles */
-.sctk-badge { display: inline-flex; align-items: center; gap: 3px; font-family: var(--tk-font-mono); padding: 2px 5px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; vertical-align: middle; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
+.sctk-badge { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-family: var(--tk-font-mono); padding: 1px 5px 0 5px; height: 20px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
 
 .tk-badge-action { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
 .tk-badge-action:hover { background: var(--tk-blue); color: #ffffff; }
+
+.tk-badge-link-c { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
+.tk-badge-link-c:hover { background: var(--tk-blue); color: #ffffff; }
 
 .tk-badge-link-i { background: var(--tk-bg-elevated); border-color: var(--tk-violet); color: var(--tk-violet); }
 .tk-badge-link-i:hover { background: var(--tk-violet); color: #ffffff; }
@@ -1718,48 +1891,53 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
 `;
   var SETTINGS_CSS = `
 #tk-settings-overlay { position: fixed; inset: 0; z-index: 200000; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-family: var(--tk-font-ui); }
-#tk-settings-panel { background: var(--tk-bg-elevated); color: var(--tk-text); width: min(720px, 92vw); max-height: 85vh; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); box-shadow: var(--tk-shadow-elevated); display: flex; flex-direction: column; overflow: hidden; }
-#tk-settings-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--tk-border); flex-shrink: 0; background: var(--tk-bg-base); }
-#tk-settings-header h2 { margin: 0; font-family: var(--tk-font-mono); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--tk-accent); }
+#tk-settings-panel { background: var(--tk-bg-elevated); color: var(--tk-text); width: min(560px, 92vw); max-height: 85vh; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); box-shadow: var(--tk-shadow-elevated); display: flex; flex-direction: column; overflow: hidden; text-align: left; }
+#tk-settings-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--tk-border); flex-shrink: 0; background: var(--tk-bg-base); text-align: left; }
+#tk-settings-header h2 { margin: 0; font-family: var(--tk-font-mono); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--tk-accent); text-align: left; }
 #tk-settings-close { display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid var(--tk-border-strong); color: var(--tk-text-muted); border-radius: var(--tk-radius-sm); width: 22px; height: 22px; cursor: pointer; }
 #tk-settings-close:hover { background: var(--tk-red); border-color: var(--tk-red); color: #fff; }
 #tk-settings-close:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
-#tk-settings-body { display: flex; flex-direction: column; overflow: hidden; flex-grow: 1; }
-#tk-settings-tabs { display: flex; gap: 2px; padding: 4px 14px 0; border-bottom: 1px solid var(--tk-border); flex-shrink: 0; background: var(--tk-bg-base); }
+#tk-settings-body { display: flex; flex-direction: column; overflow: hidden; flex-grow: 1; text-align: left; }
+#tk-settings-tabs { display: flex; gap: 2px; padding: 4px 14px 0; border-bottom: 1px solid var(--tk-border); flex-shrink: 0; background: var(--tk-bg-base); text-align: left; }
 .tk-settings-tab { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--tk-text-muted); font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 6px 8px; cursor: pointer; }
 .tk-settings-tab:hover { color: var(--tk-text); }
 .tk-settings-tab.active { color: var(--tk-accent); border-bottom-color: var(--tk-accent); }
 .tk-settings-tab:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: -2px; }
-#tk-settings-tab-content { overflow-y: auto; flex-grow: 1; padding: 12px 14px; }
-#tk-settings-modules, #tk-settings-global { width: 100%; }
-.tk-settings-section-title { font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; color: var(--tk-teal); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px 0; }
-.tk-settings-module-row { border-bottom: 1px solid var(--tk-border); padding: 6px 0; }
+#tk-settings-tab-content { overflow-y: auto; flex-grow: 1; padding: 14px 16px; text-align: left; }
+#tk-settings-modules, #tk-settings-global { width: 100%; text-align: left; }
+.tk-settings-section-title { font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; color: var(--tk-teal); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px 0; text-align: left; }
+.tk-settings-module-row { border-bottom: 1px solid var(--tk-border); padding: 8px 0; text-align: left; }
 .tk-settings-module-row:last-child { border-bottom: none; }
-.tk-settings-module-row label.tk-module-label { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; font-size: 11.5px; font-weight: 700; }
-.tk-settings-module-desc { font-size: 10.5px; color: var(--tk-text-muted); margin: 2px 0 0 20px; line-height: 1.35; }
-.tk-settings-actions { margin: 4px 0 0 20px; display: flex; flex-direction: column; gap: 3px; }
-.tk-settings-actions label { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 400; cursor: pointer; color: var(--tk-text-muted); }
-.tk-settings-field { margin-bottom: 10px; }
-.tk-settings-field label { display: block; font-size: 10.5px; font-weight: 700; margin-bottom: 3px; }
+.tk-settings-module-row label.tk-module-label { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; font-size: 11.5px; font-weight: 700; text-align: left; }
+.tk-settings-module-desc { font-size: 10.5px; color: var(--tk-text-muted); margin: 2px 0 0 20px; line-height: 1.35; text-align: left; }
+.tk-settings-actions { margin: 4px 0 0 20px; display: flex; flex-direction: column; gap: 3px; text-align: left; }
+.tk-settings-actions label { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 400; cursor: pointer; color: var(--tk-text-muted); text-align: left; }
+.tk-settings-field { margin-bottom: 12px; text-align: left; }
+.tk-settings-field label { display: block; font-size: 10.5px; font-weight: 700; margin-bottom: 3px; text-align: left; }
 .tk-settings-field .tk-field-value { color: var(--tk-teal); font-weight: 400; font-family: var(--tk-font-mono); }
 .tk-settings-field input[type="range"] { width: 100%; accent-color: var(--tk-accent); }
 .tk-settings-field select { width: 100%; padding: 4px; background: var(--tk-bg-base); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); font-size: 11px; }
 .tk-settings-field select:focus-visible,
 #tk-settings-panel input[type="checkbox"]:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
 #tk-settings-panel input[type="checkbox"] { accent-color: var(--tk-accent); }
-.tk-contract-list { list-style: none; margin: 4px 0 0 0; padding: 0; font-family: var(--tk-font-mono); font-size: 10px; line-height: 1.5; }
+.tk-contract-list { list-style: none; margin: 4px 0 0 0; padding: 0; font-family: var(--tk-font-mono); font-size: 10px; line-height: 1.5; text-align: left; }
+.tk-contract-list li { text-align: left; }
 .tk-contract-list li.ok { color: var(--tk-text-muted); }
 .tk-contract-list li.bad { color: var(--tk-red); font-weight: 700; }
-.tk-diag-list { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 12px 0; font-size: 11px; }
-.tk-diag-list dt { font-family: var(--tk-font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tk-text-muted); }
-.tk-diag-list dd { margin: 0; word-break: break-word; }
-#tk-settings-help { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--tk-border); font-size: 10.5px; color: var(--tk-text-muted); line-height: 1.5; }
+#tk-settings-diagnostics { text-align: left; }
+#tk-settings-diagnostics .tk-settings-section-title { text-align: left; }
+#tk-settings-diagnostics .tk-settings-field { text-align: left; }
+#tk-settings-diagnostics .tk-settings-field label { text-align: left; }
+.tk-diag-list { display: grid; grid-template-columns: 140px 1fr; gap: 6px 16px; margin: 0 0 14px 0; font-size: 11px; text-align: left; align-items: baseline; }
+.tk-diag-list dt { font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tk-text-muted); text-align: left; }
+.tk-diag-list dd { margin: 0; word-break: break-word; text-align: left; color: var(--tk-text); }
+#tk-settings-help { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--tk-border); font-size: 10.5px; color: var(--tk-text-muted); line-height: 1.5; text-align: left; }
 #tk-settings-help a { color: var(--tk-blue); }
 
-.tk-settings-hint { font-size: 10px; color: var(--tk-text-muted); margin-top: 2px; line-height: 1.3; }
+.tk-settings-hint { font-size: 10px; color: var(--tk-text-muted); margin-top: 2px; line-height: 1.3; text-align: left; }
 
-.tk-route-editor { margin: 8px 0 4px 20px; }
-.tk-route-editor-title { font-family: var(--tk-font-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tk-text-muted); margin-bottom: 4px; }
+.tk-route-editor { margin: 6px 0 4px 16px; text-align: left; }
+.tk-route-editor-title { font-family: var(--tk-font-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tk-text-muted); margin-bottom: 4px; text-align: left; }
 .tk-route-rows { display: flex; flex-direction: column; gap: 4px; }
 .tk-route-row { display: flex; gap: 4px; align-items: center; }
 .tk-route-row input[type="text"] { flex: 1 1 auto; min-width: 0; padding: 4px 6px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); font-family: var(--tk-font-mono); font-size: 10px; }
@@ -1834,20 +2012,25 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   }
 
   // src/ui/toolbar.js
-  function appendShortcutBadges(container, sid, label = "Set") {
+  function appendShortcutBadges(container, sid, label = "Set", displayMode = Config.global?.toolbarButtonDisplay || "both") {
     renderBadgeSet(container, sid, {
       include: TOOLBAR_BADGES,
       onExport: (e) => {
         e.preventDefault();
         exportSetCSV(sid, label);
-      }
+      },
+      displayMode
     });
   }
-  function cleanDocTitle() {
-    let t = document.title || "";
-    t = t.replace(/\s*\|\s*Trading Card Database.*/i, "");
-    t = t.replace(/\s*(Baseball|Basketball|Football|Hockey|Gaming|Boxing|Cricket|Golf|MMA|Multi-Sport|Non-Sport|Racing|Soccer|Tennis|Wrestling)?\s*(Checklist|Inserts and Related Sets|Overview|Cards)?$/i, "");
-    t = t.replace(/\s*-\s*(Cards|Checklist|Overview|For Sale\/Trade|Wantlist)$/i, "");
+  function cleanDocTitle(rawTitle) {
+    let t = (rawTitle !== void 0 ? rawTitle : typeof document !== "undefined" ? document.title : "") || "";
+    t = t.replace(/\s*([|-])\s*(Trading Card Database|TCDB).*/i, "");
+    t = t.replace(/^(Collection(\s+[^-\n]+)?|.*?'s\s+Collection)\s*-\s*/i, "");
+    t = t.replace(
+      /\s*-\s*(Inserts and Related Sets|Inserts & Related Sets|Inserts|Checklist|Overview|Cards|For Sale\/Trade|For Sale|Trade|Wantlist|Add Multiples(\s+Text)?|Add\/Edit|Member Ratings|Ratings|User Comments|Comments|Price Guide|Trivia|Gallery|Errors\s*\/\s*Variations|Packaging|Documentation)\s*$/i,
+      ""
+    );
+    t = t.replace(/\s*[-|:/]\s*$/g, "");
     return t.trim();
   }
   function appendContextLabel(container, text) {
@@ -1869,9 +2052,23 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       <div id="tk-actions" class="toolbar-group"></div>
       <div id="tk-pinned" class="toolbar-group"></div>
       <div id="tk-center-context"></div>
-      <div id="tk-status">Initializing...</div>
+      <div id="tk-status-wrap" class="tk-dropdown">
+        <button id="tk-status" type="button" class="tk-status-btn" aria-haspopup="true" aria-expanded="false">Initializing...</button>
+        <div id="tk-status-dropdown" class="tk-dropdown-content" style="right: 0; left: auto; padding: 8px 12px; min-width: 220px; text-align: left;">
+          <div id="tk-status-popover-title" style="font-weight: 700; font-family: var(--tk-font-mono); font-size: 11px; color: var(--tk-accent); border-bottom: 1px solid var(--tk-border); padding-bottom: 4px; margin-bottom: 6px;">
+            Active Modules
+          </div>
+          <ul id="tk-status-popover-list" style="margin: 0; padding-left: 16px; font-family: var(--tk-font-mono); font-size: 10.5px; color: var(--tk-text); line-height: 1.5;">
+          </ul>
+        </div>
+      </div>
     `;
       document.body.prepend(bar);
+      const wrap = bar.querySelector("#tk-status-wrap");
+      const statusBtn = bar.querySelector("#tk-status");
+      if (wrap && statusBtn) {
+        initDropdown(wrap, statusBtn);
+      }
       initDropdownDismissal();
       Toolbar.observeHeight(bar);
       Toolbar.renderPins();
@@ -1977,7 +2174,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           headerDiv.appendChild(removeBtn);
           const actionsDiv = document.createElement("div");
           actionsDiv.className = "tk-pin-actions";
-          appendShortcutBadges(actionsDiv, pin.id, pin.name);
+          appendShortcutBadges(actionsDiv, pin.id, pin.name, Config.global?.pinButtonDisplay || "both");
           itemDiv.appendChild(headerDiv);
           itemDiv.appendChild(actionsDiv);
           dropContent.appendChild(itemDiv);
@@ -2037,7 +2234,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   };
 
   // src/modules/setListEnhancer.js
-  var LATE_RENDER_TIMEOUT_MS = 3e3;
   var CHUNK_SIZE = 25;
   var SET_LINK_SELECTOR = [
     'a[href*="ViewSet" i]',
@@ -2048,7 +2244,17 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   ].join(", ");
   var onIdle = typeof requestIdleCallback === "function" ? (fn) => requestIdleCallback(fn, { timeout: 500 }) : (fn) => setTimeout(fn, 16);
   function findSetLinks(root = document) {
-    return Array.from(root.querySelectorAll(SET_LINK_SELECTOR)).filter((link) => link.textContent.trim().length > 0 && !link.querySelector("img, i, svg"));
+    return Array.from(root.querySelectorAll(SET_LINK_SELECTOR)).filter((link) => {
+      if (link.closest("#sctk-toolbar")) return false;
+      if (!extractSid(link.href)) return false;
+      const text = link.textContent.trim();
+      if (text.length === 0) return false;
+      if (/^[\u25B6\u25C0\u25BC\u25B2►◄▼▲\s+-]+$/.test(text)) return false;
+      return true;
+    });
+  }
+  function findUninjectedSetLinks(root = document) {
+    return findSetLinks(root).filter((link) => !link.dataset.tkInjected);
   }
   function isExpandableParent(link) {
     const parentLi = link.closest("li");
@@ -2067,8 +2273,10 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     if (currentPageSid && setId === currentPageSid) return null;
     const setName = link.textContent.trim();
     const container = document.createElement("span");
+    container.className = "tk-injected-badge-group";
     container.style.display = "inline-flex";
     container.style.alignItems = "center";
+    container.style.marginLeft = "8px";
     const expandable = isExpandableParent(link);
     const include = SET_LINK_BADGES.filter(
       (key) => expandable || key !== "INSERTS" && key !== "PARALLELS"
@@ -2090,9 +2298,18 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       onExport: (e) => {
         e.preventDefault();
         exportSetCSV(setId, setName);
-      }
+      },
+      displayMode: Config.global?.setButtonDisplay || "both"
     });
     return container;
+  }
+  function reinjectSetActions() {
+    document.querySelectorAll(".tk-injected-badge-group").forEach((el) => el.remove());
+    document.querySelectorAll("[data-tk-injected]").forEach((el) => {
+      delete el.dataset.tkInjected;
+    });
+    const links = findSetLinks();
+    injectSetActions(links);
   }
   function injectSetActions(links) {
     const currentPageSid = extractSid(window.location.href);
@@ -2127,40 +2344,38 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     };
     step();
   }
-  function waitForLateLinks() {
-    let settled = false;
-    const finish = (links) => {
-      if (settled) return;
-      settled = true;
-      observer.disconnect();
-      clearTimeout(timer);
-      if (links.length === 0) {
-        assertContract("setListEnhancer", [
-          { selector: SET_LINK_SELECTOR, label: "set links (pin/export badge anchors)" }
-        ]);
-        return;
-      }
-      injectInChunks(links, (n) => {
-        Log(`Set List Enhancer: badges injected for ${n} late-rendered link(s).`, "debug");
-      });
-    };
-    const observer = new MutationObserver(() => {
-      const links = findSetLinks();
-      if (links.length > 0) finish(links);
+  var pageObserver = null;
+  function observeSetLinks() {
+    if (pageObserver || typeof MutationObserver !== "function" || typeof document === "undefined") return;
+    let debounceTimer = null;
+    pageObserver = new MutationObserver(() => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const pending = findUninjectedSetLinks();
+        if (pending.length > 0) {
+          injectInChunks(pending, (n) => {
+            Log(`Set List Enhancer: Enhanced ${n} late-rendered / dynamic set link(s).`, "info");
+          });
+        }
+      }, 150);
     });
-    const timer = setTimeout(() => finish(findSetLinks()), LATE_RENDER_TIMEOUT_MS);
-    observer.observe(document.body, { childList: true, subtree: true });
+    pageObserver.observe(document.body, { childList: true, subtree: true });
   }
   function initSetListEnhancer() {
     const setLinks = findSetLinks();
     if (setLinks.length === 0) {
-      waitForLateLinks();
-      return;
+      Log("Set List Enhancer: Waiting for set links to render...", "info");
+      assertContract("setListEnhancer", [
+        { selector: SET_LINK_SELECTOR, label: "set links (pin/export badge anchors)", optional: true }
+      ]);
+    } else {
+      const pending = findUninjectedSetLinks();
+      injectInChunks(pending, (n) => {
+        Log(`Set List Enhancer: Enhanced ${n} of ${setLinks.length} set link(s).`, "info");
+        recordContract("setListEnhancer", `badges on ${n} of ${setLinks.length} set link(s)`, n > 0);
+      });
     }
-    injectInChunks(setLinks, (n) => {
-      Log(`Set List Enhancer: badges injected for ${n} of ${setLinks.length} link(s).`, "debug");
-      recordContract("setListEnhancer", `badges on ${n} of ${setLinks.length} link(s)`, n > 0);
-    });
+    observeSetLinks();
   }
 
   // src/modules/addMultiplesEnhancer.js
@@ -2285,7 +2500,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       init: initChecklistEnhancer,
       isAsync: false,
       actionLabels: {
-        realtimeFilter: "Real-time table filter bar"
+        realtimeFilter: "Real-Time Table Filter Bar"
       }
     },
     {
@@ -2368,7 +2583,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       trigger.id = "tk-settings-trigger";
       trigger.type = "button";
       trigger.className = "tk-scroll-btn";
-      trigger.innerHTML = icon("gear");
+      trigger.innerHTML = `${icon("gear")}<span>SETTINGS</span>`;
       trigger.title = "SCToolkit Settings";
       trigger.setAttribute("aria-label", "SCToolkit Settings");
       trigger.addEventListener("click", () => SettingsUI.open());
@@ -2576,7 +2791,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       wrap.className = "tk-route-editor";
       const title = document.createElement("div");
       title.className = "tk-route-editor-title";
-      title.textContent = "Route patterns";
+      title.textContent = "Route Patterns";
       wrap.appendChild(title);
       const rowsEl = document.createElement("div");
       rowsEl.className = "tk-route-rows";
@@ -2631,8 +2846,8 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         removeBtn.type = "button";
         removeBtn.className = "tk-route-remove-btn";
         removeBtn.innerHTML = icon("x");
-        removeBtn.title = "Remove this pattern";
-        removeBtn.setAttribute("aria-label", "Remove this pattern");
+        removeBtn.title = "Remove This Pattern";
+        removeBtn.setAttribute("aria-label", "Remove This Pattern");
         removeBtn.addEventListener("click", () => {
           rowEl.remove();
           commit();
@@ -2651,7 +2866,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       const addBtn = document.createElement("button");
       addBtn.type = "button";
       addBtn.className = "tk-route-add-btn";
-      addBtn.innerHTML = `${icon("plus")}<span>Add pattern</span>`;
+      addBtn.innerHTML = `${icon("plus")}<span>Add Pattern</span>`;
       addBtn.addEventListener("click", () => addRow("", false));
       wrap.appendChild(errorEl);
       wrap.appendChild(addBtn);
@@ -2674,7 +2889,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       THEMES.forEach((value) => {
         const opt = document.createElement("option");
         opt.value = value;
-        opt.textContent = value;
+        opt.textContent = value.charAt(0).toUpperCase() + value.slice(1);
         if (Config.global.theme === value) opt.selected = true;
         themeSelect.appendChild(opt);
       });
@@ -2689,13 +2904,13 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       const logField = document.createElement("div");
       logField.className = "tk-settings-field";
       const logLabel = document.createElement("label");
-      logLabel.textContent = "Console log level";
+      logLabel.textContent = "Console Log Level";
       const logSelect = document.createElement("select");
       logSelect.title = "debug: everything. info: normal operation (default). warn: only problems worth noticing. error: only failures.";
       ["debug", "info", "warn", "error"].forEach((lvl) => {
         const opt = document.createElement("option");
         opt.value = lvl;
-        opt.textContent = lvl;
+        opt.textContent = lvl.charAt(0).toUpperCase() + lvl.slice(1);
         if (Config.global.logLevel === lvl) opt.selected = true;
         logSelect.appendChild(opt);
       });
@@ -2708,11 +2923,146 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       logField.appendChild(logLabel);
       logField.appendChild(logSelect);
       pane.appendChild(logField);
+      const displaySectionTitle = document.createElement("div");
+      displaySectionTitle.className = "tk-settings-section-title";
+      displaySectionTitle.textContent = "Button Display Settings";
+      displaySectionTitle.style.marginTop = "14px";
+      displaySectionTitle.style.paddingTop = "10px";
+      displaySectionTitle.style.borderTop = "1px solid var(--tk-border)";
+      pane.appendChild(displaySectionTitle);
+      const DISPLAY_MODES = [
+        { value: "both", label: "Icon & Text" },
+        { value: "icon", label: "Icon Only" },
+        { value: "text", label: "Text Only" }
+      ];
+      const displayFields = [
+        {
+          key: "toolbarButtonDisplay",
+          label: "Toolbar Button Display",
+          title: "Choose whether toolbar shortcut buttons show icons, text, or both.",
+          onUpdate: () => Toolbar.renderCenterContext()
+        },
+        {
+          key: "pinButtonDisplay",
+          label: "Pinned Set Button Display",
+          title: "Choose whether buttons in pinned set dropdowns show icons, text, or both.",
+          onUpdate: () => Toolbar.renderPins()
+        },
+        {
+          key: "setButtonDisplay",
+          label: "Injected Set Button Display",
+          title: "Choose whether buttons injected beside set links on pages show icons, text, or both.",
+          onUpdate: () => reinjectSetActions()
+        }
+      ];
+      displayFields.forEach(({ key, label: fieldLabelText, title: fieldTitleText, onUpdate }) => {
+        const field = document.createElement("div");
+        field.className = "tk-settings-field";
+        const fieldLabel = document.createElement("label");
+        fieldLabel.textContent = fieldLabelText;
+        const select = document.createElement("select");
+        select.title = fieldTitleText;
+        DISPLAY_MODES.forEach(({ value, label: optLabel }) => {
+          const opt = document.createElement("option");
+          opt.value = value;
+          opt.textContent = optLabel;
+          if ((Config.global[key] || "both") === value) opt.selected = true;
+          select.appendChild(opt);
+        });
+        select.addEventListener("change", () => {
+          Config.global[key] = select.value;
+          Log(`Config change: global.${key} = ${select.value}`, "info");
+          if (onUpdate) onUpdate();
+          SettingsUI._persist();
+        });
+        field.appendChild(fieldLabel);
+        field.appendChild(select);
+        pane.appendChild(field);
+      });
+      pane.appendChild(SettingsUI._buildXmlPanel());
       const help = document.createElement("div");
       help.id = "tk-settings-help";
       help.innerHTML = `Module, action, route-pattern, and threshold changes apply on next page load. The log level change above applies immediately to this page’s console output.<br><br>Version: ${SettingsUI._version()}<br>Documentation and issue tracker: <a href="https://github.com/djntechnic/SCToolkit" target="_blank" rel="noopener noreferrer">github.com/djntechnic/SCToolkit</a>`;
       pane.appendChild(help);
       return pane;
+    },
+    _buildXmlPanel: () => {
+      const field = document.createElement("div");
+      field.className = "tk-settings-field";
+      field.style.marginTop = "14px";
+      field.style.paddingTop = "10px";
+      field.style.borderTop = "1px solid var(--tk-border)";
+      const label = document.createElement("label");
+      label.textContent = "XML Import / Export Settings";
+      const hint = document.createElement("div");
+      hint.className = "tk-settings-hint";
+      hint.textContent = "Backup all SCToolkit settings (globals, module states, sub-actions, route rules) to XML or restore from file.";
+      const btnGroup = document.createElement("div");
+      btnGroup.style.display = "flex";
+      btnGroup.style.gap = "8px";
+      btnGroup.style.marginTop = "6px";
+      const exportBtn = createBtn("tk-xml-export", "Export XML", () => {
+        try {
+          const xml = configToXml(Config);
+          const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `sctoolkit-settings-v${Config.schemaVersion || 3}.xml`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          showToast({ message: "Settings exported to XML file.", variant: "success" });
+        } catch (err) {
+          showToast({ message: `Export failed: ${err.message}`, variant: "error" });
+        }
+      });
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = ".xml,text/xml";
+      fileInput.style.display = "none";
+      fileInput.addEventListener("change", (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new window.FileReader();
+        reader.onload = (evt) => {
+          try {
+            const xmlText = evt.target.result;
+            const imported = xmlToConfig(xmlText);
+            Config.schemaVersion = imported.schemaVersion;
+            Config.global = imported.global;
+            Config.modules = imported.modules;
+            syncExportConfig();
+            applyTheme();
+            SettingsStore.save(Config);
+            Log("Settings successfully imported from XML file.", "info");
+            showToast({ message: "Settings imported from XML! Reload page for full module updates.", variant: "success" });
+            const body = document.getElementById("tk-settings-body");
+            if (body) {
+              const activeTab = body.querySelector(".tk-settings-tab.active")?.textContent?.toLowerCase() || "global";
+              const newBody = SettingsUI._buildTabbedBody();
+              body.replaceWith(newBody);
+              const targetTabName = activeTab.includes("module") ? "routes" : activeTab.includes("diag") ? "diagnostics" : "global";
+              newBody.querySelector(`.tk-settings-tab:${targetTabName === "routes" ? "nth-child(2)" : targetTabName === "diagnostics" ? "nth-child(3)" : "first-child"}`)?.click();
+            }
+          } catch (err) {
+            showToast({ message: `Import failed: ${err.message}`, variant: "error" });
+          }
+        };
+        reader.readAsText(file);
+      });
+      const importBtn = createBtn("tk-xml-import", "Import XML", () => {
+        fileInput.value = "";
+        fileInput.click();
+      });
+      btnGroup.appendChild(exportBtn);
+      btnGroup.appendChild(importBtn);
+      btnGroup.appendChild(fileInput);
+      field.appendChild(label);
+      field.appendChild(hint);
+      field.appendChild(btnGroup);
+      return field;
     },
     /**
      * What the script currently thinks about this page.
@@ -2738,13 +3088,16 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           return false;
         }
       });
+      const themeFormatted = (Config.global.theme || "auto").charAt(0).toUpperCase() + (Config.global.theme || "auto").slice(1);
+      const resolvedTheme = document.documentElement.getAttribute("data-sctk-theme") || "";
+      const resolvedFormatted = resolvedTheme ? resolvedTheme.charAt(0).toUpperCase() + resolvedTheme.slice(1) : "";
       const rows = [
         ["Version", SettingsUI._version()],
         ["URL", window.location.pathname + window.location.search],
-        ["Matched routes", routes.length ? routes.join(", ") : "none"],
-        ["Active modules", active.length ? `${active.length}: ${active.join(", ")}` : "none on this page"],
-        ["Last block detected", lastBlock ? new Date(lastBlock).toLocaleString() : "never"],
-        ["Theme", `${Config.global.theme} (resolved: ${document.documentElement.getAttribute("data-sctk-theme")})`]
+        ["Matched Routes", routes.length ? routes.join(", ") : "none"],
+        ["Active Modules", active.length ? `${active.length}: ${active.join(", ")}` : "none on this page"],
+        ["Last Block Detected", lastBlock ? new Date(lastBlock).toLocaleString() : "never"],
+        ["Theme", `${themeFormatted}${resolvedFormatted ? ` (Resolved: ${resolvedFormatted})` : ""}`]
       ];
       const table = document.createElement("dl");
       table.className = "tk-diag-list";
@@ -2771,7 +3124,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       const field = document.createElement("div");
       field.className = "tk-settings-field";
       const label = document.createElement("label");
-      label.textContent = "Page contract checks";
+      label.textContent = "Page Contract Checks";
       field.appendChild(label);
       const checks = getContractResults();
       if (checks.length === 0) {
@@ -2810,7 +3163,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       const field = document.createElement("div");
       field.className = "tk-settings-field";
       const label = document.createElement("label");
-      label.textContent = "Cached exports";
+      label.textContent = "Cached Exports";
       const summary = document.createElement("div");
       summary.className = "tk-settings-hint";
       const refresh = () => {
@@ -2818,7 +3171,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         summary.textContent = sets === 0 ? "Nothing cached. Completed exports are stored here and reused within the lifetime above." : `${sets} set(s), ${rows} row(s) stored. Re-exporting any of them makes no requests.`;
       };
       refresh();
-      const purge = createBtn("tk-cache-purge", "Clear cache", () => {
+      const purge = createBtn("tk-cache-purge", "Clear Cache", () => {
         clear();
         refresh();
         showToast({ message: "Export cache cleared.", variant: "success" });
@@ -2880,7 +3233,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   };
   var GLOBAL_FIELDS = [
     {
-      label: "Export base delay",
+      label: "Export Base Delay",
       key: "exportBaseDelayMs",
       min: 200,
       max: 2e3,
@@ -2889,7 +3242,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "Minimum wait between paginated checklist-fetch requests."
     },
     {
-      label: "Export jitter",
+      label: "Export Jitter",
       key: "exportJitterMaxMs",
       min: 0,
       max: 2e3,
@@ -2898,7 +3251,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "Random amount added on top of the base delay, so request timing isn’t a fixed, fingerprintable interval."
     },
     {
-      label: "Max retries per page",
+      label: "Max Retries Per Page",
       key: "exportMaxRetries",
       min: 0,
       max: 8,
@@ -2907,7 +3260,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "Retry attempts for a single page on HTTP 429/503 before the export fails."
     },
     {
-      label: "Retry backoff — base",
+      label: "Retry Backoff — Base",
       key: "exportBackoffBaseMs",
       min: 250,
       max: 5e3,
@@ -2916,7 +3269,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "Starting wait before the first retry; doubles on each subsequent attempt up to the cap below."
     },
     {
-      label: "Retry backoff — cap",
+      label: "Retry Backoff — Cap",
       key: "exportBackoffCapMs",
       min: 2e3,
       max: 6e4,
@@ -2925,7 +3278,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "Upper limit on the doubling backoff delay, regardless of retry count."
     },
     {
-      label: "Pagination safety ceiling",
+      label: "Pagination Safety Ceiling",
       key: "exportMaxPages",
       min: 20,
       max: 500,
@@ -2934,7 +3287,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "Hard stop on discovered page count — protects against a pagination-parsing bug turning into a runaway fetch loop."
     },
     {
-      label: "Request timeout",
+      label: "Request Timeout",
       key: "exportRequestTimeoutMs",
       min: 5e3,
       max: 12e4,
@@ -2943,7 +3296,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "Abandon a single request that never answers. Without this a hung request stalls the whole export queue indefinitely."
     },
     {
-      label: "Anti-scraping cooldown",
+      label: "Anti-Scraping Cooldown",
       key: "exportBlockCooldownMinutes",
       min: 0,
       max: 30,
@@ -2952,7 +3305,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "After a detected block (captcha/verification page), refuse new exports for this long. 0 disables the cooldown."
     },
     {
-      label: "Export cache lifetime",
+      label: "Export Cache Lifetime",
       key: "exportCacheTtlHours",
       min: 0,
       max: 168,
@@ -2961,7 +3314,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "Re-exporting a set within this window reuses the stored result and makes no requests at all. 0 disables caching."
     },
     {
-      label: "Toast display duration",
+      label: "Toast Display Duration",
       key: "toastDurationMs",
       min: 1500,
       max: 1e4,
@@ -2970,7 +3323,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "How long status/confirmation toasts stay visible before fading out."
     },
     {
-      label: "Checklist filter debounce",
+      label: "Checklist Filter Debounce",
       key: "checklistFilterDebounceMs",
       min: 0,
       max: 500,
@@ -2979,7 +3332,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "Delay after typing stops before the real-time table filter re-scans rows."
     },
     {
-      label: "Pagination loader delay",
+      label: "Pagination Loader Delay",
       key: "paginationLoaderDelayMs",
       min: 300,
       max: 3e3,
@@ -2988,7 +3341,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       hint: "Fixed wait before the CSV export button is enabled on paginated pages. Not a real completion signal — still a timing guess, just a configurable one."
     },
     {
-      label: "Settings save debounce",
+      label: "Settings Save Debounce",
       key: "settingsSaveDebounceMs",
       min: 100,
       max: 2e3,
@@ -3185,7 +3538,8 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     setStatus(
       `${loadedModuleNames.length} Modules Active`,
       `Active Modules:
-• ${loadedModuleNames.join("\n• ")}`
+• ${loadedModuleNames.join("\n• ")}`,
+      loadedModuleNames
     );
     showToast({
       message: `<b>SCToolkit Active</b> <span class="tk-toast-hint">Ctrl+K</span><ul>${loadedModuleNames.map((m) => `<li>${escapeHtml(m)}</li>`).join("")}</ul>`,

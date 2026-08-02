@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
 
-import { DEFAULT_CONFIG, SettingsStore, testUrlMatch } from '../src/core/config.js';
+import { DEFAULT_CONFIG, SettingsStore, testUrlMatch, configToXml, xmlToConfig } from '../src/core/config.js';
+
+const dom = new JSDOM();
+globalThis.DOMParser = dom.window.DOMParser;
 
 const URL_CHECKLIST = 'https://example.test/Checklist.cfm/sid/1/';
 const URL_ADD_MULTIPLES = 'https://example.test/CollectionAddMultiplesText.cfm/sid/1/';
@@ -142,4 +146,30 @@ test('cloneDefaults: returns a deep copy, not a shared reference', () => {
   const a = SettingsStore.cloneDefaults();
   a.modules.checklistEnhancer.enabled = false;
   assert.equal(DEFAULT_CONFIG.modules.checklistEnhancer.enabled, true);
+});
+
+test('configToXml and xmlToConfig: round-trip preserves all settings', () => {
+  const original = SettingsStore.cloneDefaults();
+  original.global.theme = 'dark';
+  original.global.toastDurationMs = 8000;
+  original.modules.checklistEnhancer.enabled = false;
+  original.modules.checklistEnhancer.urlMatch = [
+    { pattern: '/test\\.cfm', exclude: true }
+  ];
+
+  const xml = configToXml(original);
+  assert.ok(xml.includes('<sctoolkit-settings'));
+  assert.ok(xml.includes('<theme>dark</theme>'));
+  assert.ok(xml.includes('pattern="/test\\.cfm"'));
+
+  const parsed = xmlToConfig(xml);
+  assert.equal(parsed.global.theme, 'dark');
+  assert.equal(parsed.global.toastDurationMs, 8000);
+  assert.equal(parsed.modules.checklistEnhancer.enabled, false);
+  assert.equal(parsed.modules.checklistEnhancer.urlMatch[0].pattern, '/test\\.cfm');
+  assert.equal(parsed.modules.checklistEnhancer.urlMatch[0].exclude, true);
+});
+
+test('xmlToConfig: throws descriptive error on invalid XML', () => {
+  assert.throws(() => xmlToConfig('<invalid xml>'), /XML Parse Error|Invalid XML/);
 });
