@@ -19,6 +19,7 @@ import { showToast } from './toast.js';
 import { Toolbar } from './toolbar.js';
 import { reinjectSetActions } from '../modules/setListEnhancer.js';
 import { DiagnosticTests } from '../core/diagnostics.js';
+import { getAppVersion } from '../core/version.js';
 
 export const SettingsUI = {
   overlayId: 'tk-settings-overlay',
@@ -118,9 +119,15 @@ export const SettingsUI = {
       }
       if (e.key !== 'Tab') return;
 
+      const isVisible = (el) => (
+        typeof el.checkVisibility === 'function'
+          ? el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+          : (el.offsetWidth > 0 || el.offsetHeight > 0 || el.style.display !== 'none')
+      );
+
       const focusable = Array.from(
         panel.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')
-      ).filter((el) => !el.disabled && el.offsetParent !== null);
+      ).filter((el) => !el.disabled && isVisible(el));
       if (focusable.length === 0) return;
 
       const first = focusable[0];
@@ -826,14 +833,7 @@ export const SettingsUI = {
     return field;
   },
 
-  _version: () => {
-    try {
-      if (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) {
-        return GM_info.script.version;
-      }
-    } catch { /* GM_info unavailable outside a userscript manager */ }
-    return 'unknown';
-  }
+  _version: () => getAppVersion()
 };
 
 /** Declarative spec for every numeric global setting. */

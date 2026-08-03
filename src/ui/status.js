@@ -6,7 +6,7 @@
  * creating a cycle back through the badges that started it.
  */
 
-import { escapeHtml } from './dom.js';
+import { Utils } from '../core/utils.js';
 
 /**
  * @param {string} text
@@ -30,10 +30,10 @@ export function setStatus(text, tooltipText = '', modulesList = []) {
 
     if (list.length > 0) {
       titleEl.textContent = `Active Modules (${list.length})`;
-      listEl.innerHTML = list.map((m) => `<li>${escapeHtml(m)}</li>`).join('');
+      listEl.innerHTML = list.map((m) => `<li>${Utils.escape.html(m)}</li>`).join('');
     } else {
       titleEl.textContent = 'Status Details';
-      listEl.innerHTML = `<li>${escapeHtml(text)}</li>`;
+      listEl.innerHTML = `<li>${Utils.escape.html(text)}</li>`;
     }
   }
 }

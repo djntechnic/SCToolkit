@@ -4,6 +4,7 @@
  */
 
 import { recordContract } from '../core/contracts.js';
+import { debounce } from '../ui/dom.js';
 
 /** Shared with the Add Multiples module, which focuses the first empty field. */
 export const InputIndex = {
@@ -11,13 +12,14 @@ export const InputIndex = {
   getValidInputs: () => []
 };
 
+/** Scoped selector targeting text and number inputs. */
+const INPUT_SELECTOR = "input[type='text' i], input[type='number' i], input:not([type])";
+
 /**
  * Whether an input participates in Enter-to-Tab.
  *
- * Visibility is tested with `offsetParent`, which is null for a `display:none`
- * element and its descendants. v2.42.0 called `getBoundingClientRect()` on
- * every input on the page on every Enter keypress — a full layout flush per
- * keystroke, on exactly the pages that have hundreds of inputs.
+ * Attribute checks (readOnly, disabled, hidden, type) are evaluated prior to
+ * reading `offsetParent` to avoid triggering unnecessary layout calculations.
  *
  * The `value === '0'` clause is deliberate: quantity fields pre-filled with
  * zero are sometimes laid out with no measurable box, and skipping them would
@@ -27,19 +29,15 @@ export const InputIndex = {
  * @returns {boolean}
  */
 export function isEligibleInput(el) {
+  if (!el) return false;
   const type = el.type ? el.type.toLowerCase() : 'text';
   if (type !== 'text' && type !== 'number') return false;
-  if (el.readOnly || el.disabled) return false;
+  if (el.readOnly || el.disabled || el.hidden || el.getAttribute('hidden') !== null) return false;
   return el.offsetParent !== null || el.value === '0';
 }
 
 /**
  * Cached list of eligible inputs, in document order.
- *
- * Invalidated rather than rebuilt when the DOM changes: marking a flag is O(1)
- * per mutation batch, and the rebuild only happens if the user actually
- * presses Enter afterwards. A page that mutates constantly therefore costs
- * nothing until the feature is used.
  */
 const cache = { inputs: null };
 
@@ -48,10 +46,20 @@ export function invalidateInputCache() {
   cache.inputs = null;
 }
 
-/** @returns {HTMLInputElement[]} */
+/**
+ * Rebuild and return the list of valid inputs.
+ *
+ * Queries inside `#main-content-area` (falling back to `document.body` if unmounted).
+ *
+ * @returns {HTMLInputElement[]}
+ */
 export function getValidInputs() {
   if (cache.inputs === null) {
-    cache.inputs = Array.from(document.querySelectorAll('input')).filter(isEligibleInput);
+    const root = (typeof document !== 'undefined' && document.getElementById('main-content-area'))
+      || (typeof document !== 'undefined' ? document.body : null);
+    cache.inputs = root
+      ? Array.from(root.querySelectorAll(INPUT_SELECTOR)).filter(isEligibleInput)
+      : [];
   }
   return cache.inputs;
 }
@@ -85,14 +93,21 @@ export function initInputOptimization() {
     }
   });
 
-  // Rows added, removed, or toggled hidden all change the list. Watching the
-  // document is broad, but the handler is a single assignment.
-  const observer = new MutationObserver(invalidateInputCache);
-  observer.observe(document.body, { childList: true, subtree: true });
+  // Scope observer to #main-content-area to ignore toolbar/toast DOM mutations.
+  // Invalidation is debounced to avoid thrashing during rapid DOM updates.
+  const target = (typeof document !== 'undefined' && document.getElementById('main-content-area'))
+    || (typeof document !== 'undefined' ? document.body : null);
 
-  // A resize can change what is laid out, and therefore what `offsetParent`
-  // reports.
-  window.addEventListener('resize', invalidateInputCache, { passive: true });
+  if (target && typeof MutationObserver === 'function') {
+    const debouncedInvalidate = debounce(invalidateInputCache, 200);
+    const observer = new MutationObserver(debouncedInvalidate);
+    observer.observe(target, { childList: true, subtree: true });
+  }
+
+  // A resize can change what is laid out, and therefore what `offsetParent` reports.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', invalidateInputCache, { passive: true });
+  }
 
   InputIndex.getValidInputs = getValidInputs;
 }

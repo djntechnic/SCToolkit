@@ -1,6 +1,4 @@
-/**
- * RFC 4180 CSV serialization and browser download.
- */
+import { Utils } from '../core/utils.js';
 
 /**
  * Quote a single field if it contains a delimiter, a quote, or a line break.
@@ -11,11 +9,7 @@
  * @returns {string}
  */
 export function escapeField(value) {
-  const str = (value === null || value === undefined) ? '' : String(value);
-  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
+  return Utils.escape.csv(value);
 }
 
 /**
@@ -23,7 +17,7 @@ export function escapeField(value) {
  * @returns {string}
  */
 export function buildRow(fields) {
-  return fields.map(escapeField).join(',');
+  return fields.map(Utils.escape.csv).join(',');
 }
 
 /**

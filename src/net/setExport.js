@@ -119,6 +119,7 @@ function downloadResult({ identity, rows }, fallbackLabel) {
 async function fetchAllPages(setId, signal, progress) {
   let pageIndex = 1;
   let totalPages = 1;
+  let totalDiscoveredPages = 1;
   let identity = { year: '', baseSet: '', setName: '' };
   const rows = [];
 
@@ -146,23 +147,25 @@ async function fetchAllPages(setId, signal, progress) {
 
     if (pageIndex === 1) {
       identity = { year: parsed.year, baseSet: parsed.baseSet, setName: parsed.setName };
-      const discoveredPages = parsed.totalPages;
+      totalDiscoveredPages = parsed.totalPages;
 
       // If discovered pages exceed safety ceiling, cap to maxPages and warn user via toast instead of throwing a fatal error
-      if (discoveredPages > EXPORT_CONFIG.maxPages) {
+      if (totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
         totalPages = EXPORT_CONFIG.maxPages;
+        const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${totalDiscoveredPages})`;
+        setStatus(cappedStatus);
         Log(
-          `Discovered page count (${discoveredPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
+          `Discovered page count (${totalDiscoveredPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
           'warn'
         );
         showToast({
           message:
-            `Set has <b>${discoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). ` +
+            `Set has <b>${totalDiscoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). ` +
             `Exporting first ${EXPORT_CONFIG.maxPages} pages only.`,
           variant: 'warn'
         });
       } else {
-        totalPages = discoveredPages;
+        totalPages = totalDiscoveredPages;
         Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, 'info');
       }
     }
@@ -173,7 +176,7 @@ async function fetchAllPages(setId, signal, progress) {
     pageIndex++;
   } while (pageIndex <= totalPages);
 
-  return { identity, rows, totalPages };
+  return { identity, rows, totalPages, totalDiscoveredPages };
 }
 
 /**
@@ -237,8 +240,14 @@ export async function runExportSetCSV(setId, setName) {
     cache.write(setId, result, ttlHours);
     downloadResult(result, setName);
 
-    setStatus('Export Complete');
-    progress.finish(`${result.rows.length} cards exported.`, 'success');
+    if (result.totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
+      const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${result.totalDiscoveredPages})`;
+      setStatus(cappedStatus);
+      progress.finish(`${result.rows.length} cards exported (capped at ${EXPORT_CONFIG.maxPages} pages).`, 'warning');
+    } else {
+      setStatus('Export Complete');
+      progress.finish(`${result.rows.length} cards exported.`, 'success');
+    }
   } catch (error) {
     if (error instanceof BlockedError) {
       recordBlock(error.message);

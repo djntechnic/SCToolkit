@@ -60,7 +60,8 @@ export async function waitForSlot(intervalMs, deps = {}) {
     now = () => Date.now(),
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
     read = () => getValue(LAST_REQUEST_KEY, 0),
-    write = (ts) => setValue(LAST_REQUEST_KEY, ts)
+    write = (ts) => setValue(LAST_REQUEST_KEY, ts),
+    jitter = deps.jitter ?? (deps.now || deps.sleep ? () => 0 : () => Math.floor(20 + Math.random() * 60))
   } = deps;
 
   let waited = 0;
@@ -70,7 +71,17 @@ export async function waitForSlot(intervalMs, deps = {}) {
     const wait = computeSlotWait(read(), intervalMs, current);
 
     if (wait === 0) {
-      write(current);
+      const offset = jitter();
+      if (offset > 0) {
+        await sleep(offset);
+        waited += offset;
+        const recheckNow = now();
+        if (computeSlotWait(read(), intervalMs, recheckNow) > 0) {
+          continue;
+        }
+      }
+      const claimTs = now();
+      write(claimTs);
       return waited;
     }
 

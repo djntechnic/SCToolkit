@@ -10,7 +10,7 @@ import { BADGES, SHORTCUT_KEYS } from './badges.js';
 import { Pins } from '../core/storage.js';
 import { extractSid } from '../core/sid.js';
 import { exportSetCSV } from '../net/setExport.js';
-import { escapeHtml } from './dom.js';
+import { Utils } from '../core/utils.js';
 
 const OVERLAY_ID = 'tk-palette-overlay';
 
@@ -48,8 +48,14 @@ export function fuzzyScore(query, text) {
     cursor = found + 1;
   }
 
+  // Baseline boost for substring matches
+  if (haystack.includes(query)) {
+    score += 5;
+  }
+
   // Prefer shorter targets when the score is otherwise equal.
-  return score - haystack.length / 200;
+  const finalScore = score - haystack.length / 500;
+  return Math.max(0, finalScore);
 }
 
 /**
@@ -174,8 +180,8 @@ export function openPalette(deps = {}) {
       row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', String(i === active));
       row.innerHTML =
-        `<span class="tk-palette-label">${escapeHtml(command.label)}</span>` +
-        `<span class="tk-palette-hint">${escapeHtml(command.hint)}</span>`;
+        `<span class="tk-palette-label">${Utils.escape.html(command.label)}</span>` +
+        `<span class="tk-palette-hint">${Utils.escape.html(command.hint)}</span>`;
       row.addEventListener('click', () => { closePalette(); command.run(); });
       list.appendChild(row);
     });

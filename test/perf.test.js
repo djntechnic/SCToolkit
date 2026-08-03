@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 
 import { applyFilter, buildRowIndex } from '../src/modules/checklistEnhancer.js';
-import { isEligibleInput } from '../src/modules/inputOptimization.js';
+import { isEligibleInput, getValidInputs, invalidateInputCache } from '../src/modules/inputOptimization.js';
 import { applySaleTypeDefaults } from '../src/modules/addMultiplesEnhancer.js';
 import { findSetLinks, injectSetActions } from '../src/modules/setListEnhancer.js';
 
@@ -123,10 +123,11 @@ test('isEligibleInput rejects other input types', () => {
   });
 });
 
-test('isEligibleInput rejects readonly and disabled fields', () => {
+test('isEligibleInput rejects readonly, disabled, and hidden fields', () => {
   const dom = mount('');
   assert.equal(isEligibleInput(makeInput(dom, { readOnly: true })), false);
   assert.equal(isEligibleInput(makeInput(dom, { disabled: true })), false);
+  assert.equal(isEligibleInput(makeInput(dom, { hidden: true })), false);
 });
 
 test('isEligibleInput rejects fields that are not laid out', () => {
@@ -138,6 +139,24 @@ test('isEligibleInput keeps zero-quantity fields even when unmeasurable', () => 
   // The escape hatch that makes the feature work on the page it exists for.
   const dom = mount('');
   assert.equal(isEligibleInput(makeInput(dom, { value: '0', laidOut: false })), true);
+});
+
+test('getValidInputs scopes queries to #main-content-area when present', () => {
+  const dom = mount(`
+    <div id="sidebar"><input id="s1" type="text"></div>
+    <div id="main-content-area"><input id="m1" type="text"><input id="m2" type="number"></div>
+  `);
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+
+  dom.window.document.querySelectorAll('input').forEach((el) => {
+    Object.defineProperty(el, 'offsetParent', { value: dom.window.document.body });
+  });
+
+  invalidateInputCache();
+  const valid = getValidInputs();
+  assert.equal(valid.length, 2);
+  assert.deepEqual(valid.map((i) => i.id), ['m1', 'm2']);
 });
 
 // --- add multiples ----------------------------------------------------------

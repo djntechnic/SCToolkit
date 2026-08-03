@@ -15,7 +15,7 @@
  * minus a dependence on layout that no rendered layout ever provides.
  */
 
-import { extractSetYear } from '../core/storage.js';
+import { Utils } from '../core/utils.js';
 
 /** Column order of the exported checklist CSV. */
 export const CHECKLIST_HEADER = [
@@ -27,6 +27,34 @@ const NAME_SUFFIX = /^(Jr\.?|Sr\.?|II|III|IV|V)$/i;
 
 /** Serial-numbering token, e.g. `SN250` for a print run of 250. */
 const PRINT_RUN = /^SN\d+$/i;
+
+/** Known card classification tags. */
+export const KNOWN_TAGS = new Set([
+  'RC', 'AU', 'AUTO', 'MEM', 'MEMO', 'FS', 'DP', 'SP', 'SSP',
+  'VAR', 'ERR', 'UER', 'COR', 'SN', 'HL', 'CL', 'TL', 'LL',
+  'ROY', 'MVP', 'HOF', 'AS', 'CY', 'SH', 'CO', 'MGR', 'TC',
+  'FC', '1ST', 'RET', 'DK', 'IN', 'PR', 'BC', 'NNO', 'PUP',
+  'IA', 'ASG', 'GL', 'MG', 'FF', 'AL', 'NL', 'TR', 'FB',
+  'BB', 'BK', 'HK', 'PAR', 'INS', 'REF', 'FOIL', 'EXCH', 'RED', 'PROMO'
+]);
+
+/**
+ * Check if a clean token represents a card tag.
+ *
+ * Tokens with periods (e.g. "A.J.", "J.J.") are rejected to prevent all-caps
+ * player names or initials from being swallowed as tags.
+ *
+ * @param {string} token clean token without commas
+ * @returns {boolean}
+ */
+export function isTagToken(token) {
+  if (!token || token.includes('.')) return false;
+  if (/[a-z]/.test(token)) return false;
+  if (NAME_SUFFIX.test(token)) return false;
+  const upper = token.toUpperCase();
+  if (KNOWN_TAGS.has(upper)) return true;
+  return /^[A-Z0-9]{1,3}$/.test(upper);
+}
 
 /**
  * Caption keywords, each naming a distinct kind of note about a card.
@@ -68,7 +96,7 @@ const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
  * |---------------------------------------|---------------|---------------------|
  * | `SN250` — `SN` + digits               | print run     | no                  |
  * | `Jr.`, `Sr.`, `II`, `III`, `IV`, `V`  | name          | **yes**             |
- * | No lowercase letters, has A-Z or 0-9  | tag           | no                  |
+ * | Recognized tag (RC, AU, MEM, etc.)   | tag           | no                  |
  * | anything else                         | name          | **yes**             |
  * | after collection ended                | name          | —                   |
  *
@@ -105,7 +133,7 @@ export function parseSubjectCell(rawSubject, caption = {}) {
     } else if (!foundNonTag && NAME_SUFFIX.test(cleanToken)) {
       foundNonTag = true;
       subjectParts.unshift(token);
-    } else if (!foundNonTag && /^[^a-z]+$/.test(cleanToken) && /[A-Z0-9]/.test(cleanToken)) {
+    } else if (!foundNonTag && isTagToken(cleanToken)) {
       tagParts.unshift(cleanToken);
     } else {
       foundNonTag = true;
@@ -344,7 +372,7 @@ export function parseSetIdentity(doc) {
     const h1 = setnameContent.querySelector('h1');
     if (h1) {
       const h1Text = norm(h1).replace(/\s*-\s*Cards$/i, '').trim();
-      const yearStr = extractSetYear(h1Text);
+      const yearStr = Utils.extractYear(h1Text);
       if (yearStr && h1Text.startsWith(yearStr)) {
         year = yearStr;
         baseSet = h1Text.slice(yearStr.length).trim();
@@ -395,9 +423,17 @@ export function parseChecklistDocument(doc) {
   const rows = [];
   const mainContent = doc.getElementById('main-content-area');
   if (mainContent) {
-    mainContent.querySelectorAll('table tr').forEach((row) => {
-      const parsed = parseChecklistRow(row);
-      if (parsed) rows.push(parsed);
+    const tables = Array.from(mainContent.querySelectorAll('table')).filter((tbl) => {
+      if (tbl.closest('.col-md-3, .col-md-4, nav, .navbar, #topnav, .ad-container, .banner-ad')) return false;
+      if (tbl.classList.contains('checklist-table') || tbl.classList.contains('table-striped')) return true;
+      return tbl.querySelector('a[href*="ViewCard.cfm"]') !== null;
+    });
+
+    tables.forEach((tbl) => {
+      tbl.querySelectorAll('tr').forEach((row) => {
+        const parsed = parseChecklistRow(row);
+        if (parsed) rows.push(parsed);
+      });
     });
   }
 

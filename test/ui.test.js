@@ -83,6 +83,17 @@ test('rankCommands: results are capped for a matching query too', () => {
   assert.ok(rankCommands(commands, 'bowman').length <= 12);
 });
 
+test('fuzzyScore: long command labels retain positive score and are not dropped', () => {
+  const longLabel = 'This set: Export checklist to CSV (includes print run, team, and variations)';
+  const score = fuzzyScore('export', longLabel);
+  assert.ok(score > 0, `Expected score > 0, got ${score}`);
+
+  const commands = [{ label: longLabel }];
+  const ranked = rankCommands(commands, 'export');
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].label, longLabel);
+});
+
 // --- toasts -----------------------------------------------------------------
 
 test('every toast variant maps to a theme token', () => {
@@ -148,6 +159,39 @@ test('dropdown: Escape closes it and returns focus to the trigger', async () => 
 
   assert.equal(dropdown.classList.contains('tk-show'), false);
   assert.equal(dom.window.document.activeElement, trigger, 'focus must not be stranded');
+});
+
+test('SettingsUI._trapFocus traps focus inside panel on Tab and Shift+Tab', async () => {
+  const dom = new JSDOM('<!doctype html><body></body>');
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+
+  const { SettingsUI } = await import('../src/ui/settings.js');
+  SettingsUI.open();
+
+  const panel = dom.window.document.getElementById('tk-settings-panel');
+  assert.ok(panel, 'settings panel should be mounted');
+
+  const focusable = Array.from(
+    panel.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')
+  );
+  assert.ok(focusable.length >= 2, 'panel should have multiple focusable elements');
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+
+  first.focus();
+  assert.equal(dom.window.document.activeElement, first);
+
+  // Pressing Shift+Tab on first element cycles focus to last element
+  panel.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+  assert.equal(dom.window.document.activeElement, last);
+
+  // Pressing Tab on last element cycles focus to first element
+  panel.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: false, bubbles: true }));
+  assert.equal(dom.window.document.activeElement, first);
+
+  SettingsUI.close();
 });
 
 // --- contract checks --------------------------------------------------------
