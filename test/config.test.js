@@ -128,11 +128,11 @@ test('migrate: a missing or nonsense version resets to defaults', () => {
 test('migrate: config for a module this build does not know about is dropped', () => {
   const result = SettingsStore.migrate({
     schemaVersion: 3,
-    modules: { cardNameFormatter: { enabled: true } },
+    modules: { obsoleteModule: { enabled: true } },
     global: {}
   });
 
-  assert.equal(result.modules.cardNameFormatter, undefined);
+  assert.equal(result.modules.obsoleteModule, undefined);
 });
 
 test('migrate: a stored toggle for a removed sub-feature is dropped', () => {

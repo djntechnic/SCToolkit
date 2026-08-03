@@ -8,8 +8,8 @@
  * beyond object construction — which is what lets the tests load it.
  */
 
-import { Log, RuntimeSettings } from './log.js';
-import { getValue, setValue } from './storage.js';
+import { Log, RuntimeSettings } from "./log.js";
+import { getValue, setValue } from "./storage.js";
 
 /**
  * Runtime export thresholds. Kept as a separate flat object because the fetch
@@ -22,7 +22,7 @@ export const EXPORT_CONFIG = {
   backoffBaseMs: 1000,
   backoffCapMs: 15000,
   maxPages: 200,
-  requestTimeoutMs: 30000
+  requestTimeoutMs: 30000,
 };
 
 export const DEFAULT_CONFIG = {
@@ -35,46 +35,56 @@ export const DEFAULT_CONFIG = {
       // module does not re-check the route; editing this list in Settings is
       // what moves the feature.
       urlMatch: [
-        { pattern: '/checklist\\.cfm', exclude: false },
-        { pattern: '/viewcollectionforsaletrade\\.cfm', exclude: false },
-        { pattern: '/viewcollectionwantlist\\.cfm', exclude: false },
-        { pattern: '/collectionaddmultiples', exclude: false },
-        { pattern: '/inserts\\.cfm', exclude: false },
-        { pattern: '/viewall\\.cfm', exclude: false },
-        { pattern: '/viewallc\\.cfm', exclude: false }
+        { pattern: "/checklist\\.cfm", exclude: false },
+        { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
+        { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
+        { pattern: "/collectionaddmultiples", exclude: false },
+        { pattern: "/inserts\\.cfm", exclude: false },
+        { pattern: "/viewall\\.cfm", exclude: false },
+        { pattern: "/viewallc\\.cfm", exclude: false },
       ],
       actions: {
-        realtimeFilter: true
-      }
+        realtimeFilter: true,
+      },
     },
     setListEnhancer: {
       enabled: true,
       urlMatch: [
-        { pattern: '/viewall\\.cfm', exclude: false },
-        { pattern: '/inserts\\.cfm', exclude: false }
+        { pattern: "/viewall\\.cfm", exclude: false },
+        { pattern: "/inserts\\.cfm", exclude: false },
       ],
-      actions: {}
+      actions: {},
     },
     addMultiplesEnhancer: {
       enabled: true,
-      urlMatch: [{ pattern: '/collectionaddmultiples', exclude: false }],
-      actions: {}
+      urlMatch: [{ pattern: "/collectionaddmultiples", exclude: false }],
+      actions: {},
     },
     csvExportEngine: {
       enabled: true,
       urlMatch: [
-        { pattern: '/collection', exclude: false },
-        { pattern: '(?=.*/person)(?=.*collection)', exclude: false },
-        { pattern: '/print\\.cfm', exclude: false },
-        { pattern: 'addmultiples', exclude: true }
+        { pattern: "/collection", exclude: false },
+        { pattern: "(?=.*/person)(?=.*collection)", exclude: false },
+        { pattern: "/print\\.cfm", exclude: false },
+        { pattern: "addmultiples", exclude: true },
       ],
-      actions: {}
+      actions: {},
     },
     paginationLoader: {
       enabled: true,
-      urlMatch: [{ pattern: 'addmultiples', exclude: true }],
-      actions: {}
-    }
+      urlMatch: [{ pattern: "addmultiples", exclude: true }],
+      actions: {},
+    },
+    cardNameFormatter: {
+      enabled: true,
+      urlMatch: [
+        { pattern: "/viewcard\\.cfm", exclude: false },
+        { pattern: "/checklist\\.cfm", exclude: false },
+        { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
+        { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
+      ],
+      actions: {},
+    },
   },
   global: {
     exportBaseDelayMs: EXPORT_CONFIG.baseDelayMs,
@@ -90,16 +100,22 @@ export const DEFAULT_CONFIG = {
     checklistFilterDebounceMs: 150,
     paginationLoaderDelayMs: 1000,
     settingsSaveDebounceMs: 400,
-    theme: 'auto',
-    logLevel: 'info',
-    toolbarButtonDisplay: 'both',
-    pinButtonDisplay: 'both',
-    setButtonDisplay: 'both'
-  }
+    cardFormatterTemplate:
+      '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}',
+    cardFormatterOutputMode: "popover",
+    cardFormatterPopoverDurationMs: 4000,
+    theme: "auto",
+    logLevel: "info",
+    timezone: "auto",
+    timestampFormat: "HH:mm:ss.SSS TZ",
+    toolbarButtonDisplay: "both",
+    pinButtonDisplay: "both",
+    setButtonDisplay: "both",
+  },
 };
 
 export const SettingsStore = {
-  STORAGE_KEY: 'tk_config_v1',
+  STORAGE_KEY: "tk_config_v1",
 
   cloneDefaults: () => JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
 
@@ -135,13 +151,16 @@ export const SettingsStore = {
     }
 
     if (Number.isInteger(version) && version >= 1 && version < current) {
-      Log(`Migrating stored config from schema v${version} to v${current}.`, 'info');
+      Log(
+        `Migrating stored config from schema v${version} to v${current}.`,
+        "info",
+      );
       return SettingsStore.mergeWithDefaults(stored);
     }
 
     Log(
       `Stored config schema v${version} has no migration path to v${current}. Resetting to defaults.`,
-      'warn'
+      "warn",
     );
     return SettingsStore.cloneDefaults();
   },
@@ -161,7 +180,10 @@ export const SettingsStore = {
     Object.keys(stored.modules || {}).forEach((id) => {
       const defaults = merged.modules[id];
       if (!defaults) {
-        Log(`Stored config references unknown module '${id}' — dropped.`, 'warn');
+        Log(
+          `Stored config references unknown module '${id}' — dropped.`,
+          "warn",
+        );
         return;
       }
 
@@ -182,7 +204,10 @@ export const SettingsStore = {
       if (validGlobalKeys.has(key)) {
         global[key] = storedGlobal[key];
       } else {
-        Log(`Stored config contains obsolete global setting '${key}' — pruned during migration.`, 'warn');
+        Log(
+          `Stored config contains obsolete global setting '${key}' — pruned during migration.`,
+          "warn",
+        );
       }
     });
 
@@ -192,7 +217,7 @@ export const SettingsStore = {
 
   save: (config) => {
     setValue(SettingsStore.STORAGE_KEY, config);
-  }
+  },
 };
 
 /** Live configuration singleton. Mutated in place; never reassigned. */
@@ -224,7 +249,9 @@ export function initConfig() {
   Config.schemaVersion = loaded.schemaVersion;
   Config.modules = loaded.modules;
   Config.global = loaded.global;
-  RuntimeSettings.logLevel = Config.global.logLevel || 'info';
+  RuntimeSettings.logLevel = Config.global.logLevel || "info";
+  RuntimeSettings.timezone = Config.global.timezone || "auto";
+  RuntimeSettings.timestampFormat = Config.global.timestampFormat || "HH:mm:ss.SSS TZ";
   syncExportConfig();
 }
 
@@ -245,27 +272,30 @@ export function testUrlMatch(rules, url) {
 
   const safeTest = (pattern) => {
     try {
-      return new RegExp(pattern, 'i').test(url);
+      return new RegExp(pattern, "i").test(url);
     } catch (error) {
-      Log(`Invalid urlMatch pattern '${pattern}': ${error.message}`, 'warn');
+      Log(`Invalid urlMatch pattern '${pattern}': ${error.message}`, "warn");
       return false;
     }
   };
 
   const includeRules = rules.filter((r) => !r.exclude);
   const excludeRules = rules.filter((r) => r.exclude);
-  const included = includeRules.length === 0 ? true : includeRules.some((r) => safeTest(r.pattern));
+  const included =
+    includeRules.length === 0
+      ? true
+      : includeRules.some((r) => safeTest(r.pattern));
   const excluded = excludeRules.some((r) => safeTest(r.pattern));
   return included && !excluded;
 }
 
 function escapeXml(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 /**
@@ -278,34 +308,34 @@ export function configToXml(config) {
   xml += `<sctoolkit-settings schemaVersion="${config.schemaVersion || DEFAULT_CONFIG.schemaVersion}">\n`;
 
   // Global settings
-  xml += '  <global>\n';
+  xml += "  <global>\n";
   if (config.global) {
     Object.entries(config.global).forEach(([k, v]) => {
       xml += `    <${k}>${escapeXml(v)}</${k}>\n`;
     });
   }
-  xml += '  </global>\n';
+  xml += "  </global>\n";
 
   // Modules settings
-  xml += '  <modules>\n';
+  xml += "  <modules>\n";
   if (config.modules) {
     Object.entries(config.modules).forEach(([id, modCfg]) => {
       xml += `    <module id="${escapeXml(id)}" enabled="${!!modCfg.enabled}">\n`;
-      xml += '      <urlMatch>\n';
+      xml += "      <urlMatch>\n";
       (modCfg.urlMatch || []).forEach((rule) => {
         xml += `        <rule pattern="${escapeXml(rule.pattern)}" exclude="${!!rule.exclude}" />\n`;
       });
-      xml += '      </urlMatch>\n';
-      xml += '      <actions>\n';
+      xml += "      </urlMatch>\n";
+      xml += "      <actions>\n";
       Object.entries(modCfg.actions || {}).forEach(([actionKey, actionVal]) => {
         xml += `        <action key="${escapeXml(actionKey)}" enabled="${!!actionVal}" />\n`;
       });
-      xml += '      </actions>\n';
-      xml += '    </module>\n';
+      xml += "      </actions>\n";
+      xml += "    </module>\n";
     });
   }
-  xml += '  </modules>\n';
-  xml += '</sctoolkit-settings>';
+  xml += "  </modules>\n";
+  xml += "</sctoolkit-settings>";
   return xml;
 }
 
@@ -315,45 +345,46 @@ export function configToXml(config) {
  * @returns {object}
  */
 export function xmlToConfig(xmlText) {
-  const ParserClass = typeof DOMParser !== 'undefined'
-    ? DOMParser
-    : (typeof globalThis !== 'undefined' && globalThis.DOMParser)
-    ? globalThis.DOMParser
-    : (typeof window !== 'undefined' && window.DOMParser)
-    ? window.DOMParser
-    : null;
+  const ParserClass =
+    typeof DOMParser !== "undefined"
+      ? DOMParser
+      : typeof globalThis !== "undefined" && globalThis.DOMParser
+        ? globalThis.DOMParser
+        : typeof window !== "undefined" && window.DOMParser
+          ? window.DOMParser
+          : null;
 
   if (!ParserClass) {
-    throw new Error('DOMParser is not available in this environment');
+    throw new Error("DOMParser is not available in this environment");
   }
 
   const parser = new ParserClass();
-  const doc = parser.parseFromString(xmlText, 'text/xml');
-  const errorNode = doc.querySelector('parsererror');
+  const doc = parser.parseFromString(xmlText, "text/xml");
+  const errorNode = doc.querySelector("parsererror");
   if (errorNode) {
     throw new Error(`XML Parse Error: ${errorNode.textContent}`);
   }
 
-  const root = doc.querySelector('sctoolkit-settings') || doc.documentElement;
-  if (!root || root.nodeName !== 'sctoolkit-settings') {
-    throw new Error('Invalid XML: Root element must be <sctoolkit-settings>');
+  const root = doc.querySelector("sctoolkit-settings") || doc.documentElement;
+  if (!root || root.nodeName !== "sctoolkit-settings") {
+    throw new Error("Invalid XML: Root element must be <sctoolkit-settings>");
   }
 
-  const schemaVersion = parseInt(root.getAttribute('schemaVersion') || '3', 10);
+  const schemaVersion = parseInt(root.getAttribute("schemaVersion") || "3", 10);
   const config = {
     schemaVersion,
     global: {},
-    modules: {}
+    modules: {},
   };
 
-  const globalNode = root.querySelector('global');
+  const globalNode = root.querySelector("global");
   if (globalNode) {
     Array.from(globalNode.children).forEach((child) => {
       const key = child.tagName;
       const valText = child.textContent.trim();
-      if (valText === 'true' || valText === 'false') {
-        config.global[key] = valText === 'true';
-      } else if (!isNaN(Number(valText)) && valText !== '') {
+      if (valText === "true" || valText === "false") {
+        config.global[key] = valText === "true";
+      } else if (!isNaN(Number(valText)) && valText !== "") {
         config.global[key] = Number(valText);
       } else {
         config.global[key] = valText;
@@ -361,26 +392,26 @@ export function xmlToConfig(xmlText) {
     });
   }
 
-  const modulesNode = root.querySelector('modules');
+  const modulesNode = root.querySelector("modules");
   if (modulesNode) {
-    const modNodes = modulesNode.querySelectorAll('module');
+    const modNodes = modulesNode.querySelectorAll("module");
     modNodes.forEach((modNode) => {
-      const id = modNode.getAttribute('id');
+      const id = modNode.getAttribute("id");
       if (!id) return;
-      const enabled = modNode.getAttribute('enabled') === 'true';
+      const enabled = modNode.getAttribute("enabled") === "true";
 
       const urlMatch = [];
-      modNode.querySelectorAll('urlMatch rule').forEach((ruleNode) => {
-        const pattern = ruleNode.getAttribute('pattern') || '';
-        const exclude = ruleNode.getAttribute('exclude') === 'true';
+      modNode.querySelectorAll("urlMatch rule").forEach((ruleNode) => {
+        const pattern = ruleNode.getAttribute("pattern") || "";
+        const exclude = ruleNode.getAttribute("exclude") === "true";
         urlMatch.push({ pattern, exclude });
       });
 
       const actions = {};
-      modNode.querySelectorAll('actions action').forEach((actNode) => {
-        const actKey = actNode.getAttribute('key');
+      modNode.querySelectorAll("actions action").forEach((actNode) => {
+        const actKey = actNode.getAttribute("key");
         if (actKey) {
-          actions[actKey] = actNode.getAttribute('enabled') === 'true';
+          actions[actKey] = actNode.getAttribute("enabled") === "true";
         }
       });
 
@@ -390,4 +421,3 @@ export function xmlToConfig(xmlText) {
 
   return SettingsStore.migrate(config);
 }
-

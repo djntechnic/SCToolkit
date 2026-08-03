@@ -457,6 +457,109 @@ export const SettingsUI = {
     logField.appendChild(logSelect);
     pane.appendChild(logField);
 
+    const tzField = document.createElement('div');
+    tzField.className = 'tk-settings-field';
+    const tzLabel = document.createElement('label');
+    tzLabel.textContent = 'Log Timezone';
+    const tzSelect = document.createElement('select');
+    tzSelect.title = 'Select timezone for console/diagnostic logging. Auto-detect uses your local browser timezone with fallback to US Central (America/Chicago).';
+    [
+      { value: 'auto', label: 'Auto-Detect (Client Local)' },
+      { value: 'America/Chicago', label: 'US Central (America/Chicago)' },
+      { value: 'America/New_York', label: 'US Eastern (America/New_York)' },
+      { value: 'America/Denver', label: 'US Mountain (America/Denver)' },
+      { value: 'America/Los_Angeles', label: 'US Pacific (America/Los_Angeles)' },
+      { value: 'UTC', label: 'UTC' }
+    ].forEach(({ value, label }) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if ((Config.global.timezone || 'auto') === value) opt.selected = true;
+      tzSelect.appendChild(opt);
+    });
+    tzSelect.addEventListener('change', () => {
+      Config.global.timezone = tzSelect.value;
+      RuntimeSettings.timezone = tzSelect.value;
+      Log(`Config change: global.timezone = ${tzSelect.value}`, 'info');
+      SettingsUI._persist();
+    });
+    tzField.append(tzLabel, tzSelect);
+    pane.appendChild(tzField);
+
+    const tsFormatField = document.createElement('div');
+    tsFormatField.className = 'tk-settings-field';
+    const tsFormatLabel = document.createElement('label');
+    tsFormatLabel.textContent = 'Log Timestamp Format';
+    const tsFormatInput = document.createElement('input');
+    tsFormatInput.type = 'text';
+    tsFormatInput.value = Config.global.timestampFormat || 'HH:mm:ss.SSS TZ';
+    tsFormatInput.style.cssText = 'width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;';
+    tsFormatInput.title = 'Tokens: YYYY, YY, MM, DD, HH, hh, mm, ss, SSS, A, TZ';
+    tsFormatInput.addEventListener('change', () => {
+      const val = tsFormatInput.value.trim() || 'HH:mm:ss.SSS TZ';
+      Config.global.timestampFormat = val;
+      RuntimeSettings.timestampFormat = val;
+      Log(`Config change: global.timestampFormat = ${val}`, 'info');
+      SettingsUI._persist();
+    });
+    const tsFormatHint = document.createElement('div');
+    tsFormatHint.className = 'tk-settings-hint';
+    tsFormatHint.textContent = 'Tokens: YYYY, YY, MM, DD, HH, hh, mm, ss, SSS, A, TZ (e.g. HH:mm:ss.SSS TZ, YYYYmmDDHHMMSS, YYYY-MM-DD HH:mm:ss)';
+    tsFormatField.append(tsFormatLabel, tsFormatInput, tsFormatHint);
+    pane.appendChild(tsFormatField);
+
+    const formatterSectionTitle = document.createElement('div');
+    formatterSectionTitle.className = 'tk-settings-section-title';
+    formatterSectionTitle.textContent = 'Card Name Formatter Settings';
+    formatterSectionTitle.style.marginTop = '14px';
+    formatterSectionTitle.style.paddingTop = '10px';
+    formatterSectionTitle.style.borderTop = '1px solid var(--tk-border)';
+    pane.appendChild(formatterSectionTitle);
+
+    const templateField = document.createElement('div');
+    templateField.className = 'tk-settings-field';
+    const templateLabel = document.createElement('label');
+    templateLabel.textContent = 'Template Format';
+    const templateInput = document.createElement('input');
+    templateInput.type = 'text';
+    templateInput.value = Config.global.cardFormatterTemplate || '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}';
+    templateInput.style.cssText = 'width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;';
+    templateInput.title = 'Tokens: {PlayerName}, {Year}, {SetName}, {Tags}, {PR}, {CardNo}';
+    templateInput.addEventListener('change', () => {
+      Config.global.cardFormatterTemplate = templateInput.value.trim();
+      Log(`Config change: global.cardFormatterTemplate = ${Config.global.cardFormatterTemplate}`, 'info');
+      SettingsUI._persist();
+    });
+    const templateHint = document.createElement('div');
+    templateHint.className = 'tk-settings-hint';
+    templateHint.textContent = 'Tokens: {PlayerName}, {Year}, {SetName}, {Tags}, {PR}, {CardNo}';
+    templateField.append(templateLabel, templateInput, templateHint);
+    pane.appendChild(templateField);
+
+    const outputModeField = document.createElement('div');
+    outputModeField.className = 'tk-settings-field';
+    const outputModeLabel = document.createElement('label');
+    outputModeLabel.textContent = 'Output Mode';
+    const outputModeSelect = document.createElement('select');
+    outputModeSelect.title = 'popover: show floating copy button near text. clipboard: auto-copy to clipboard.';
+    [
+      { value: 'popover', label: 'Floating Popover' },
+      { value: 'clipboard', label: 'Auto-Copy to Clipboard' }
+    ].forEach(({ value, label }) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if (Config.global.cardFormatterOutputMode === value) opt.selected = true;
+      outputModeSelect.appendChild(opt);
+    });
+    outputModeSelect.addEventListener('change', () => {
+      Config.global.cardFormatterOutputMode = outputModeSelect.value;
+      Log(`Config change: global.cardFormatterOutputMode = ${outputModeSelect.value}`, 'info');
+      SettingsUI._persist();
+    });
+    outputModeField.append(outputModeLabel, outputModeSelect);
+    pane.appendChild(outputModeField);
+
     const displaySectionTitle = document.createElement('div');
     displaySectionTitle.className = 'tk-settings-section-title';
     displaySectionTitle.textContent = 'Button Display Settings';
@@ -889,5 +992,9 @@ export const GLOBAL_FIELDS = [
   {
     label: 'Settings Save Debounce', key: 'settingsSaveDebounceMs', min: 100, max: 2000, step: 100, unit: 'ms',
     hint: 'How long to wait after the last settings change before writing to storage.'
+  },
+  {
+    label: 'Card Formatter Popover Duration', key: 'cardFormatterPopoverDurationMs', min: 1000, max: 10000, step: 500, unit: 'ms',
+    hint: 'How long the floating copy popover stays visible before auto-dismissing.'
   }
 ];

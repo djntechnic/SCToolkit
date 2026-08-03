@@ -103,9 +103,9 @@ export const TOOLBAR_CSS = `
 :root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #ffffff; border-color: var(--tk-border-strong); }
 :root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #ffffff; }
 
-.sctk-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 22px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; }
+.sctk-btn, .sctk-btn:visited { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 22px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; }
 .sctk-btn svg { flex-shrink: 0; }
-.sctk-btn:hover:not(:disabled) { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
+.sctk-btn:hover:not(:disabled), .sctk-btn:hover:not(:disabled):visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
 .sctk-btn-danger { border-color: var(--tk-red); color: var(--tk-red); }
 .sctk-btn-danger:hover:not(:disabled) { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
 .sctk-btn[hidden] { display: none; }
@@ -162,28 +162,28 @@ export const TOOLBAR_CSS = `
 #tk-overflow .tk-dropdown-content .sctk-btn { width: 100%; justify-content: flex-start; margin: 2px 0; }
 
 /* Compact Badge Styles */
-.sctk-badge { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-family: var(--tk-font-mono); padding: 1px 5px 0 5px; height: 20px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
+.sctk-badge, .sctk-badge:visited { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-family: var(--tk-font-mono); padding: 1px 5px 0 5px; height: 20px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
 
-.tk-badge-action { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
-.tk-badge-action:hover { background: var(--tk-blue); color: #ffffff; }
+.tk-badge-action, .tk-badge-action:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
+.tk-badge-action:hover, .tk-badge-action:hover:visited { background: var(--tk-blue); color: #ffffff; }
 
-.tk-badge-link-c { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
-.tk-badge-link-c:hover { background: var(--tk-blue); color: #ffffff; }
+.tk-badge-link-c, .tk-badge-link-c:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
+.tk-badge-link-c:hover, .tk-badge-link-c:hover:visited { background: var(--tk-blue); color: #ffffff; }
 
-.tk-badge-link-i { background: var(--tk-bg-elevated); border-color: var(--tk-violet); color: var(--tk-violet); }
-.tk-badge-link-i:hover { background: var(--tk-violet); color: #ffffff; }
+.tk-badge-link-i, .tk-badge-link-i:visited { background: var(--tk-bg-elevated); border-color: var(--tk-violet); color: var(--tk-violet); }
+.tk-badge-link-i:hover, .tk-badge-link-i:hover:visited { background: var(--tk-violet); color: #ffffff; }
 
-.tk-badge-link-p { background: var(--tk-bg-elevated); border-color: var(--tk-magenta); color: var(--tk-magenta); }
-.tk-badge-link-p:hover { background: var(--tk-magenta); color: #ffffff; }
+.tk-badge-link-p, .tk-badge-link-p:visited { background: var(--tk-bg-elevated); border-color: var(--tk-magenta); color: var(--tk-magenta); }
+.tk-badge-link-p:hover, .tk-badge-link-p:hover:visited { background: var(--tk-magenta); color: #ffffff; }
 
-.tk-badge-link-fs { background: var(--tk-green); border-color: var(--tk-green); color: #ffffff; }
-.tk-badge-link-fs:hover { background: #146c43; border-color: #146c43; }
+.tk-badge-link-fs, .tk-badge-link-fs:visited { background: var(--tk-green); border-color: var(--tk-green); color: #ffffff; }
+.tk-badge-link-fs:hover, .tk-badge-link-fs:hover:visited { background: #146c43; border-color: #146c43; color: #ffffff; }
 
-.tk-badge-link-fsm { background: var(--tk-bg-elevated); border-color: var(--tk-green); color: var(--tk-green); }
-.tk-badge-link-fsm:hover { background: var(--tk-green); color: #ffffff; }
+.tk-badge-link-fsm, .tk-badge-link-fsm:visited { background: var(--tk-bg-elevated); border-color: var(--tk-green); color: var(--tk-green); }
+.tk-badge-link-fsm:hover, .tk-badge-link-fsm:hover:visited { background: var(--tk-green); color: #ffffff; }
 
-.tk-badge-link-w { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
-.tk-badge-link-w:hover { background: #b02a37; border-color: #b02a37; }
+.tk-badge-link-w, .tk-badge-link-w:visited { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
+.tk-badge-link-w:hover, .tk-badge-link-w:hover:visited { background: #b02a37; border-color: #b02a37; color: #ffffff; }
 
 /* Filter Bar CSS */
 #tk-checklist-filter-wrap { margin: 8px 0; display: flex; align-items: center; gap: 6px; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-left: 3px solid var(--tk-accent); padding: 6px 10px; border-radius: 4px; font-family: var(--tk-font-ui); color: var(--tk-text); font-size: 11.5px; }
@@ -237,6 +237,10 @@ export const TOOLBAR_CSS = `
 .tk-toast-cancel:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
 .tk-toast-message ul, .tk-toast-message ol { text-align: left; margin: 3px 0 0 0; padding-left: 16px; }
 .tk-toast-message li { text-align: left; margin-bottom: 2px; }
+
+/* Card Name Formatter Popover */
+.tk-formatter-popover { position: absolute; z-index: 200000; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 4px 8px; box-shadow: var(--tk-shadow-elevated); font-family: var(--tk-font-ui); font-size: 11px; display: flex; align-items: center; gap: 8px; }
+.tk-popover-label { font-family: var(--tk-font-mono); white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 
 /* Height is measured and written to this variable by a ResizeObserver. The
    old fixed 38px was wrong the moment the toolbar wrapped to a second row, and
