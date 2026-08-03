@@ -7,8 +7,8 @@
  */
 
 import { Log } from '../core/log.js';
-import { escapeHtml } from '../ui/dom.js';
 import { showToast } from '../ui/toast.js';
+import { Utils } from '../core/utils.js';
 
 export const ExportQueue = {
   queue: [],
@@ -27,7 +27,7 @@ export const ExportQueue = {
       // client-side line.
       Log(`Export queued behind ${position - 1} pending job(s): ${label}`, 'info');
       showToast({
-        message: `Queued: <b>${escapeHtml(label)}</b> (position ${position})`,
+        message: `Queued: <b>${Utils.escape.html(label)}</b> (position ${position})`,
         variant: 'muted'
       });
       return;

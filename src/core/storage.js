@@ -7,6 +7,7 @@
  */
 
 import { Log } from './log.js';
+import { Utils } from './utils.js';
 
 /**
  * @param {string} key
@@ -75,8 +76,7 @@ export const SET_YEAR_REGEX = /^(\d{4})/;
  * @returns {string|null} four-digit year string, or null if no year is found
  */
 export function extractSetYear(str) {
-  const match = String(str || '').match(SET_YEAR_REGEX);
-  return match ? match[1] : null;
+  return Utils.extractYear(str);
 }
 
 /**
@@ -92,8 +92,5 @@ export function extractSetYear(str) {
  * @returns {string} a four-digit year, or `'Misc'`
  */
 export function deriveSetYear(name, href = '') {
-  const fromHref = href.match(/\/sid\/\d+\/(\d{4})/i) || href.match(/sid=\d+.*?(\d{4})/i);
-  if (fromHref) return fromHref[1];
-  const fromName = extractSetYear(name);
-  return fromName || 'Misc';
+  return Utils.extractYear(name, href) || 'Misc';
 }

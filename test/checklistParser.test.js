@@ -27,6 +27,20 @@ test('parseSubjectCell: trailing all-caps tokens become tags', () => {
   assert.equal(result.tags, 'RC, AU');
 });
 
+test('parseSubjectCell: all-caps player names are preserved in subject, not tags', () => {
+  const green = parseSubjectCell('A.J. GREEN');
+  assert.equal(green.subject, 'A.J. GREEN');
+  assert.equal(green.tags, '');
+
+  const sanders = parseSubjectCell('DEION SANDERS');
+  assert.equal(sanders.subject, 'DEION SANDERS');
+  assert.equal(sanders.tags, '');
+
+  const greenTagged = parseSubjectCell('A.J. GREEN RC AU');
+  assert.equal(greenTagged.subject, 'A.J. GREEN');
+  assert.equal(greenTagged.tags, 'RC, AU');
+});
+
 test('parseSubjectCell: generational suffix stays with the name', () => {
   // The regression this guards: without the explicit suffix case, `Jr.` has no
   // lowercase letters and would be classified as a tag.
@@ -248,4 +262,23 @@ test('toChecklistTable: header row is first and column count is stable', () => {
 
   assert.deepEqual(table[0], CHECKLIST_HEADER);
   table.forEach((row) => assert.equal(row.length, CHECKLIST_HEADER.length));
+});
+
+test('parseChecklistDocument: ignores summary and banner tables, targeting card tables', () => {
+  const doc = documentFrom(`
+    <div id="main-content-area">
+      <table class="summary-table">
+        <tr><td>Set Total</td><td>100 cards</td></tr>
+      </table>
+      <div class="ad-container">
+        <table><tr><td>Ad Banner</td></tr></table>
+      </div>
+      <table class="table-striped">
+        <tr><td><a href="/ViewCard.cfm/sid/1/cid/1">1</a></td><td><a href="/Person.cfm/pid/1">A.J. GREEN</a></td></tr>
+      </table>
+    </div>
+  `);
+  const parsed = parseChecklistDocument(doc);
+  assert.equal(parsed.rows.length, 1);
+  assert.equal(parsed.rows[0].subject, 'A.J. GREEN');
 });

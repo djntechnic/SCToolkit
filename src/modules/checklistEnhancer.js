@@ -11,6 +11,7 @@ import { Config } from '../core/config.js';
 import { Log } from '../core/log.js';
 import { assertContract, recordContract } from '../core/contracts.js';
 import { debounce } from '../ui/dom.js';
+import { SELECTOR_REGISTRY } from '../core/selectors.js';
 
 /**
  * Containers that hold a listing table, most specific first.
@@ -21,19 +22,19 @@ import { debounce } from '../ui/dom.js';
  * appeared on three of the four routes its own config lists. Confirmed against
  * real captures in `test/fixtures/real/`.
  */
-export const FILTER_SCOPES = ['#main-content-area', '#content'];
+export const FILTER_SCOPES = SELECTOR_REGISTRY.checklist.scopes;
 
 /** Rows and list items carrying one of these are data items; anything else is chrome. */
-const DATA_ROW_SELECTOR = 'a[href*="ViewCard.cfm"], a[href*="Checklist.cfm"], a[href*="ViewSet.cfm"], a[href*="/sid/"], a[href*="ViewAll.cfm"], a[href*="Person.cfm"], a[href*="Team.cfm"], input, select';
+const DATA_ROW_SELECTOR = SELECTOR_REGISTRY.checklist.dataRows;
 
 /** Elements that represent rows or list items in listing containers. */
-const ITEM_ELEMENT_SELECTOR = 'table tr, ul > li, ol > li';
+const ITEM_ELEMENT_SELECTOR = SELECTOR_REGISTRY.checklist.itemElements;
 
 /** Applied to filtered-out rows. Defined in `ui/styles.js`. */
 const HIDDEN_CLASS = 'tk-hidden';
 
 /** Selectors for navigation, dropdown pickers, or sidebar chrome that must never receive filter bars or indexed rows. */
-const SIDEBAR_CHROME_SELECTOR = '.col-md-3, .col-md-4, nav, .breadcrumb, .navbar, #topnav, #sctk-toolbar, .menu-linksV, .list-unstyled, .set-wrapper, .set-dropdown, #setDropdown, #setList, .offcanvas';
+const SIDEBAR_CHROME_SELECTOR = SELECTOR_REGISTRY.checklist.chrome;
 
 /**
  * Build the searchable index of data rows and list items, once.

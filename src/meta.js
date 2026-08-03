@@ -10,6 +10,8 @@
  * All user-facing naming elsewhere in this project is "SCToolkit".
  */
 
+import { APP_VERSION } from './core/version.js';
+
 const RAW_BASE = 'https://raw.githubusercontent.com/djntechnic/SCToolkit/main/dist';
 
 /**
@@ -19,10 +21,11 @@ const RAW_BASE = 'https://raw.githubusercontent.com/djntechnic/SCToolkit/main/di
  * @returns {string} The banner, newline-terminated.
  */
 export function buildBanner(pkg) {
+  const version = pkg?.version || APP_VERSION;
   const lines = [
     ['name', 'SCToolkit'],
     ['namespace', pkg.homepage],
-    ['version', pkg.version],
+    ['version', version],
     ['description', pkg.description],
     ['author', pkg.author],
     ['license', pkg.license],

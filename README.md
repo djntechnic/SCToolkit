@@ -2,7 +2,7 @@
 
 A userscript toolkit for sports card database browsing: instant table & set list filtering, keyboard-first data entry, set shortcut badges, checklist links, customizable button display modes, and polite, rate-limited CSV export.
 
-> **Status:** v3.0.1 is available. Featuring universal real-time filtering, checklist shortcuts, Title Case standardized controls, and configurable button display modes (Icon Only, Text Only, Both).
+> **Status:** v3.0.2 is available. Featuring universal real-time filtering, checklist shortcuts, Title Case standardized controls, and configurable button display modes (Icon Only, Text Only, Both).
 
 ---
 

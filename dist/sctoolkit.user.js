@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SCToolkit
 // @namespace    https://github.com/djntechnic/SCToolkit
-// @version      3.0.1
+// @version      3.0.2
 // @description  Userscript toolkit for sports card database browsing: filtering, shortcuts, and polite CSV export.
 // @author       djntechnic
 // @license      MIT
@@ -63,6 +63,61 @@
     );
   }
 
+  // src/core/utils.js
+  var LEADING_YEAR_REGEX = /^(\d{4})/;
+  var Utils = {
+    /**
+     * Extract a four-digit year from a text label or URL href.
+     *
+     * @param {string} [text] e.g. "2024 Topps Chrome"
+     * @param {string} [href] e.g. "/Checklist.cfm/sid/123/2024"
+     * @returns {string|null} four-digit year string, or null
+     */
+    extractYear(text = "", href = "") {
+      if (href) {
+        const fromHref = href.match(/\/sid\/\d+\/(\d{4})/i) || href.match(/sid=\d+.*?(\d{4})/i) || href.match(/[?&]year=(\d{4})/i) || href.match(/\/(\d{4})(?:[/-]|\b)/);
+        if (fromHref) return fromHref[1];
+      }
+      const match = String(text || "").match(LEADING_YEAR_REGEX);
+      return match ? match[1] : null;
+    },
+    escape: {
+      /**
+       * Escape a string for safe HTML interpolation.
+       *
+       * @param {*} str
+       * @returns {string}
+       */
+      html(str) {
+        if (str === null || str === void 0) return "";
+        return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      },
+      /**
+       * Escape a string for safe XML interpolation.
+       *
+       * @param {*} str
+       * @returns {string}
+       */
+      xml(str) {
+        if (str === null || str === void 0) return "";
+        return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+      },
+      /**
+       * Escape a field for RFC 4180 CSV serialization.
+       *
+       * @param {*} value
+       * @returns {string}
+       */
+      csv(value) {
+        const str = value === null || value === void 0 ? "" : String(value);
+        if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      }
+    }
+  };
+
   // src/core/storage.js
   function getValue(key, fallback) {
     if (typeof GM_getValue !== "function") return fallback;
@@ -100,15 +155,8 @@
     }
   };
   var SET_YEAR_REGEX = /^(\d{4})/;
-  function extractSetYear(str) {
-    const match = String(str || "").match(SET_YEAR_REGEX);
-    return match ? match[1] : null;
-  }
   function deriveSetYear(name, href = "") {
-    const fromHref = href.match(/\/sid\/\d+\/(\d{4})/i) || href.match(/sid=\d+.*?(\d{4})/i);
-    if (fromHref) return fromHref[1];
-    const fromName = extractSetYear(name);
-    return fromName || "Misc";
+    return Utils.extractYear(name, href) || "Misc";
   }
 
   // src/core/config.js
@@ -435,53 +483,6 @@
     results.push({ moduleId, label, selector: "(runtime check)", ok });
   }
 
-  // src/modules/inputOptimization.js
-  var InputIndex = {
-    /** @type {() => HTMLInputElement[]} */
-    getValidInputs: () => []
-  };
-  function isEligibleInput(el) {
-    const type = el.type ? el.type.toLowerCase() : "text";
-    if (type !== "text" && type !== "number") return false;
-    if (el.readOnly || el.disabled) return false;
-    return el.offsetParent !== null || el.value === "0";
-  }
-  var cache = { inputs: null };
-  function invalidateInputCache() {
-    cache.inputs = null;
-  }
-  function getValidInputs() {
-    if (cache.inputs === null) {
-      cache.inputs = Array.from(document.querySelectorAll("input")).filter(isEligibleInput);
-    }
-    return cache.inputs;
-  }
-  function initInputOptimization() {
-    recordContract(
-      "inputOptimization",
-      `${getValidInputs().length} eligible input(s)`,
-      true
-    );
-    document.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" && e.code !== "NumpadEnter") return;
-      const active = document.activeElement;
-      if (!active || active.tagName !== "INPUT" || active.id === "tk-checklist-filter") return;
-      const inputs = getValidInputs();
-      const index = inputs.indexOf(active);
-      if (index === -1) return;
-      e.preventDefault();
-      if (index < inputs.length - 1) {
-        const nextInput = inputs[index + 1];
-        nextInput.focus({ preventScroll: true });
-        setTimeout(() => nextInput.select(), 20);
-      }
-    });
-    const observer = new MutationObserver(invalidateInputCache);
-    observer.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener("resize", invalidateInputCache, { passive: true });
-    InputIndex.getValidInputs = getValidInputs;
-  }
-
   // src/ui/dom.js
   function injectStyle(css) {
     const style = document.createElement("style");
@@ -506,17 +507,86 @@
       timer = setTimeout(() => fn(...args), waitMs);
     };
   }
-  function escapeHtml(str) {
-    if (str === null || str === void 0) return "";
-    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+  // src/modules/inputOptimization.js
+  var InputIndex = {
+    /** @type {() => HTMLInputElement[]} */
+    getValidInputs: () => []
+  };
+  var INPUT_SELECTOR = "input[type='text' i], input[type='number' i], input:not([type])";
+  function isEligibleInput(el) {
+    if (!el) return false;
+    const type = el.type ? el.type.toLowerCase() : "text";
+    if (type !== "text" && type !== "number") return false;
+    if (el.readOnly || el.disabled || el.hidden || el.getAttribute("hidden") !== null) return false;
+    return el.offsetParent !== null || el.value === "0";
+  }
+  var cache = { inputs: null };
+  function invalidateInputCache() {
+    cache.inputs = null;
+  }
+  function getValidInputs() {
+    if (cache.inputs === null) {
+      const root = typeof document !== "undefined" && document.getElementById("main-content-area") || (typeof document !== "undefined" ? document.body : null);
+      cache.inputs = root ? Array.from(root.querySelectorAll(INPUT_SELECTOR)).filter(isEligibleInput) : [];
+    }
+    return cache.inputs;
+  }
+  function initInputOptimization() {
+    recordContract(
+      "inputOptimization",
+      `${getValidInputs().length} eligible input(s)`,
+      true
+    );
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.code !== "NumpadEnter") return;
+      const active = document.activeElement;
+      if (!active || active.tagName !== "INPUT" || active.id === "tk-checklist-filter") return;
+      const inputs = getValidInputs();
+      const index = inputs.indexOf(active);
+      if (index === -1) return;
+      e.preventDefault();
+      if (index < inputs.length - 1) {
+        const nextInput = inputs[index + 1];
+        nextInput.focus({ preventScroll: true });
+        setTimeout(() => nextInput.select(), 20);
+      }
+    });
+    const target = typeof document !== "undefined" && document.getElementById("main-content-area") || (typeof document !== "undefined" ? document.body : null);
+    if (target && typeof MutationObserver === "function") {
+      const debouncedInvalidate = debounce(invalidateInputCache, 200);
+      const observer = new MutationObserver(debouncedInvalidate);
+      observer.observe(target, { childList: true, subtree: true });
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", invalidateInputCache, { passive: true });
+    }
+    InputIndex.getValidInputs = getValidInputs;
   }
 
+  // src/core/selectors.js
+  var SELECTOR_REGISTRY = {
+    checklist: {
+      scopes: ["#main-content-area", "#content"],
+      dataRows: 'a[href*="ViewCard.cfm"], a[href*="Checklist.cfm"], a[href*="ViewSet.cfm"], a[href*="/sid/"], a[href*="ViewAll.cfm"], a[href*="Person.cfm"], a[href*="Team.cfm"], input, select',
+      itemElements: "table tr, ul > li, ol > li",
+      chrome: ".col-md-3, .col-md-4, nav, .breadcrumb, .navbar, #topnav, #sctk-toolbar, .menu-linksV, .list-unstyled, .set-wrapper, .set-dropdown, #setDropdown, #setList, .offcanvas"
+    },
+    setLinks: [
+      'a[href*="ViewSet" i]',
+      'a[href*="CollectionSummary" i]',
+      'a[href*="Checklist" i]',
+      'a[href*="sid=" i]',
+      'a[href*="/sid/" i]'
+    ]
+  };
+
   // src/modules/checklistEnhancer.js
-  var FILTER_SCOPES = ["#main-content-area", "#content"];
-  var DATA_ROW_SELECTOR = 'a[href*="ViewCard.cfm"], a[href*="Checklist.cfm"], a[href*="ViewSet.cfm"], a[href*="/sid/"], a[href*="ViewAll.cfm"], a[href*="Person.cfm"], a[href*="Team.cfm"], input, select';
-  var ITEM_ELEMENT_SELECTOR = "table tr, ul > li, ol > li";
+  var FILTER_SCOPES = SELECTOR_REGISTRY.checklist.scopes;
+  var DATA_ROW_SELECTOR = SELECTOR_REGISTRY.checklist.dataRows;
+  var ITEM_ELEMENT_SELECTOR = SELECTOR_REGISTRY.checklist.itemElements;
   var HIDDEN_CLASS = "tk-hidden";
-  var SIDEBAR_CHROME_SELECTOR = ".col-md-3, .col-md-4, nav, .breadcrumb, .navbar, #topnav, #sctk-toolbar, .menu-linksV, .list-unstyled, .set-wrapper, .set-dropdown, #setDropdown, #setList, .offcanvas";
+  var SIDEBAR_CHROME_SELECTOR = SELECTOR_REGISTRY.checklist.chrome;
   function buildRowIndex(mainContent) {
     const index = [];
     const elements = mainContent.querySelectorAll(ITEM_ELEMENT_SELECTOR);
@@ -610,14 +680,10 @@
 
   // src/data/csv.js
   function escapeField(value) {
-    const str = value === null || value === void 0 ? "" : String(value);
-    if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
+    return Utils.escape.csv(value);
   }
   function buildRow(fields) {
-    return fields.map(escapeField).join(",");
+    return fields.map(Utils.escape.csv).join(",");
   }
   function toCSV(rows) {
     return rows.map(buildRow).join("\n");
@@ -660,7 +726,7 @@
     fallbackLabel = "",
     kind = "checklist"
   } = {}) {
-    const cleanYear = year || extractSetYear(fallbackLabel) || "";
+    const cleanYear = year || Utils.extractYear(fallbackLabel) || "";
     const cleanBaseSet = sanitizeSegment(baseSet);
     const cleanSubSet = setName ? `_${compactSegment(setName)}` : "";
     const suffix = EXPORT_KIND_SUFFIX[kind] ?? EXPORT_KIND_SUFFIX.checklist;
@@ -681,6 +747,71 @@
   ];
   var NAME_SUFFIX = /^(Jr\.?|Sr\.?|II|III|IV|V)$/i;
   var PRINT_RUN = /^SN\d+$/i;
+  var KNOWN_TAGS = /* @__PURE__ */ new Set([
+    "RC",
+    "AU",
+    "AUTO",
+    "MEM",
+    "MEMO",
+    "FS",
+    "DP",
+    "SP",
+    "SSP",
+    "VAR",
+    "ERR",
+    "UER",
+    "COR",
+    "SN",
+    "HL",
+    "CL",
+    "TL",
+    "LL",
+    "ROY",
+    "MVP",
+    "HOF",
+    "AS",
+    "CY",
+    "SH",
+    "CO",
+    "MGR",
+    "TC",
+    "FC",
+    "1ST",
+    "RET",
+    "DK",
+    "IN",
+    "PR",
+    "BC",
+    "NNO",
+    "PUP",
+    "IA",
+    "ASG",
+    "GL",
+    "MG",
+    "FF",
+    "AL",
+    "NL",
+    "TR",
+    "FB",
+    "BB",
+    "BK",
+    "HK",
+    "PAR",
+    "INS",
+    "REF",
+    "FOIL",
+    "EXCH",
+    "RED",
+    "PROMO"
+  ]);
+  function isTagToken(token) {
+    if (!token || token.includes(".")) return false;
+    if (/[a-z]/.test(token)) return false;
+    if (NAME_SUFFIX.test(token)) return false;
+    const upper = token.toUpperCase();
+    if (KNOWN_TAGS.has(upper)) return true;
+    return /^[A-Z0-9]{1,3}$/.test(upper);
+  }
   var CAPTION_TAGS = ["VAR", "ERR", "UER", "COR"];
   var CAPTION_SEGMENT = new RegExp(`^(${CAPTION_TAGS.join("|")}):\\s*`, "i");
   var DESCRIBABLE_TAG = new RegExp(`^(${CAPTION_TAGS.join("|")})$`, "i");
@@ -702,7 +833,7 @@
       } else if (!foundNonTag && NAME_SUFFIX.test(cleanToken)) {
         foundNonTag = true;
         subjectParts.unshift(token);
-      } else if (!foundNonTag && /^[^a-z]+$/.test(cleanToken) && /[A-Z0-9]/.test(cleanToken)) {
+      } else if (!foundNonTag && isTagToken(cleanToken)) {
         tagParts.unshift(cleanToken);
       } else {
         foundNonTag = true;
@@ -824,7 +955,7 @@
       const h1 = setnameContent.querySelector("h1");
       if (h1) {
         const h1Text = norm(h1).replace(/\s*-\s*Cards$/i, "").trim();
-        const yearStr = extractSetYear(h1Text);
+        const yearStr = Utils.extractYear(h1Text);
         if (yearStr && h1Text.startsWith(yearStr)) {
           year = yearStr;
           baseSet = h1Text.slice(yearStr.length).trim();
@@ -855,9 +986,16 @@
     const rows = [];
     const mainContent = doc.getElementById("main-content-area");
     if (mainContent) {
-      mainContent.querySelectorAll("table tr").forEach((row) => {
-        const parsed = parseChecklistRow(row);
-        if (parsed) rows.push(parsed);
+      const tables = Array.from(mainContent.querySelectorAll("table")).filter((tbl) => {
+        if (tbl.closest(".col-md-3, .col-md-4, nav, .navbar, #topnav, .ad-container, .banner-ad")) return false;
+        if (tbl.classList.contains("checklist-table") || tbl.classList.contains("table-striped")) return true;
+        return tbl.querySelector('a[href*="ViewCard.cfm"]') !== null;
+      });
+      tables.forEach((tbl) => {
+        tbl.querySelectorAll("tr").forEach((row) => {
+          const parsed = parseChecklistRow(row);
+          if (parsed) rows.push(parsed);
+        });
       });
     }
     return { ...identity, totalPages, rows };
@@ -891,10 +1029,10 @@
       const list = Array.isArray(modulesList) && modulesList.length > 0 ? modulesList : [];
       if (list.length > 0) {
         titleEl.textContent = `Active Modules (${list.length})`;
-        listEl.innerHTML = list.map((m) => `<li>${escapeHtml(m)}</li>`).join("");
+        listEl.innerHTML = list.map((m) => `<li>${Utils.escape.html(m)}</li>`).join("");
       } else {
         titleEl.textContent = "Status Details";
-        listEl.innerHTML = `<li>${escapeHtml(text)}</li>`;
+        listEl.innerHTML = `<li>${Utils.escape.html(text)}</li>`;
       }
     }
   }
@@ -1126,14 +1264,25 @@
       now = () => Date.now(),
       sleep: sleep2 = (ms) => new Promise((r) => setTimeout(r, ms)),
       read: read2 = () => getValue(LAST_REQUEST_KEY, 0),
-      write: write2 = (ts) => setValue(LAST_REQUEST_KEY, ts)
+      write: write2 = (ts) => setValue(LAST_REQUEST_KEY, ts),
+      jitter = deps.jitter ?? (deps.now || deps.sleep ? () => 0 : () => Math.floor(20 + Math.random() * 60))
     } = deps;
     let waited = 0;
     for (; ; ) {
       const current = now();
       const wait = computeSlotWait(read2(), intervalMs, current);
       if (wait === 0) {
-        write2(current);
+        const offset = jitter();
+        if (offset > 0) {
+          await sleep2(offset);
+          waited += offset;
+          const recheckNow = now();
+          if (computeSlotWait(read2(), intervalMs, recheckNow) > 0) {
+            continue;
+          }
+        }
+        const claimTs = now();
+        write2(claimTs);
         return waited;
       }
       const slice = Math.min(wait, MAX_SLICE_MS);
@@ -1280,7 +1429,7 @@
       if (ExportQueue.active) {
         Log(`Export queued behind ${position - 1} pending job(s): ${label}`, "info");
         showToast({
-          message: `Queued: <b>${escapeHtml(label)}</b> (position ${position})`,
+          message: `Queued: <b>${Utils.escape.html(label)}</b> (position ${position})`,
           variant: "muted"
         });
         return;
@@ -1349,6 +1498,7 @@
   async function fetchAllPages(setId, signal, progress) {
     let pageIndex = 1;
     let totalPages = 1;
+    let totalDiscoveredPages = 1;
     let identity = { year: "", baseSet: "", setName: "" };
     const rows = [];
     do {
@@ -1369,19 +1519,21 @@
       const parsed = parseChecklistDocument(doc);
       if (pageIndex === 1) {
         identity = { year: parsed.year, baseSet: parsed.baseSet, setName: parsed.setName };
-        const discoveredPages = parsed.totalPages;
-        if (discoveredPages > EXPORT_CONFIG.maxPages) {
+        totalDiscoveredPages = parsed.totalPages;
+        if (totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
           totalPages = EXPORT_CONFIG.maxPages;
+          const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${totalDiscoveredPages})`;
+          setStatus(cappedStatus);
           Log(
-            `Discovered page count (${discoveredPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
+            `Discovered page count (${totalDiscoveredPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
             "warn"
           );
           showToast({
-            message: `Set has <b>${discoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). Exporting first ${EXPORT_CONFIG.maxPages} pages only.`,
+            message: `Set has <b>${totalDiscoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). Exporting first ${EXPORT_CONFIG.maxPages} pages only.`,
             variant: "warn"
           });
         } else {
-          totalPages = discoveredPages;
+          totalPages = totalDiscoveredPages;
           Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, "info");
         }
       }
@@ -1389,7 +1541,7 @@
       Log(`Page ${pageIndex}/${totalPages} parsed successfully. ${parsed.rows.length} rows retrieved.`, "info");
       pageIndex++;
     } while (pageIndex <= totalPages);
-    return { identity, rows, totalPages };
+    return { identity, rows, totalPages, totalDiscoveredPages };
   }
   async function runExportSetCSV(setId, setName) {
     const remainingMin = cooldownRemainingMinutes();
@@ -1434,8 +1586,14 @@
       );
       write(setId, result, ttlHours);
       downloadResult(result, setName);
-      setStatus("Export Complete");
-      progress.finish(`${result.rows.length} cards exported.`, "success");
+      if (result.totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
+        const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${result.totalDiscoveredPages})`;
+        setStatus(cappedStatus);
+        progress.finish(`${result.rows.length} cards exported (capped at ${EXPORT_CONFIG.maxPages} pages).`, "warning");
+      } else {
+        setStatus("Export Complete");
+        progress.finish(`${result.rows.length} cards exported.`, "success");
+      }
     } catch (error) {
       if (error instanceof BlockedError) {
         recordBlock(error.message);
@@ -2176,7 +2334,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       const pins = Pins.all();
       if (pins.length === 0) return;
       const grouped = pins.reduce((acc, pin) => {
-        const year = SET_YEAR_REGEX.test(pin.year) ? pin.year : deriveSetYear(pin.name, pin.url);
+        const year = SET_YEAR_REGEX.test(pin.year) ? pin.year : Utils.extractYear(pin.name, pin.url) || "Misc";
         (acc[year] ||= []).push(pin);
         return acc;
       }, {});
@@ -2274,13 +2432,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
 
   // src/modules/setListEnhancer.js
   var CHUNK_SIZE = 25;
-  var SET_LINK_SELECTOR = [
-    'a[href*="ViewSet" i]',
-    'a[href*="CollectionSummary" i]',
-    'a[href*="Checklist" i]',
-    'a[href*="sid=" i]',
-    'a[href*="/sid/" i]'
-  ].join(", ");
+  var SET_LINK_SELECTOR = SELECTOR_REGISTRY.setLinks.join(", ");
   var onIdle = typeof requestIdleCallback === "function" ? (fn) => requestIdleCallback(fn, { timeout: 500 }) : (fn) => setTimeout(fn, 16);
   function findSetLinks(root = document) {
     return Array.from(root.querySelectorAll(SET_LINK_SELECTOR)).filter((link) => {
@@ -2332,7 +2484,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         });
         if (!added) return;
         Toolbar.renderPins();
-        showToast({ message: `Pinned: <b>${escapeHtml(setName)}</b>` });
+        showToast({ message: `Pinned: <b>${Utils.escape.html(setName)}</b>` });
       },
       onExport: (e) => {
         e.preventDefault();
@@ -2383,24 +2535,63 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     };
     step();
   }
-  var pageObserver = null;
-  function observeSetLinks() {
-    if (pageObserver || typeof MutationObserver !== "function" || typeof document === "undefined") return;
+  var ActiveObservers = /* @__PURE__ */ new Set();
+  function disconnectSetListEnhancer() {
+    ActiveObservers.forEach((obs) => {
+      try {
+        obs.disconnect();
+      } catch {
+      }
+    });
+    ActiveObservers.clear();
+  }
+  function observeSetLinks(options = {}) {
+    disconnectSetListEnhancer();
+    if (typeof MutationObserver !== "function" || typeof document === "undefined") return null;
+    const target = document.getElementById("main-content-area") || document.body;
+    if (!target) return null;
     let debounceTimer = null;
-    pageObserver = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
+      const isSelfMutation = mutations.every((m) => Array.from(m.addedNodes).every((node) => node.nodeType === 1 && (node.classList?.contains("tk-injected-badge-group") || node.querySelector?.(".tk-injected-badge-group") !== null)));
+      if (isSelfMutation) return;
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        const pending = findUninjectedSetLinks();
-        if (pending.length > 0) {
-          injectInChunks(pending, (n) => {
-            Log(`Set List Enhancer: Enhanced ${n} late-rendered / dynamic set link(s).`, "info");
-          });
+        try {
+          const pending = findUninjectedSetLinks();
+          if (pending.length > 0) {
+            injectInChunks(pending, (n) => {
+              if (n > 0) {
+                Log(`Set List Enhancer: Enhanced ${n} late-rendered / dynamic set link(s).`, "info");
+              }
+            });
+          }
+        } catch (err) {
+          Log(`Set List Enhancer observer error: ${err.message}`, "warn");
         }
       }, 150);
     });
-    pageObserver.observe(document.body, { childList: true, subtree: true });
+    try {
+      observer.observe(target, { childList: true, subtree: true });
+      ActiveObservers.add(observer);
+      if (options.timeoutMs > 0) {
+        setTimeout(() => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          try {
+            observer.disconnect();
+          } finally {
+            ActiveObservers.delete(observer);
+          }
+        }, options.timeoutMs);
+      }
+    } catch (err) {
+      Log(`Set List Enhancer: Failed to observe target element: ${err.message}`, "warn");
+      observer.disconnect();
+      return null;
+    }
+    return observer;
   }
   function initSetListEnhancer() {
+    disconnectSetListEnhancer();
     const setLinks = findSetLinks();
     if (setLinks.length === 0) {
       Log("Set List Enhancer: Waiting for set links to render...", "info");
@@ -2409,9 +2600,10 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       ]);
     } else {
       const pending = findUninjectedSetLinks();
-      injectInChunks(pending, (n) => {
-        Log(`Set List Enhancer: Enhanced ${n} of ${setLinks.length} set link(s).`, "info");
-        recordContract("setListEnhancer", `badges on ${n} of ${setLinks.length} set link(s)`, n > 0);
+      injectInChunks(pending, () => {
+        const injectedCount = setLinks.filter((link) => link.dataset.tkInjected).length;
+        Log(`Set List Enhancer: Enhanced ${injectedCount} of ${setLinks.length} set link(s).`, "info");
+        recordContract("setListEnhancer", `badges on ${injectedCount} of ${setLinks.length} set link(s)`, injectedCount > 0);
       });
     }
     observeSetLinks();
@@ -2621,6 +2813,18 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     });
   }
 
+  // src/core/version.js
+  var APP_VERSION = "3.0.2";
+  function getAppVersion() {
+    try {
+      if (typeof GM_info !== "undefined" && GM_info?.script?.version) {
+        return GM_info.script.version;
+      }
+    } catch {
+    }
+    return APP_VERSION;
+  }
+
   // src/core/diagnostics.js
   var DiagnosticTests = {
     /**
@@ -2631,8 +2835,8 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     run: () => {
       const results2 = [];
       try {
-        const quoted = escapeField("hello, world");
-        const plain = escapeField("plain");
+        const quoted = Utils.escape.csv("hello, world");
+        const plain = Utils.escape.csv("plain");
         const pass = quoted === '"hello, world"' && plain === "plain";
         results2.push({
           name: "CSV Field Escaping",
@@ -2641,6 +2845,18 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         });
       } catch (err) {
         results2.push({ name: "CSV Field Escaping", pass: false, detail: err.message });
+      }
+      try {
+        const yearFromUrl = Utils.extractYear("", "/Checklist.cfm/sid/123/2024");
+        const yearFromText = Utils.extractYear("2024 Topps Chrome", "");
+        const pass = yearFromUrl === "2024" && yearFromText === "2024";
+        results2.push({
+          name: "Year Extraction (Utils)",
+          pass,
+          detail: pass ? "Year parsing operational" : `Unexpected results: url=${yearFromUrl}, text=${yearFromText}`
+        });
+      } catch (err) {
+        results2.push({ name: "Year Extraction (Utils)", pass: false, detail: err.message });
       }
       try {
         const pass = typeof Pacing.penaltyMs === "number" && typeof Pacing.lastLatencyMs === "number" && Array.isArray(Pacing.samples);
@@ -2664,6 +2880,17 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         });
       } catch (err) {
         results2.push({ name: "Route Pattern Matching", pass: false, detail: err.message });
+      }
+      try {
+        const ver = getAppVersion();
+        const pass = Boolean(ver && ver !== "unknown");
+        results2.push({
+          name: "Version Reporting",
+          pass,
+          detail: pass ? `SCToolkit v${ver}` : "Version string invalid"
+        });
+      } catch (err) {
+        results2.push({ name: "Version Reporting", pass: false, detail: err.message });
       }
       return results2;
     }
@@ -2750,9 +2977,10 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           return;
         }
         if (e.key !== "Tab") return;
+        const isVisible = (el) => typeof el.checkVisibility === "function" ? el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) : el.offsetWidth > 0 || el.offsetHeight > 0 || el.style.display !== "none";
         const focusable = Array.from(
           panel.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')
-        ).filter((el) => !el.disabled && el.offsetParent !== null);
+        ).filter((el) => !el.disabled && isVisible(el));
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -3343,15 +3571,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       }
       return field;
     },
-    _version: () => {
-      try {
-        if (typeof GM_info !== "undefined" && GM_info.script && GM_info.script.version) {
-          return GM_info.script.version;
-        }
-      } catch {
-      }
-      return "unknown";
-    }
+    _version: () => getAppVersion()
   };
   var GLOBAL_FIELDS = [
     {
@@ -3491,7 +3711,11 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       previous = found;
       cursor = found + 1;
     }
-    return score - haystack.length / 200;
+    if (haystack.includes(query)) {
+      score += 5;
+    }
+    const finalScore = score - haystack.length / 500;
+    return Math.max(0, finalScore);
   }
   function rankCommands(commands, query) {
     const q = query.trim().toLowerCase();
@@ -3581,7 +3805,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         row.className = `tk-palette-item${i === active ? " active" : ""}`;
         row.setAttribute("role", "option");
         row.setAttribute("aria-selected", String(i === active));
-        row.innerHTML = `<span class="tk-palette-label">${escapeHtml(command.label)}</span><span class="tk-palette-hint">${escapeHtml(command.hint)}</span>`;
+        row.innerHTML = `<span class="tk-palette-label">${Utils.escape.html(command.label)}</span><span class="tk-palette-hint">${Utils.escape.html(command.hint)}</span>`;
         row.addEventListener("click", () => {
           closePalette();
           command.run();
@@ -3664,7 +3888,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       loadedModuleNames
     );
     showToast({
-      message: `<b>SCToolkit Active</b> <span class="tk-toast-hint">Ctrl+K</span><ul>${loadedModuleNames.map((m) => `<li>${escapeHtml(m)}</li>`).join("")}</ul>`,
+      message: `<b>SCToolkit Active</b> <span class="tk-toast-hint">Ctrl+K</span><ul>${loadedModuleNames.map((m) => `<li>${Utils.escape.html(m)}</li>`).join("")}</ul>`,
       location: "bottom-right",
       variant: "warn"
     });

@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.0.2] — 2026-08-02
+
+### Fixed
+- **Set List Enhancer Contract & Observer Filtering**: Filtered self-generated DOM badge mutations in `MutationObserver` to prevent duplicate concurrent injection loops. Corrected total enhanced link calculation in contract reporting so Diagnostics accurately reflects page badge status.
+- **Centralized Version Number**: Unified application version reporting across Settings UI, Diagnostics, and userscript metadata header via single source of truth in `src/core/version.js`.
+- **Cross-Tab Throttle & Pagination Ceiling**: Added random jitter offset ($\Delta t \in [20\text{ms}, 80\text{ms}]$) and slot re-checks for multi-tab request serialization. Refactored pagination ceiling fallback when sets exceed max pages limit so data is safely downloaded without unhandled errors.
+
 ## [3.0.0] — 2026-07-29
 
 ### Added

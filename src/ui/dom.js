@@ -4,6 +4,8 @@
 
 
 
+import { Utils } from '../core/utils.js';
+
 // Re-exported so UI code keeps a single import surface; the implementation and
 // its result log live in core/, which the DOM layer sits above.
 export { assertContract } from '../core/contracts.js';
@@ -70,12 +72,6 @@ export function debounce(fn, waitMs) {
  * @returns {string}
  */
 export function escapeHtml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return Utils.escape.html(str);
 }
 

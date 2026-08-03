@@ -3,8 +3,9 @@
  */
 
 import { testUrlMatch } from './config.js';
-import { escapeField } from '../data/csv.js';
 import { Pacing } from '../net/pacing.js';
+import { Utils } from './utils.js';
+import { getAppVersion } from './version.js';
 
 export const DiagnosticTests = {
   /**
@@ -17,8 +18,8 @@ export const DiagnosticTests = {
 
     // 1. CSV Escaping
     try {
-      const quoted = escapeField('hello, world');
-      const plain = escapeField('plain');
+      const quoted = Utils.escape.csv('hello, world');
+      const plain = Utils.escape.csv('plain');
       const pass = quoted === '"hello, world"' && plain === 'plain';
       results.push({
         name: 'CSV Field Escaping',
@@ -29,7 +30,21 @@ export const DiagnosticTests = {
       results.push({ name: 'CSV Field Escaping', pass: false, detail: err.message });
     }
 
-    // 2. Pacing State Initialization
+    // 2. Year Extraction (Utils)
+    try {
+      const yearFromUrl = Utils.extractYear('', '/Checklist.cfm/sid/123/2024');
+      const yearFromText = Utils.extractYear('2024 Topps Chrome', '');
+      const pass = yearFromUrl === '2024' && yearFromText === '2024';
+      results.push({
+        name: 'Year Extraction (Utils)',
+        pass,
+        detail: pass ? 'Year parsing operational' : `Unexpected results: url=${yearFromUrl}, text=${yearFromText}`
+      });
+    } catch (err) {
+      results.push({ name: 'Year Extraction (Utils)', pass: false, detail: err.message });
+    }
+
+    // 3. Pacing State Initialization
     try {
       const pass =
         typeof Pacing.penaltyMs === 'number' &&
@@ -46,7 +61,7 @@ export const DiagnosticTests = {
       results.push({ name: 'Pacing State Initialization', pass: false, detail: err.message });
     }
 
-    // 3. Route Matching
+    // 4. Route Matching
     try {
       const pass = testUrlMatch(
         [{ pattern: '/checklist\\.cfm', exclude: false }],
@@ -59,6 +74,19 @@ export const DiagnosticTests = {
       });
     } catch (err) {
       results.push({ name: 'Route Pattern Matching', pass: false, detail: err.message });
+    }
+
+    // 5. Version Reporting
+    try {
+      const ver = getAppVersion();
+      const pass = Boolean(ver && ver !== 'unknown');
+      results.push({
+        name: 'Version Reporting',
+        pass,
+        detail: pass ? `SCToolkit v${ver}` : 'Version string invalid'
+      });
+    } catch (err) {
+      results.push({ name: 'Version Reporting', pass: false, detail: err.message });
     }
 
     return results;

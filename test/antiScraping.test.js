@@ -342,3 +342,35 @@ test('cache: corrupt stored data degrades to a miss, not a crash', async () => {
   assert.equal(cache.read('4001', 24), null);
   assert.deepEqual(cache.stats(24), { sets: 0, rows: 0 });
 });
+
+test('waitForSlot: jitter offset serializes simultaneous requests from multiple tabs', async () => {
+  let clock = 1_000_000;
+  let stored = 0;
+  const writtenTimestamps = [];
+
+  const createTabDeps = (tabJitterMs) => ({
+    now: () => clock,
+    sleep: async (ms) => { clock += ms; },
+    read: () => stored,
+    write: (ts) => {
+      writtenTimestamps.push(ts);
+      stored = ts;
+    },
+    jitter: () => tabJitterMs
+  });
+
+  // Tab 1 with 20ms jitter, Tab 2 with 50ms jitter, Tab 3 with 80ms jitter
+  await Promise.all([
+    waitForSlot(500, createTabDeps(20)),
+    waitForSlot(500, createTabDeps(50)),
+    waitForSlot(500, createTabDeps(80))
+  ]);
+
+  assert.equal(writtenTimestamps.length, 3);
+  for (let i = 1; i < writtenTimestamps.length; i++) {
+    assert.ok(
+      writtenTimestamps[i] >= writtenTimestamps[i - 1] + 500,
+      `Expected slot timestamps to be serialized by interval, got ${writtenTimestamps[i]} vs ${writtenTimestamps[i - 1]}`
+    );
+  }
+});

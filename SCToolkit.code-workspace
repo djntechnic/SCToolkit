@@ -5,15 +5,30 @@
     },
   ],
   "settings": {
+    // Stops VS Code from auto-launching preview tabs on file modification/creation
+    "workbench.editor.enablePreview": false,
+    "workbench.editor.enablePreviewFromQuickOpen": false,
+
+    // Prevents the editor from automatically focusing modified files
+    "workbench.editor.revealIfOpen": true,
+    "workbench.editor.showTabs": "multiple",
+
+    // (Optional) Prevents diff editors from automatically opening on agent git/diff updates
+    "diffEditor.renderSideBySide": true,
+
     "markdown.extension.completion.enabled": false,
-  },
-  "files.readonlyInclude": {
-    "dist/**": true,
-  },
-  "search.exclude": {
-    "dist/**": true,
-  },
-  "files.watcherExclude": {
-    "dist/**": true,
+    "markdown.extension.tableFormatter.enabled": false,
+    "VsCodeTaskButtons.tasks": [
+      {
+        "label": "🚀 Run Dev Watcher",
+        "task": "Run Dev Watcher",
+        "tooltip": "Start Watcher to Build on File Change",
+      },
+      {
+        "label": "⬇️ Git Pull",
+        "task": "Git Pull",
+        "tooltip": "Pull that Latest from GitHub Repo",
+      },
+    ],
   },
 }

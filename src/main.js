@@ -16,7 +16,7 @@ import { initConfig } from './core/config.js';
 import { Log } from './core/log.js';
 import { resolveModules } from './core/registry.js';
 import { EXPORT_BUTTON_IDS } from './modules/csvExportEngine.js';
-import { escapeHtml } from './ui/dom.js';
+import { Utils } from './core/utils.js';
 import { SettingsUI } from './ui/settings.js';
 import { initTheme } from './ui/theme.js';
 import { initPalette } from './ui/palette.js';
@@ -65,7 +65,7 @@ async function boot() {
   );
 
   showToast({
-    message: `<b>SCToolkit Active</b> <span class="tk-toast-hint">Ctrl+K</span><ul>${loadedModuleNames.map((m) => `<li>${escapeHtml(m)}</li>`).join('')}</ul>`,
+    message: `<b>SCToolkit Active</b> <span class="tk-toast-hint">Ctrl+K</span><ul>${loadedModuleNames.map((m) => `<li>${Utils.escape.html(m)}</li>`).join('')}</ul>`,
     location: 'bottom-right',
     variant: 'warn'
   });

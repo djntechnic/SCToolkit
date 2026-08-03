@@ -15,20 +15,15 @@ import { Pins, deriveSetYear } from '../core/storage.js';
 import { exportSetCSV } from '../net/setExport.js';
 import { SET_LINK_BADGES, renderBadgeSet } from '../ui/badges.js';
 import { assertContract, recordContract } from '../core/contracts.js';
-import { escapeHtml } from '../ui/dom.js';
 import { showToast } from '../ui/toast.js';
 import { Toolbar } from '../ui/toolbar.js';
+import { SELECTOR_REGISTRY } from '../core/selectors.js';
+import { Utils } from '../core/utils.js';
 
 /** Links processed per idle slice. */
 const CHUNK_SIZE = 25;
 
-export const SET_LINK_SELECTOR = [
-  'a[href*="ViewSet" i]',
-  'a[href*="CollectionSummary" i]',
-  'a[href*="Checklist" i]',
-  'a[href*="sid=" i]',
-  'a[href*="/sid/" i]'
-].join(', ');
+export const SET_LINK_SELECTOR = SELECTOR_REGISTRY.setLinks.join(', ');
 
 /** `requestIdleCallback` where available, a timeout everywhere else. */
 const onIdle = typeof requestIdleCallback === 'function'
@@ -127,7 +122,7 @@ function buildBadgeGroup(link, setId, currentPageSid) {
       });
       if (!added) return;
       Toolbar.renderPins();
-      showToast({ message: `Pinned: <b>${escapeHtml(setName)}</b>` });
+      showToast({ message: `Pinned: <b>${Utils.escape.html(setName)}</b>` });
     },
     onExport: (e) => {
       e.preventDefault();
@@ -213,32 +208,97 @@ function injectInChunks(links, onDone = () => {}) {
   step();
 }
 
-/** @type {MutationObserver|null} */
-let pageObserver = null;
+/** Module-level observer reference store to track active observers for teardown. */
+export const ActiveObservers = new Set();
+
+/**
+ * Disconnect and clear all active setListEnhancer observers.
+ */
+export function disconnectSetListEnhancer() {
+  ActiveObservers.forEach((obs) => {
+    try {
+      obs.disconnect();
+    } catch {
+      // Ignore disconnect errors
+    }
+  });
+  ActiveObservers.clear();
+}
 
 /**
  * Watch for set links that render dynamically or arrive via late DOM updates.
+ *
+ * @param {object} [options]
+ * @param {number} [options.timeoutMs] optional timeout to auto-disconnect
+ * @returns {MutationObserver|null}
  */
-function observeSetLinks() {
-  if (pageObserver || typeof MutationObserver !== 'function' || typeof document === 'undefined') return;
+export function observeSetLinks(options = {}) {
+  // Ensure previous observers are cleaned up before binding a new one.
+  disconnectSetListEnhancer();
+
+  if (typeof MutationObserver !== 'function' || typeof document === 'undefined') return null;
+
+  const target = document.getElementById('main-content-area') || document.body;
+  if (!target) return null;
 
   let debounceTimer = null;
-  pageObserver = new MutationObserver(() => {
+
+  const observer = new MutationObserver((mutations) => {
+    // Ignore mutations where all added nodes are badge group elements added by this module
+    const isSelfMutation = mutations.every((m) => (
+      Array.from(m.addedNodes).every((node) => (
+        node.nodeType === 1 && (
+          node.classList?.contains('tk-injected-badge-group') ||
+          node.querySelector?.('.tk-injected-badge-group') !== null
+        )
+      ))
+    ));
+    if (isSelfMutation) return;
+
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      const pending = findUninjectedSetLinks();
-      if (pending.length > 0) {
-        injectInChunks(pending, (n) => {
-          Log(`Set List Enhancer: Enhanced ${n} late-rendered / dynamic set link(s).`, 'info');
-        });
+      try {
+        const pending = findUninjectedSetLinks();
+        if (pending.length > 0) {
+          injectInChunks(pending, (n) => {
+            if (n > 0) {
+              Log(`Set List Enhancer: Enhanced ${n} late-rendered / dynamic set link(s).`, 'info');
+            }
+          });
+        }
+      } catch (err) {
+        Log(`Set List Enhancer observer error: ${err.message}`, 'warn');
       }
     }, 150);
   });
 
-  pageObserver.observe(document.body, { childList: true, subtree: true });
+  try {
+    observer.observe(target, { childList: true, subtree: true });
+    ActiveObservers.add(observer);
+
+    if (options.timeoutMs > 0) {
+      setTimeout(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        try {
+          observer.disconnect();
+        } finally {
+          ActiveObservers.delete(observer);
+        }
+      }, options.timeoutMs);
+    }
+  } catch (err) {
+    Log(`Set List Enhancer: Failed to observe target element: ${err.message}`, 'warn');
+    observer.disconnect();
+    return null;
+  }
+
+  return observer;
 }
 
 export function initSetListEnhancer() {
+  // Clean up any lingering observers from previous initializations or page navigations.
+  disconnectSetListEnhancer();
+
   const setLinks = findSetLinks();
 
   if (setLinks.length === 0) {
@@ -248,9 +308,10 @@ export function initSetListEnhancer() {
     ]);
   } else {
     const pending = findUninjectedSetLinks();
-    injectInChunks(pending, (n) => {
-      Log(`Set List Enhancer: Enhanced ${n} of ${setLinks.length} set link(s).`, 'info');
-      recordContract('setListEnhancer', `badges on ${n} of ${setLinks.length} set link(s)`, n > 0);
+    injectInChunks(pending, () => {
+      const injectedCount = setLinks.filter((link) => link.dataset.tkInjected).length;
+      Log(`Set List Enhancer: Enhanced ${injectedCount} of ${setLinks.length} set link(s).`, 'info');
+      recordContract('setListEnhancer', `badges on ${injectedCount} of ${setLinks.length} set link(s)`, injectedCount > 0);
     });
   }
 
