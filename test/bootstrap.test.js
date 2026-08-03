@@ -97,7 +97,7 @@ test('the settings modal opens and closes, and its CSS arrives only then', async
 
   doc.getElementById('tk-settings-trigger').click();
   assert.ok(doc.getElementById('tk-settings-panel'), 'settings panel should open');
-  assert.equal(doc.querySelectorAll('.tk-settings-module-row').length, 6);
+  assert.equal(doc.querySelectorAll('.tk-settings-module-row').length, 7);
 
   // The modal's stylesheet is injected on first open, not at page load.
   assert.equal(doc.querySelectorAll('head style').length, stylesAtBoot + 1);

@@ -27,8 +27,8 @@ test('every config block has a matching registry entry', () => {
 });
 
 test('the removed modules are gone from both the registry and the config', () => {
-  assert.equal(ModuleRegistry.some((m) => m.id === 'cardNameFormatter'), false);
-  assert.equal('cardNameFormatter' in DEFAULT_CONFIG.modules, false);
+  assert.equal(ModuleRegistry.some((m) => m.id === 'obsoleteModule'), false);
+  assert.equal('obsoleteModule' in DEFAULT_CONFIG.modules, false);
   assert.equal(
     'inlineActionCells' in DEFAULT_CONFIG.modules.checklistEnhancer.actions,
     false

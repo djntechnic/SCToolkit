@@ -15,6 +15,7 @@ import { initSetListEnhancer } from '../modules/setListEnhancer.js';
 import { initAddMultiplesEnhancer } from '../modules/addMultiplesEnhancer.js';
 import { initCsvExportEngine } from '../modules/csvExportEngine.js';
 import { initPaginationLoader } from '../modules/paginationLoader.js';
+import { initCardNameFormatter } from '../modules/cardNameFormatter.js';
 
 /**
  * @typedef {object} ModuleDefinition
@@ -74,6 +75,13 @@ export const ModuleRegistry = [
       + 'element, done inside the module itself, because it is not expressible as a URL pattern.',
     init: initPaginationLoader,
     isAsync: true
+  },
+  {
+    id: 'cardNameFormatter',
+    name: 'Card Name Formatter',
+    description: 'Dynamically extracts card metadata based on text selection and formats/copies card strings according to a customizable template.',
+    init: initCardNameFormatter,
+    isAsync: false
   }
 ];
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SCToolkit
 // @namespace    https://github.com/djntechnic/SCToolkit
-// @version      3.0.2
+// @version      3.0.3
 // @description  Userscript toolkit for sports card database browsing: filtering, shortcuts, and polite CSV export.
 // @author       djntechnic
 // @license      MIT
@@ -20,7 +20,11 @@
 (() => {
   // src/core/log.js
   var LOG_LEVELS = ["debug", "info", "warn", "error"];
-  var RuntimeSettings = { logLevel: "info" };
+  var RuntimeSettings = {
+    logLevel: "info",
+    timezone: "auto",
+    timestampFormat: "HH:mm:ss.SSS TZ"
+  };
   var LOG_STYLES = {
     prefix: "color:#6c757d",
     source: {
@@ -34,31 +38,126 @@
       error: "color:#dc3545; font-weight:bold"
     }
   };
-  function formatCentralTimestamp() {
+  function resolveTimezone(preferredZone = RuntimeSettings.timezone) {
+    if (preferredZone && preferredZone !== "auto") {
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: preferredZone });
+        return preferredZone;
+      } catch {
+      }
+    }
     try {
-      return new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/Chicago",
-        hour12: false,
+      if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+        const clientZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (clientZone && typeof clientZone === "string") {
+          new Intl.DateTimeFormat("en-US", { timeZone: clientZone });
+          return clientZone;
+        }
+      }
+    } catch {
+    }
+    return "America/Chicago";
+  }
+  function getZonedDateParts(date = /* @__PURE__ */ new Date(), timeZone = "America/Chicago") {
+    try {
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
-        fractionalSecondDigits: 3
-      }).format(/* @__PURE__ */ new Date()) + " CT";
+        hour12: false,
+        timeZoneName: "short"
+      });
+      const parts = formatter.formatToParts(date);
+      const getPart = (type) => parts.find((p) => p.type === type)?.value || "";
+      const year = getPart("year");
+      const month = getPart("month");
+      const day = getPart("day");
+      let hour24 = parseInt(getPart("hour"), 10);
+      if (isNaN(hour24)) hour24 = date.getHours();
+      if (hour24 === 24) hour24 = 0;
+      const minute = getPart("minute");
+      const second = getPart("second");
+      const ms = String(date.getMilliseconds()).padStart(3, "0");
+      const hour12Num = hour24 % 12 || 12;
+      const hour12 = String(hour12Num).padStart(2, "0");
+      const hour24Str = String(hour24).padStart(2, "0");
+      const ampm = hour24 >= 12 ? "PM" : "AM";
+      const tzName = getPart("timeZoneName") || "UTC";
+      return {
+        YYYY: year,
+        YY: year.slice(-2),
+        MM: month,
+        DD: day,
+        HH: hour24Str,
+        hh: hour12,
+        mm: minute,
+        ss: second,
+        SSS: ms,
+        mmm: ms,
+        A: ampm,
+        a: ampm.toLowerCase(),
+        TZ: tzName,
+        Z: tzName
+      };
     } catch {
-      return (/* @__PURE__ */ new Date()).toISOString().split("T")[1].slice(0, -1) + " UTC";
+      const year = String(date.getUTCFullYear());
+      const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(date.getUTCDate()).padStart(2, "0");
+      const hour24 = String(date.getUTCHours()).padStart(2, "0");
+      const minute = String(date.getUTCMinutes()).padStart(2, "0");
+      const second = String(date.getUTCSeconds()).padStart(2, "0");
+      const ms = String(date.getUTCMilliseconds()).padStart(3, "0");
+      return {
+        YYYY: year,
+        YY: year.slice(-2),
+        MM: month,
+        DD: day,
+        HH: hour24,
+        hh: hour24,
+        mm: minute,
+        ss: second,
+        SSS: ms,
+        mmm: ms,
+        A: "UTC",
+        a: "utc",
+        TZ: "UTC",
+        Z: "UTC"
+      };
     }
+  }
+  function formatLogTimestamp(date = /* @__PURE__ */ new Date(), formatPattern = RuntimeSettings.timestampFormat || "HH:mm:ss.SSS TZ", preferredZone = RuntimeSettings.timezone || "auto") {
+    const zone = resolveTimezone(preferredZone);
+    const parts = getZonedDateParts(date, zone);
+    let pattern = formatPattern || "HH:mm:ss.SSS TZ";
+    if (/YYYYmmDD/i.test(pattern)) {
+      pattern = pattern.replace(/YYYY/g, parts.YYYY).replace(/YY/g, parts.YY).replace(/mm/g, parts.MM).replace(/DD/gi, parts.DD).replace(/HH/gi, parts.HH).replace(/MM/g, parts.mm).replace(/SS/gi, parts.ss);
+    } else {
+      pattern = pattern.replace(/YYYY/g, parts.YYYY).replace(/YY/g, parts.YY).replace(/MM/g, parts.MM).replace(/DD/gi, parts.DD).replace(/HH/g, parts.HH).replace(/hh/g, parts.hh).replace(/mm/g, parts.mm).replace(/SSS/g, parts.SSS).replace(/ss/gi, parts.ss).replace(/\bTZ\b|\bZ\b/g, parts.TZ).replace(/\bA\b/g, parts.A).replace(/\ba\b/g, parts.a);
+    }
+    return pattern;
   }
   function Log(msg, level = "info", source = "client") {
     if (LOG_LEVELS.indexOf(level) < LOG_LEVELS.indexOf(RuntimeSettings.logLevel)) return;
-    const timestamp = formatCentralTimestamp();
     const consoleMethod = level === "debug" ? "log" : level;
     const sourceLabel = source === "server" ? "[SERVER]" : "[CLIENT]";
-    const sourceStyle = LOG_STYLES.source[source] || LOG_STYLES.source.client;
+    if (level === "error") {
+      console.error(`%c${sourceLabel} ${msg}`, "color:#dc3545; font-weight:bold");
+      return;
+    }
+    if (source === "server") {
+      console[consoleMethod](`%c[SERVER] ${msg}`, "color:#0d6efd; font-weight:bold");
+      return;
+    }
+    const timestamp = formatLogTimestamp();
     const levelStyle = LOG_STYLES.level[level] || LOG_STYLES.level.info;
     console[consoleMethod](
-      `%c[SCToolkit | ${timestamp}] %c${sourceLabel}%c ${msg}`,
+      `%c[SCToolkit | ${timestamp}] %c[CLIENT]%c ${msg}`,
       LOG_STYLES.prefix,
-      sourceStyle,
+      LOG_STYLES.source.client,
       levelStyle
     );
   }
@@ -218,6 +317,16 @@
         enabled: true,
         urlMatch: [{ pattern: "addmultiples", exclude: true }],
         actions: {}
+      },
+      cardNameFormatter: {
+        enabled: true,
+        urlMatch: [
+          { pattern: "/viewcard\\.cfm", exclude: false },
+          { pattern: "/checklist\\.cfm", exclude: false },
+          { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
+          { pattern: "/viewcollectionwantlist\\.cfm", exclude: false }
+        ],
+        actions: {}
       }
     },
     global: {
@@ -234,8 +343,13 @@
       checklistFilterDebounceMs: 150,
       paginationLoaderDelayMs: 1e3,
       settingsSaveDebounceMs: 400,
+      cardFormatterTemplate: "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}",
+      cardFormatterOutputMode: "popover",
+      cardFormatterPopoverDurationMs: 4e3,
       theme: "auto",
       logLevel: "info",
+      timezone: "auto",
+      timestampFormat: "HH:mm:ss.SSS TZ",
       toolbarButtonDisplay: "both",
       pinButtonDisplay: "both",
       setButtonDisplay: "both"
@@ -273,7 +387,10 @@
         return SettingsStore.mergeWithDefaults(stored);
       }
       if (Number.isInteger(version) && version >= 1 && version < current) {
-        Log(`Migrating stored config from schema v${version} to v${current}.`, "info");
+        Log(
+          `Migrating stored config from schema v${version} to v${current}.`,
+          "info"
+        );
         return SettingsStore.mergeWithDefaults(stored);
       }
       Log(
@@ -296,7 +413,10 @@
       Object.keys(stored.modules || {}).forEach((id) => {
         const defaults = merged.modules[id];
         if (!defaults) {
-          Log(`Stored config references unknown module '${id}' — dropped.`, "warn");
+          Log(
+            `Stored config references unknown module '${id}' — dropped.`,
+            "warn"
+          );
           return;
         }
         const storedActions = stored.modules[id].actions || {};
@@ -313,7 +433,10 @@
         if (validGlobalKeys.has(key)) {
           global[key] = storedGlobal[key];
         } else {
-          Log(`Stored config contains obsolete global setting '${key}' — pruned during migration.`, "warn");
+          Log(
+            `Stored config contains obsolete global setting '${key}' — pruned during migration.`,
+            "warn"
+          );
         }
       });
       merged.global = global;
@@ -339,6 +462,8 @@
     Config.modules = loaded.modules;
     Config.global = loaded.global;
     RuntimeSettings.logLevel = Config.global.logLevel || "info";
+    RuntimeSettings.timezone = Config.global.timezone || "auto";
+    RuntimeSettings.timestampFormat = Config.global.timestampFormat || "HH:mm:ss.SSS TZ";
     syncExportConfig();
   }
   function testUrlMatch(rules, url) {
@@ -1675,6 +1800,16 @@
       size: 12,
       strokeWidth: 2,
       body: '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/>'
+    },
+    copy: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'
+    },
+    check: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M20 6 9 17l-5-5"/>'
     }
   };
   var SPRITE_ID = "sctk-icon-sprite";
@@ -1946,9 +2081,9 @@
 :root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #ffffff; border-color: var(--tk-border-strong); }
 :root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #ffffff; }
 
-.sctk-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 22px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; }
+.sctk-btn, .sctk-btn:visited { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 22px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; }
 .sctk-btn svg { flex-shrink: 0; }
-.sctk-btn:hover:not(:disabled) { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
+.sctk-btn:hover:not(:disabled), .sctk-btn:hover:not(:disabled):visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
 .sctk-btn-danger { border-color: var(--tk-red); color: var(--tk-red); }
 .sctk-btn-danger:hover:not(:disabled) { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
 .sctk-btn[hidden] { display: none; }
@@ -2005,28 +2140,28 @@
 #tk-overflow .tk-dropdown-content .sctk-btn { width: 100%; justify-content: flex-start; margin: 2px 0; }
 
 /* Compact Badge Styles */
-.sctk-badge { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-family: var(--tk-font-mono); padding: 1px 5px 0 5px; height: 20px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
+.sctk-badge, .sctk-badge:visited { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-family: var(--tk-font-mono); padding: 1px 5px 0 5px; height: 20px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
 
-.tk-badge-action { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
-.tk-badge-action:hover { background: var(--tk-blue); color: #ffffff; }
+.tk-badge-action, .tk-badge-action:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
+.tk-badge-action:hover, .tk-badge-action:hover:visited { background: var(--tk-blue); color: #ffffff; }
 
-.tk-badge-link-c { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
-.tk-badge-link-c:hover { background: var(--tk-blue); color: #ffffff; }
+.tk-badge-link-c, .tk-badge-link-c:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
+.tk-badge-link-c:hover, .tk-badge-link-c:hover:visited { background: var(--tk-blue); color: #ffffff; }
 
-.tk-badge-link-i { background: var(--tk-bg-elevated); border-color: var(--tk-violet); color: var(--tk-violet); }
-.tk-badge-link-i:hover { background: var(--tk-violet); color: #ffffff; }
+.tk-badge-link-i, .tk-badge-link-i:visited { background: var(--tk-bg-elevated); border-color: var(--tk-violet); color: var(--tk-violet); }
+.tk-badge-link-i:hover, .tk-badge-link-i:hover:visited { background: var(--tk-violet); color: #ffffff; }
 
-.tk-badge-link-p { background: var(--tk-bg-elevated); border-color: var(--tk-magenta); color: var(--tk-magenta); }
-.tk-badge-link-p:hover { background: var(--tk-magenta); color: #ffffff; }
+.tk-badge-link-p, .tk-badge-link-p:visited { background: var(--tk-bg-elevated); border-color: var(--tk-magenta); color: var(--tk-magenta); }
+.tk-badge-link-p:hover, .tk-badge-link-p:hover:visited { background: var(--tk-magenta); color: #ffffff; }
 
-.tk-badge-link-fs { background: var(--tk-green); border-color: var(--tk-green); color: #ffffff; }
-.tk-badge-link-fs:hover { background: #146c43; border-color: #146c43; }
+.tk-badge-link-fs, .tk-badge-link-fs:visited { background: var(--tk-green); border-color: var(--tk-green); color: #ffffff; }
+.tk-badge-link-fs:hover, .tk-badge-link-fs:hover:visited { background: #146c43; border-color: #146c43; color: #ffffff; }
 
-.tk-badge-link-fsm { background: var(--tk-bg-elevated); border-color: var(--tk-green); color: var(--tk-green); }
-.tk-badge-link-fsm:hover { background: var(--tk-green); color: #ffffff; }
+.tk-badge-link-fsm, .tk-badge-link-fsm:visited { background: var(--tk-bg-elevated); border-color: var(--tk-green); color: var(--tk-green); }
+.tk-badge-link-fsm:hover, .tk-badge-link-fsm:hover:visited { background: var(--tk-green); color: #ffffff; }
 
-.tk-badge-link-w { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
-.tk-badge-link-w:hover { background: #b02a37; border-color: #b02a37; }
+.tk-badge-link-w, .tk-badge-link-w:visited { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
+.tk-badge-link-w:hover, .tk-badge-link-w:hover:visited { background: #b02a37; border-color: #b02a37; color: #ffffff; }
 
 /* Filter Bar CSS */
 #tk-checklist-filter-wrap { margin: 8px 0; display: flex; align-items: center; gap: 6px; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-left: 3px solid var(--tk-accent); padding: 6px 10px; border-radius: 4px; font-family: var(--tk-font-ui); color: var(--tk-text); font-size: 11.5px; }
@@ -2080,6 +2215,10 @@
 .tk-toast-cancel:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
 .tk-toast-message ul, .tk-toast-message ol { text-align: left; margin: 3px 0 0 0; padding-left: 16px; }
 .tk-toast-message li { text-align: left; margin-bottom: 2px; }
+
+/* Card Name Formatter Popover */
+.tk-formatter-popover { position: absolute; z-index: 200000; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 4px 8px; box-shadow: var(--tk-shadow-elevated); font-family: var(--tk-font-ui); font-size: 11px; display: flex; align-items: center; gap: 8px; }
+.tk-popover-label { font-family: var(--tk-font-mono); white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 
 /* Height is measured and written to this variable by a ResizeObserver. The
    old fixed 38px was wrong the moment the toolbar wrapped to a second row, and
@@ -2728,6 +2867,265 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     });
   }
 
+  // src/modules/cardNameFormatter.js
+  var CardMetadataExtractor = {
+    /**
+     * Extract token values for a given window Selection
+     * @param {Selection} selection
+     * @param {Document} [doc=document] - Document object (supports mock DOM in tests)
+     * @returns {Object|null} Token dictionary or null if invalid
+     */
+    extract: function(selection, doc = document) {
+      if (!selection || selection.isCollapsed) return null;
+      const anchorNode = selection.anchorNode;
+      if (!anchorNode) return null;
+      const containerEl = anchorNode.nodeType === 1 ? anchorNode : anchorNode.parentElement;
+      if (!containerEl) return null;
+      const row = containerEl.closest("tr, .yourcol-item, #main-content-area");
+      if (!row) return null;
+      const selectedText = selection.toString().trim();
+      if (!selectedText) return null;
+      let year = "";
+      let setName = "";
+      const setHeader = doc.querySelector("#setname-content h1") || doc.querySelector("#main-content-area h1");
+      if (setHeader) {
+        const headerText = setHeader.textContent.replace(/\s*-\s*Cards$/i, "").trim();
+        const yearMatch = headerText.match(/^(\d{4})\s+(.+)/);
+        if (yearMatch) {
+          year = yearMatch[1];
+          setName = yearMatch[2];
+        } else {
+          setName = headerText;
+        }
+      }
+      const subHeader = doc.querySelector("#setname-content h3");
+      if (subHeader && setName) {
+        setName += ` ${subHeader.textContent.trim()}`;
+      } else if (subHeader && !setName) {
+        setName = subHeader.textContent.trim();
+      }
+      let cardNo = "";
+      let cardLink = null;
+      const cardLinks = row.querySelectorAll(
+        'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="cid="]'
+      );
+      for (const link of cardLinks) {
+        if (link.querySelector("img")) continue;
+        const text = link.textContent.trim();
+        if (text) {
+          cardNo = text;
+          cardLink = link;
+          break;
+        }
+      }
+      if (!cardNo) {
+        const firstTd = row.querySelector("td");
+        if (firstTd) {
+          const text = firstTd.textContent.trim();
+          if (/^#?[A-Z0-9-]{1,10}$/i.test(text) && !firstTd.querySelector("img")) {
+            cardNo = text;
+          }
+        }
+      }
+      let tags = "";
+      let printRun = "";
+      const personLink = row.querySelector('a[href*="Person.cfm"]');
+      const subjectTd = personLink ? personLink.closest("td") : cardLink ? cardLink.closest("td")?.nextElementSibling : null;
+      if (subjectTd) {
+        const rawSubject = subjectTd.textContent.replace(/\s+/g, " ").trim();
+        const tokens = rawSubject.split(" ");
+        const tagParts = [];
+        tokens.forEach((token) => {
+          const clean = token.replace(/,/g, "").trim();
+          if (/^SN\d+$/i.test(clean)) {
+            printRun = clean.replace(/^SN/i, "");
+          } else if (/^[A-Z0-9]{2,4}$/.test(clean) && !/^(Jr|Sr|II|III|IV|V)$/i.test(clean)) {
+            tagParts.push(clean);
+          }
+        });
+        tags = tagParts.join(" ");
+      }
+      let playerName = "";
+      if (personLink) {
+        playerName = personLink.textContent.trim();
+      } else if (subjectTd) {
+        let rawName = subjectTd.textContent.replace(/\s+/g, " ").trim();
+        if (printRun) {
+          rawName = rawName.replace(new RegExp(`\\bSN${printRun}\\b`, "i"), "");
+        }
+        if (tags) {
+          const tagList = tags.split(" ");
+          tagList.forEach((t) => {
+            const escT = String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            rawName = rawName.replace(new RegExp(`\\b${escT}\\b`, "g"), "");
+          });
+        }
+        playerName = rawName.replace(/\s+/g, " ").trim();
+      }
+      if (!playerName) {
+        playerName = selectedText;
+        if (cardNo) {
+          const cleanCardNo = cardNo.replace(/^#/, "");
+          const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const prefixRegex = new RegExp(
+            `^(?:#?${escapeRegExp(cardNo)}|#?${escapeRegExp(cleanCardNo)})\\b\\s*`,
+            "i"
+          );
+          playerName = playerName.replace(prefixRegex, "").trim();
+        }
+        if (/^#?\d+[a-z]?\s+/i.test(playerName) && cardNo) {
+          playerName = playerName.replace(/^#?\d+[a-z]?\s+/i, "").trim();
+        }
+        if (!playerName) playerName = selectedText;
+      }
+      return {
+        Year: year,
+        SetName: setName,
+        PlayerName: playerName,
+        CardNo: cardNo,
+        Tags: tags,
+        PR: printRun ? `/${printRun}` : ""
+      };
+    },
+    /**
+     * Replace tokens in template string with extracted values
+     * @param {string} template - Tokenized template (e.g. "{PlayerName} - {Year}")
+     * @param {Object} tokens - Extracted token dictionary
+     * @returns {string} Formatted output string
+     */
+    compile: function(template, tokens) {
+      if (!tokens || !template) return "";
+      let result = template;
+      if (!tokens.CardNo) {
+        result = result.replace(/#\{CardNo\}/g, "{CardNo}");
+      }
+      Object.keys(tokens).forEach((key) => {
+        const pattern = new RegExp(`\\{${key}\\}`, "g");
+        const val = (tokens[key] || "").trim();
+        result = result.replace(pattern, val);
+      });
+      return result.replace(/\s+/g, " ").replace(/\s+#$/, "").replace(/\s+-\s+$/, "").replace(/^\s+-\s+/, "").replace(/\s+-\s+(?=-|\s|$)/g, " ").trim();
+    }
+  };
+  var FormattedCopyPopover = {
+    elementId: "tk-card-formatter-popover",
+    _dismissTimer: null,
+    /**
+     * Render popover near user selection coordinates
+     * @param {Selection} selection
+     * @param {string} formattedText
+     * @param {Document} [doc=document]
+     */
+    show: function(selection, formattedText, doc = document) {
+      this.hide(doc);
+      if (!selection || selection.rangeCount === 0) return;
+      let rect;
+      try {
+        const range = selection.getRangeAt(0);
+        rect = range.getBoundingClientRect();
+      } catch {
+        return;
+      }
+      const win = doc.defaultView || window;
+      const top = (win.scrollY || 0) + rect.bottom + 6;
+      const left = Math.max(10, (win.scrollX || 0) + rect.left);
+      const popover = doc.createElement("div");
+      popover.id = this.elementId;
+      popover.className = "tk-formatter-popover";
+      popover.style.top = `${top}px`;
+      popover.style.left = `${left}px`;
+      const label = doc.createElement("span");
+      label.className = "tk-popover-label";
+      label.textContent = formattedText;
+      label.title = formattedText;
+      const copyBtn = doc.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "sctk-btn";
+      copyBtn.innerHTML = icon("copy");
+      copyBtn.title = "Copy formatted text";
+      copyBtn.setAttribute("aria-label", "Copy formatted text");
+      copyBtn.style.height = "20px";
+      copyBtn.style.padding = "0 6px";
+      copyBtn.addEventListener("click", () => {
+        const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(formattedText) : Promise.resolve();
+        writePromise.then(() => {
+          copyBtn.innerHTML = icon("check");
+          showToast({
+            message: `Copied: <b>${Utils.escape.html(formattedText)}</b>`,
+            variant: "success"
+          });
+          setTimeout(() => this.hide(doc), 1e3);
+        }).catch((err) => {
+          Log(`Clipboard write failed: ${err.message}`, "error");
+        });
+      });
+      popover.appendChild(label);
+      popover.appendChild(copyBtn);
+      doc.body.appendChild(popover);
+      const duration = Config.global.cardFormatterPopoverDurationMs || 4e3;
+      this._dismissTimer = setTimeout(() => {
+        this.hide(doc);
+      }, duration);
+    },
+    /**
+     * Remove popover element if present
+     * @param {Document} [doc=document]
+     */
+    hide: function(doc = document) {
+      if (this._dismissTimer) {
+        clearTimeout(this._dismissTimer);
+        this._dismissTimer = null;
+      }
+      const existing = doc.getElementById(this.elementId);
+      if (existing) existing.remove();
+    }
+  };
+  function initCardNameFormatter() {
+    Log("Initializing Card Name Formatter module", "info");
+    const handleSelection = debounce(() => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) {
+        FormattedCopyPopover.hide();
+        return;
+      }
+      const tokens = CardMetadataExtractor.extract(selection);
+      if (!tokens || !tokens.PlayerName) {
+        FormattedCopyPopover.hide();
+        return;
+      }
+      const template = Config.global.cardFormatterTemplate || "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
+      const formatted = CardMetadataExtractor.compile(template, tokens);
+      if (!formatted) {
+        FormattedCopyPopover.hide();
+        return;
+      }
+      if (Config.global.cardFormatterOutputMode === "clipboard") {
+        if (window.navigator?.clipboard?.writeText) {
+          window.navigator.clipboard.writeText(formatted).then(() => {
+            showToast({
+              message: `Copied: <b>${Utils.escape.html(formatted)}</b>`,
+              variant: "success"
+            });
+          });
+        }
+      } else {
+        FormattedCopyPopover.show(selection, formatted);
+      }
+    }, 250);
+    document.addEventListener("selectionchange", handleSelection);
+    document.addEventListener("mousedown", (e) => {
+      const popover = document.getElementById(FormattedCopyPopover.elementId);
+      if (popover && !popover.contains(e.target)) {
+        FormattedCopyPopover.hide();
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        FormattedCopyPopover.hide();
+      }
+    });
+  }
+
   // src/core/registry.js
   var ModuleRegistry = [
     {
@@ -2774,6 +3172,13 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       description: "Async gate that defers CSV-export-button enablement until pagination is ready. Route pattern only excludes Add Multiples — the real gate is a DOM check for a pagination element, done inside the module itself, because it is not expressible as a URL pattern.",
       init: initPaginationLoader,
       isAsync: true
+    },
+    {
+      id: "cardNameFormatter",
+      name: "Card Name Formatter",
+      description: "Dynamically extracts card metadata based on text selection and formats/copies card strings according to a customizable template.",
+      init: initCardNameFormatter,
+      isAsync: false
     }
   ];
   function resolveModules(url = window.location.href) {
@@ -2814,14 +3219,8 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   }
 
   // src/core/version.js
-  var APP_VERSION = "3.0.2";
+  var APP_VERSION = "3.0.3";
   function getAppVersion() {
-    try {
-      if (typeof GM_info !== "undefined" && GM_info?.script?.version) {
-        return GM_info.script.version;
-      }
-    } catch {
-    }
     return APP_VERSION;
   }
 
@@ -2891,6 +3290,17 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         });
       } catch (err) {
         results2.push({ name: "Version Reporting", pass: false, detail: err.message });
+      }
+      try {
+        const ts = formatLogTimestamp(/* @__PURE__ */ new Date(), "YYYYmmDDHHMMSS", "auto");
+        const pass = Boolean(ts && /^\d{14}$/.test(ts));
+        results2.push({
+          name: "Log Timestamp Formatting",
+          pass,
+          detail: pass ? `Operational (${ts})` : `Unexpected timestamp output: ${ts}`
+        });
+      } catch (err) {
+        results2.push({ name: "Log Timestamp Formatting", pass: false, detail: err.message });
       }
       return results2;
     }
@@ -3251,6 +3661,104 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       logField.appendChild(logLabel);
       logField.appendChild(logSelect);
       pane.appendChild(logField);
+      const tzField = document.createElement("div");
+      tzField.className = "tk-settings-field";
+      const tzLabel = document.createElement("label");
+      tzLabel.textContent = "Log Timezone";
+      const tzSelect = document.createElement("select");
+      tzSelect.title = "Select timezone for console/diagnostic logging. Auto-detect uses your local browser timezone with fallback to US Central (America/Chicago).";
+      [
+        { value: "auto", label: "Auto-Detect (Client Local)" },
+        { value: "America/Chicago", label: "US Central (America/Chicago)" },
+        { value: "America/New_York", label: "US Eastern (America/New_York)" },
+        { value: "America/Denver", label: "US Mountain (America/Denver)" },
+        { value: "America/Los_Angeles", label: "US Pacific (America/Los_Angeles)" },
+        { value: "UTC", label: "UTC" }
+      ].forEach(({ value, label }) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        if ((Config.global.timezone || "auto") === value) opt.selected = true;
+        tzSelect.appendChild(opt);
+      });
+      tzSelect.addEventListener("change", () => {
+        Config.global.timezone = tzSelect.value;
+        RuntimeSettings.timezone = tzSelect.value;
+        Log(`Config change: global.timezone = ${tzSelect.value}`, "info");
+        SettingsUI._persist();
+      });
+      tzField.append(tzLabel, tzSelect);
+      pane.appendChild(tzField);
+      const tsFormatField = document.createElement("div");
+      tsFormatField.className = "tk-settings-field";
+      const tsFormatLabel = document.createElement("label");
+      tsFormatLabel.textContent = "Log Timestamp Format";
+      const tsFormatInput = document.createElement("input");
+      tsFormatInput.type = "text";
+      tsFormatInput.value = Config.global.timestampFormat || "HH:mm:ss.SSS TZ";
+      tsFormatInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      tsFormatInput.title = "Tokens: YYYY, YY, MM, DD, HH, hh, mm, ss, SSS, A, TZ";
+      tsFormatInput.addEventListener("change", () => {
+        const val = tsFormatInput.value.trim() || "HH:mm:ss.SSS TZ";
+        Config.global.timestampFormat = val;
+        RuntimeSettings.timestampFormat = val;
+        Log(`Config change: global.timestampFormat = ${val}`, "info");
+        SettingsUI._persist();
+      });
+      const tsFormatHint = document.createElement("div");
+      tsFormatHint.className = "tk-settings-hint";
+      tsFormatHint.textContent = "Tokens: YYYY, YY, MM, DD, HH, hh, mm, ss, SSS, A, TZ (e.g. HH:mm:ss.SSS TZ, YYYYmmDDHHMMSS, YYYY-MM-DD HH:mm:ss)";
+      tsFormatField.append(tsFormatLabel, tsFormatInput, tsFormatHint);
+      pane.appendChild(tsFormatField);
+      const formatterSectionTitle = document.createElement("div");
+      formatterSectionTitle.className = "tk-settings-section-title";
+      formatterSectionTitle.textContent = "Card Name Formatter Settings";
+      formatterSectionTitle.style.marginTop = "14px";
+      formatterSectionTitle.style.paddingTop = "10px";
+      formatterSectionTitle.style.borderTop = "1px solid var(--tk-border)";
+      pane.appendChild(formatterSectionTitle);
+      const templateField = document.createElement("div");
+      templateField.className = "tk-settings-field";
+      const templateLabel = document.createElement("label");
+      templateLabel.textContent = "Template Format";
+      const templateInput = document.createElement("input");
+      templateInput.type = "text";
+      templateInput.value = Config.global.cardFormatterTemplate || "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
+      templateInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      templateInput.title = "Tokens: {PlayerName}, {Year}, {SetName}, {Tags}, {PR}, {CardNo}";
+      templateInput.addEventListener("change", () => {
+        Config.global.cardFormatterTemplate = templateInput.value.trim();
+        Log(`Config change: global.cardFormatterTemplate = ${Config.global.cardFormatterTemplate}`, "info");
+        SettingsUI._persist();
+      });
+      const templateHint = document.createElement("div");
+      templateHint.className = "tk-settings-hint";
+      templateHint.textContent = "Tokens: {PlayerName}, {Year}, {SetName}, {Tags}, {PR}, {CardNo}";
+      templateField.append(templateLabel, templateInput, templateHint);
+      pane.appendChild(templateField);
+      const outputModeField = document.createElement("div");
+      outputModeField.className = "tk-settings-field";
+      const outputModeLabel = document.createElement("label");
+      outputModeLabel.textContent = "Output Mode";
+      const outputModeSelect = document.createElement("select");
+      outputModeSelect.title = "popover: show floating copy button near text. clipboard: auto-copy to clipboard.";
+      [
+        { value: "popover", label: "Floating Popover" },
+        { value: "clipboard", label: "Auto-Copy to Clipboard" }
+      ].forEach(({ value, label }) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        if (Config.global.cardFormatterOutputMode === value) opt.selected = true;
+        outputModeSelect.appendChild(opt);
+      });
+      outputModeSelect.addEventListener("change", () => {
+        Config.global.cardFormatterOutputMode = outputModeSelect.value;
+        Log(`Config change: global.cardFormatterOutputMode = ${outputModeSelect.value}`, "info");
+        SettingsUI._persist();
+      });
+      outputModeField.append(outputModeLabel, outputModeSelect);
+      pane.appendChild(outputModeField);
       const displaySectionTitle = document.createElement("div");
       displaySectionTitle.className = "tk-settings-section-title";
       displaySectionTitle.textContent = "Button Display Settings";
@@ -3690,6 +4198,15 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       step: 100,
       unit: "ms",
       hint: "How long to wait after the last settings change before writing to storage."
+    },
+    {
+      label: "Card Formatter Popover Duration",
+      key: "cardFormatterPopoverDurationMs",
+      min: 1e3,
+      max: 1e4,
+      step: 500,
+      unit: "ms",
+      hint: "How long the floating copy popover stays visible before auto-dismissing."
     }
   ];
 

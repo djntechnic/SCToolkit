@@ -6,6 +6,7 @@ import { testUrlMatch } from './config.js';
 import { Pacing } from '../net/pacing.js';
 import { Utils } from './utils.js';
 import { getAppVersion } from './version.js';
+import { formatLogTimestamp } from './log.js';
 
 export const DiagnosticTests = {
   /**
@@ -87,6 +88,19 @@ export const DiagnosticTests = {
       });
     } catch (err) {
       results.push({ name: 'Version Reporting', pass: false, detail: err.message });
+    }
+
+    // 6. Timezone & Timestamp Formatting
+    try {
+      const ts = formatLogTimestamp(new Date(), 'YYYYmmDDHHMMSS', 'auto');
+      const pass = Boolean(ts && /^\d{14}$/.test(ts));
+      results.push({
+        name: 'Log Timestamp Formatting',
+        pass,
+        detail: pass ? `Operational (${ts})` : `Unexpected timestamp output: ${ts}`
+      });
+    } catch (err) {
+      results.push({ name: 'Log Timestamp Formatting', pass: false, detail: err.message });
     }
 
     return results;
