@@ -1,0 +1,632 @@
+  document.addEventListener('DOMContentLoaded', function() {
+    'use strict';
+
+    const formFetchDebounceDelay = 300;
+    const searchFormEl = document.querySelector('#cse-search-box');
+    const userName = searchFormEl.getAttribute('data-username');
+    const searchCategorySelectEl = document.querySelector('select[name="SearchCategory"]');
+    let emptyHeadingText = `Searching for ${searchCategorySelectEl.value}`;
+    const searchInputEl = document.querySelector('[name="q"]');
+    const parentWrapperEl = searchInputEl.parentElement;
+    const autocompleteWrapperEl = document.createElement('div');
+    autocompleteWrapperEl.setAttribute('class', 'tcdb-autocomplete');
+    autocompleteWrapperEl.setAttribute('tabindex', '-1');
+    parentWrapperEl.append(autocompleteWrapperEl);
+    let debounceTimer;
+    const availableIcons = {
+	  'baseball':    { classes: 'fas fa-baseball-ball' },
+	  'basketball':  { classes: 'fas fa-basketball-ball' },
+	  'football':    { classes: 'fas fa-football-ball' },
+	  'hockey':      { classes: 'fas fa-hockey-puck' },
+	  'soccer':      { classes: 'fas fa-futbol' },
+	  'golf':        { classes: 'fas fa-golf-ball-tee' },
+	  'racing':      { classes: 'fas fa-flag-checkered' },
+	  'multi-sport': { classes: 'fas fa-layer-group' }
+	};
+    createEmptyContent();
+    let abortController;
+    let topMatchImage;
+    let recentlyCollectedFetched = false;
+
+    async function submitForm() {
+      if (!searchInputEl.value.trim()) return;
+	  abortController?.abort();
+      abortController = new AbortController();
+      const formData = new FormData(searchFormEl);
+      const searchParams = new URLSearchParams(formData).toString();
+      const targetUrl = `${searchFormEl.action}?${searchParams}`;
+      try {
+        const response = await fetch(targetUrl, {
+          method: 'GET',
+          signal: abortController.signal
+        });
+        const body = await response.text();
+        const parser = new DOMParser();
+        const resultsDocument = parser.parseFromString(body, 'text/html');
+        if (resultsDocument.querySelector('#content h3.site') && searchInputEl.validity.valid && !response.redirected) {
+          clearResults();
+          document.querySelector('.tcdb-autocomplete__empty-content').setAttribute('hidden', '');
+          topMatchImage = resultsDocument.querySelector('a > .img-thumbnail.bshadow');
+          const topMatchEl = resultsDocument.querySelector('.card-link-top-match');
+          const topMatchElText = resultsDocument.querySelector('.card-title-top-match')?.innerText.trim();
+          const allCardLists = new Map(
+            [
+              {
+                key: 'sets',
+                element: resultsDocument.querySelector('.sets-list'),
+                sampleImagePath: 'setSamplePath',
+                getCollectionUrl: (href) => href.replace(/ViewSet\.cfm\/sid\/(\d+).*/, 'ViewCollection.cfm/sid/$1'),
+                topMatchEl: (topMatchEl && topMatchEl.href.includes('ViewSet.cfm')) ? topMatchEl : null,
+                topMatchElText: topMatchElText
+              },
+              {
+                key: 'names',
+                element: resultsDocument.querySelector('.players-list'),
+                sampleImagePath: 'playerSamplePath',
+                getCollectionUrl: (href) => href.replace(/Person\.cfm\/pid\/(\d+).*/, 'ViewCollectionP.cfm/pid/$1'),
+                topMatchEl: (topMatchEl && topMatchEl.href.includes('Person.cfm')) ? topMatchEl : null,
+                topMatchElText: topMatchElText
+              },
+              {
+                key: 'teams',
+                element: resultsDocument.querySelector('.teams-list'),
+                sampleImagePath: 'teamSamplePath',
+                getCollectionUrl: (href) => href.replace(/Team\.cfm\/pid\/(\d+).*/, 'ViewCollectionT.cfm/pid/$1'),
+                topMatchEl: (topMatchEl && topMatchEl.href.includes('Team.cfm')) ? topMatchEl : null,
+                topMatchElText: topMatchElText
+              }
+            ]
+              .filter(item => item.element !== null)
+              .sort((a, b) => (b.topMatchEl !== null) - (a.topMatchEl !== null))
+              .map(({ key, ...config }) => [key, config])
+          );
+          createDetailsSummary(allCardLists);
+          sortSetListItems();
+          const fullResultsLink = document.createElement('a');
+          fullResultsLink.href = response.url;
+          fullResultsLink.innerHTML = 'Full results page <i class="fa fa-angle-right"></i>';
+          fullResultsLink.classList.add(
+            'tcdb-autocomplete__full-results-link',
+            'link-dark',
+            'link-offset-2',
+            'link-underline-opacity-25',
+            'link-underline-opacity-100-hover'
+          );
+          autocompleteWrapperEl.append(fullResultsLink);
+        }
+        else {
+          showEmptyContent();
+        }
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        throw e;
+      }
+    }
+
+    function createEmptyContent() {
+      const autocompleteTemplate = document.createElement('template');
+      autocompleteTemplate.setAttribute('id', 'autocomplete-content');
+      const userNameValue = userName?.trim() ?? "";
+      autocompleteTemplate.innerHTML = `
+        <div class="tcdb-autocomplete__empty-content">
+            <h2 id="tcdb-autocomplete__empty-content-heading" class="site fs-4 text-start mb-0">${emptyHeadingText}</h2>
+            <p class="fs-6 text-start mt-3 mb-0">Type to find sets, players, and teams.</p>
+            <p class="fs-6 text-start mt-2 mb-0">Press <kbd>ESCAPE</kbd> to clear all.</p>
+            <div class="tcdb-autocomplete__empty-content-heading-wrapper mt-4">
+                <h3 class="h5 text-start mb-0">Recently Collected</h3>
+                <a href="/RecentlyCollected.cfm?MODE=G&Member=${userNameValue}" class="fs-6">View All</a>
+            </div>
+        </div>
+    `;
+      document.body.appendChild(autocompleteTemplate);
+      const autocompleteTemplateEl = document.getElementById('autocomplete-content');
+      const templateContent = autocompleteTemplateEl.content.cloneNode(true);
+      autocompleteWrapperEl.prepend(templateContent);
+    }
+
+    function createRecentlyCollectedContent() {
+      if (userName) {
+        fetchRecentlyCollected(userName);
+      }
+    }
+
+    async function fetchRecentlyCollected(userName) {
+	  const cacheKey = `tcdb_rc_${userName}`;
+	  const cacheDuration = 5 * 60 * 1000; // 5 minutes — adjust to taste
+
+	  try {
+		const cached = sessionStorage.getItem(cacheKey);
+		if (cached) {
+		  const { timestamp, html } = JSON.parse(cached);
+		  if (Date.now() - timestamp < cacheDuration) {
+			const parser = new DOMParser();
+			const resultsDocument = parser.parseFromString(html, 'text/html');
+			if (resultsDocument.querySelectorAll('a[href*="/CollectionBrowse.cfm/"]').length > 0) {
+			  document.querySelector('.tcdb-autocomplete__empty-content').appendChild(getTopSetsConfigMap(resultsDocument));
+			}
+			return;
+		  }
+		}
+
+		const response = await fetch(`/RecentlyCollected.cfm?MODE=G&Member=${userName}`);
+		if (!response.ok) {
+		  throw new Error(`HTTP error! Status: ${response.status}`);
+		}
+		const html = await response.text();
+
+		try {
+		  sessionStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), html }));
+		} catch (e) {
+		  // sessionStorage full or unavailable — continue without caching
+		}
+
+		const parser = new DOMParser();
+		const resultsDocument = parser.parseFromString(html, 'text/html');
+		if (resultsDocument.querySelectorAll('a[href*="/CollectionBrowse.cfm/"]').length > 0) {
+		  document.querySelector('.tcdb-autocomplete__empty-content').appendChild(getTopSetsConfigMap(resultsDocument));
+		}
+	  } catch (error) {
+		console.error('Error fetching dynamic TCDB data:', error);
+	  }
+	}
+
+    function getTopSetsConfigMap(resultsDocument) {
+      const links = Array.from(resultsDocument.querySelectorAll('a[href*="/CollectionBrowse.cfm/"]'));
+      const setGroups = new Map();
+
+      // Group sets by name and calculate duplicate occurrences
+      links.forEach(link => {
+        const text = link.textContent;
+        if (!text.includes('#')) return;
+
+        const setName = text.split('#')[0].trim();
+        const href = link.getAttribute('href');
+        const samplePath = link.getAttribute('data-set-sample-path'); // capture attribute
+
+        if (!setGroups.has(setName)) {
+          setGroups.set(setName, {
+            setName: setName,
+            href: href,
+            samplePath: samplePath, // store it (may be null)
+            count: 0,
+            firstSeenIndex: links.indexOf(link)
+          });
+        }
+        setGroups.get(setName).count += 1;
+      });
+
+      // Filter, rank duplicates, backfill with unique items, and slice to top 10
+      const items = Array.from(setGroups.values());
+      const duplicatedItems = items.filter(item => item.count > 1).sort((a, b) => b.count - a.count);
+      const uniqueItems = items.filter(item => item.count === 1).sort((a, b) => a.firstSeenIndex - b.firstSeenIndex);
+      const finalSelection = [...duplicatedItems, ...uniqueItems].slice(0, 10);
+
+      // Assemble the ordered list element (<ol>) in memory
+      const ol = document.createElement('ol');
+      finalSelection.forEach(item => {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+
+        a.setAttribute('href', item.href);
+        a.textContent = item.setName;
+
+        // apply attribute to li if it existed on the source link
+        if (item.samplePath !== null) {
+          li.setAttribute('data-set-sample-path', item.samplePath);
+        }
+
+        li.appendChild(a);
+        ol.appendChild(li);
+      });
+
+      // Construct and populate the wrapper Map with updated configuration options
+      const configMap = new Map();
+      configMap.set('sets', {
+        element: ol,
+        sampleImagePath: 'setSamplePath',
+        getCollectionUrl: (url) => url.replace(/CollectionBrowse\.cfm\/.*?(sid\/\d+).*/, 'ViewCollection.cfm/$1'),
+        topMatchEl: false
+      });
+      createListItems(configMap.get('sets'));
+      return ol;
+    }
+
+    function createDetailsSummary(allCardLists) {
+      if (!document.getElementById('details-summary-template')) {
+        const detailsSummaryTemplate = document.createElement('template');
+        detailsSummaryTemplate.setAttribute('id', 'details-summary-template');
+        detailsSummaryTemplate.innerHTML = `<div id="details-summary-content"></div>`;
+        document.body.appendChild(detailsSummaryTemplate);
+      }
+      const templateContent = document.getElementById('details-summary-template').content.cloneNode(true);
+      const resultsContainer = templateContent.querySelector('#details-summary-content');
+      const hasAnyTopMatch = Array.from(allCardLists.values()).some(item => item.topMatchEl != null);
+      allCardLists.forEach((config, key) => {
+        const detailsEl = document.createElement('details');
+        detailsEl.className = 'tcdb-autocomplete__details';
+        // the list with the top match is open by default
+        if (config.topMatchEl) {
+          detailsEl.setAttribute('open', '');
+        }
+        // if no top match sets are open by default
+        else if (!hasAnyTopMatch && key === 'sets') {
+          detailsEl.setAttribute('open', '');
+        }
+        const detailsBodyEl = document.createElement('div');
+        detailsBodyEl.className = 'tcdb-autocomplete__details-body';
+        const summaryEl = document.createElement('summary');
+        summaryEl.className = 'tcdb-autocomplete__summary';
+        summaryEl.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+
+        detailsEl.appendChild(summaryEl);
+        detailsEl.appendChild(detailsBodyEl);
+        detailsBodyEl.appendChild(config.element);
+        createListItems(config);
+        resultsContainer.appendChild(detailsEl);
+      });
+      autocompleteWrapperEl.prepend(templateContent);
+      autocompleteWrapperEl.addEventListener('toggle', (event) => {
+        if (event.target.tagName === 'DETAILS') {
+          const details = event.target;
+          if (details.open) {
+            const container = autocompleteWrapperEl;
+
+            if (container) {
+              // Calculate the element's position relative to the container's top
+              const containerTop = container.getBoundingClientRect().top;
+              const detailsTop = details.getBoundingClientRect().top;
+              const relativeTop = detailsTop - containerTop + container.scrollTop;
+
+              // Scroll only the container
+              setTimeout(() => {
+                container.scrollTo({
+                  top: relativeTop,
+                  behavior: 'smooth'
+                });
+              }, 200);
+            }
+          }
+        }
+      }, true);
+      createLoginAlert();
+    }
+
+    function createListItems(config) {
+	  config.element.classList.add('tcdb-autocomplete__list');
+	  config.element.querySelectorAll('li').forEach((item) => {
+		const thumbnail = createListItemImage(item, config.sampleImagePath); // ← capture return value
+		createListItemBodyContent(item, config, thumbnail);                   // ← pass it along
+	  });
+	  moveTopMatchToFirst(config);
+	}
+
+    function createListItemImage(item, sampleImagePath) {
+	  let imgSrc;
+	  if (sampleImagePath instanceof HTMLImageElement) {
+		imgSrc = sampleImagePath.src;
+	  } else {
+		imgSrc = item.dataset[sampleImagePath];
+	  }
+	  const className = userName ? 'tcdb-autocomplete__list-item--user' : 'tcdb-autocomplete__list-item--guest';
+	  item.classList.add('tcdb-autocomplete__list-item', className);
+
+	  if (imgSrc) {
+		const img = document.createElement('img');
+		img.src = imgSrc;
+		img.setAttribute('loading', 'lazy');
+		img.classList.add('tcdb-autocomplete__list-item-image');
+		img.alt = item.innerText;
+		return img; // ← return instead of prepending
+	  } else {
+		const icon = document.createElement('i');
+		const selectValue = searchCategorySelectEl.value.toLowerCase();
+		const availableIcon = availableIcons[selectValue];
+		if (availableIcon) {
+		  icon.classList.add('fa-tcdb-mod', ...availableIcon.classes.split(' '));
+		  if (availableIcon.color) icon.style.color = availableIcon.color;
+		} else {
+		  icon.classList.add('fa-tcdb-mod', 'fa-solid', 'fa-image-portrait');
+		}
+		return icon; // ← return instead of prepending
+	  }
+	}
+
+    function createListItemBodyContent(listItem, config, thumbnail) {
+	  const link = listItem.querySelector('a');
+	  link.setAttribute('class', 'tcdb-autocomplete__overview-link');
+	  const viewCollectionUrl = config.getCollectionUrl(link.href);
+	  const bodyWrapper = document.createElement('div');
+	  bodyWrapper.setAttribute('class', 'tcdb-autocomplete__body-content');
+	  const heading = document.createElement('h2');
+	  heading.innerText = link.innerText;
+	  heading.setAttribute('class', 'tcdb-autocomplete__body-content-heading');
+	  let viewCollectionLink;
+	  if (userName) {
+		viewCollectionLink = document.createElement('a');
+		viewCollectionLink.href = viewCollectionUrl;
+	  } else {
+		viewCollectionLink = document.createElement('button');
+		viewCollectionLink.setAttribute('type', 'button');
+	  }
+	  viewCollectionLink.innerHTML = 'Update your Collection <i class="fa fa-angle-right"></i>';
+	  viewCollectionLink.classList.add(
+		'tcdb-autocomplete__view-collection-link',
+		'btn',
+		'btn-outline-dark',
+		'btn-sm'
+	  );
+	  listItem.append(bodyWrapper);
+	  link.innerText = '';
+	  link.append(heading);
+	  bodyWrapper.prepend(link);
+	  bodyWrapper.append(viewCollectionLink);
+
+	  // Wrap thumbnail in its own anchor and prepend to listItem (outside bodyWrapper)
+	  if (thumbnail) {
+		const thumbLink = document.createElement('a');
+		thumbLink.href = link.href;
+		thumbLink.setAttribute('tabindex', '-1'); // avoid double-tabbing to same destination
+		thumbLink.setAttribute('aria-hidden', 'true'); // screen readers already see the title link
+		thumbLink.appendChild(thumbnail);
+		listItem.prepend(thumbLink); // ← same position as before, just now wrapped in <a>
+	  }
+	}
+
+    function moveTopMatchToFirst(config) {
+	  if (config.topMatchEl) {
+		const topMatchHref = config.topMatchEl.href.replace(config.topMatchEl.origin, '');
+		const duplicateAnchor = Array.from(config.element.querySelectorAll('a')).find(a =>
+		  a.href.replace(a.origin, '') === topMatchHref
+		);
+		if (duplicateAnchor) {
+		  const targetListItem = duplicateAnchor.closest('li');
+		  duplicateAnchor.closest('li').parentNode.prepend(targetListItem);
+		}
+		else {
+		  const listItemEl = document.createElement('li');
+		  listItemEl.classList.add('tcdb-autocomplete__list-item');
+		  config.element.prepend(listItemEl);
+		  listItemEl.appendChild(config.topMatchEl);
+		  config.topMatchEl.innerText = config.topMatchElText;
+		  const thumbnail = createListItemImage(listItemEl, topMatchImage); // ← capture return value
+		  createListItemBodyContent(listItemEl, config, thumbnail);          // ← pass it along
+		}
+	  }
+	}
+
+    function sortSetListItems() {
+      const ol = document.querySelector('ol.sets-list.tcdb-autocomplete__list');
+      if (!ol) return;
+
+      const rawWords = (document.querySelector('[name="q"]')?.value ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const items = [...ol.querySelectorAll(':scope > li')];
+
+      const headings = items.map(li => li.querySelector('h2.tcdb-autocomplete__body-content-heading')?.textContent.trim() ?? '');
+
+      // Drop any query word that doesn't appear in any heading at all
+      const queryWords = rawWords.filter(w => headings.some(h => h.toLowerCase().includes(w)));
+
+      const scored = items.map((li, i) => {
+        const heading = headings[i];
+        const base = (heading.includes(' - ') ? heading.substring(0, heading.indexOf(' - ')).trim() : heading.trim()).toLowerCase();
+        const baseScore = queryWords.filter(w => base.includes(w)).length;
+        const headingScore = queryWords.filter(w => heading.toLowerCase().includes(w)).length;
+        return { li, heading, base, baseScore, headingScore };
+      });
+
+      const baseHeadingScore = new Map();
+      for (const s of scored) {
+        baseHeadingScore.set(s.base, Math.max(baseHeadingScore.get(s.base) ?? 0, s.headingScore));
+      }
+
+      let pinnedBases = new Set();
+
+      if (queryWords.length) {
+        const fullBaseMatches = scored.filter(s => s.baseScore === queryWords.length);
+        if (fullBaseMatches.length) {
+          const shortestBase = fullBaseMatches.reduce((a, b) => a.base.length <= b.base.length ? a : b).base;
+          pinnedBases.add(shortestBase);
+        } else {
+          const maxHeadingScore = Math.max(...scored.map(s => s.headingScore));
+          if (maxHeadingScore === queryWords.length) {
+            scored.filter(s => s.headingScore === maxHeadingScore).forEach(s => pinnedBases.add(s.base));
+          }
+        }
+      }
+
+      scored.sort((a, b) => {
+        const aPinned = pinnedBases.has(a.base);
+        const bPinned = pinnedBases.has(b.base);
+
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+
+        if (aPinned && bPinned && a.headingScore !== b.headingScore) return b.headingScore - a.headingScore;
+
+        if (a.baseScore !== b.baseScore) return b.baseScore - a.baseScore;
+
+        const aHS = baseHeadingScore.get(a.base) ?? 0;
+        const bHS = baseHeadingScore.get(b.base) ?? 0;
+        if (aHS !== bHS) return bHS - aHS;
+
+        return a.heading.replace(' - ', ' ').localeCompare(b.heading.replace(' - ', ' '));
+      });
+
+      scored.forEach(s => ol.appendChild(s.li));
+    }
+
+    function createLoginAlert() {
+      if (userName) return;
+
+      if (!document.getElementById('login-alert-template')) {
+        const loginAlertTemplate = document.createElement('template');
+        loginAlertTemplate.setAttribute('id', 'login-alert-template');
+        loginAlertTemplate.innerHTML = `
+            <div class="alert alert-warning alert-dismissible fade show mb-0" role="alert">
+                <p class="m-0">
+                    Please <a href="https://www.tcdb.com/Login.cfm" class="alert-link">Log in</a> or
+                    <a href="https://www.tcdb.com/Register.cfm" class="alert-link">Register</a> to update your Collection.
+                </p>
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+        `;
+        document.body.appendChild(loginAlertTemplate);
+        autocompleteWrapperEl.addEventListener('click', e => {
+          if (e.target.closest('.close[data-dismiss="alert"]')) {
+            e.target.closest('.alert').remove();
+          }
+          if (e.target.closest('.tcdb-autocomplete__view-collection-link')) {
+            const listItem = e.target.closest('.tcdb-autocomplete__list-item');
+            if (listItem.querySelector('.alert')) return;
+            const template = document.getElementById('login-alert-template');
+            const alert = template.content.cloneNode(true);
+            listItem.appendChild(alert);
+          }
+        });
+      }
+    }
+
+    function openDropdown() {
+      autocompleteWrapperEl.classList.add('autocomplete-is-open');
+      searchInputEl.setAttribute('aria-expanded', 'true');
+      calculateMaxHeight();
+      addFocusoutHandler();
+    }
+
+    function closeDropdown() {
+      autocompleteWrapperEl.classList.remove('autocomplete-is-open');
+      searchInputEl.setAttribute('aria-expanded', 'false');
+      removeFocusoutHandler();
+    }
+
+    function clearResults() {
+      document.querySelector('#details-summary-content')?.remove();
+      document.querySelector('.tcdb-autocomplete__full-results-link')?.remove();
+    }
+
+    function showEmptyContent() {
+      clearResults();
+      document.querySelector('.tcdb-autocomplete__empty-content').removeAttribute('hidden');
+    }
+
+    function calculateMaxHeight() {
+      autocompleteWrapperEl.removeAttribute('style');
+      const rect = autocompleteWrapperEl.getBoundingClientRect();
+      const padding = 20;
+      const heightOffset = rect.top + padding;
+      autocompleteWrapperEl.setAttribute('style', `max-height: calc(100dvh - ${heightOffset}px)`);
+    }
+
+    function debounceSubmitForm() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => submitForm(), formFetchDebounceDelay);
+    }
+
+    searchInputEl.addEventListener('input', (e) => {
+      if (e.target.value === '') {
+        return showEmptyContent();
+      }
+      debounceSubmitForm();
+    });
+
+    autocompleteWrapperEl.addEventListener('keydown', (e) => {
+      const linksToFocus = userName ? document.querySelectorAll('details[open] .tcdb-autocomplete__view-collection-link') : document.querySelectorAll('details[open] .tcdb-autocomplete__overview-link');
+      const links = Array.from(linksToFocus);
+      const idx = links.indexOf(document.activeElement);
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = links[idx + 1];
+        if (next) {
+          next.focus();
+          next.scrollIntoView({ block: 'nearest' });
+        }
+        else {
+          searchInputEl.focus();
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const previous = links[idx - 1];
+        if (idx === 0) {
+          searchInputEl.focus();
+        }
+        else {
+          previous?.focus();
+          previous?.scrollIntoView({ block: 'nearest' });
+        }
+      } else if (e.key === 'Escape') {
+        showEmptyContent();
+        searchInputEl.value = '';
+        searchInputEl.focus();
+      }
+    });
+
+    searchInputEl.addEventListener('keydown', (e) => {
+      if (e.target.value === '') {
+        if (e.key === 'Enter') e.preventDefault();
+		return showEmptyContent();
+      }
+      const linksToFocus = userName ? document.querySelectorAll('details[open] .tcdb-autocomplete__view-collection-link') : document.querySelectorAll('details[open] .tcdb-autocomplete__overview-link');
+      const links = Array.from(linksToFocus);
+      const isOpen = autocompleteWrapperEl.classList.contains('autocomplete-is-open');
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!isOpen) return;
+        links[0]?.focus();
+        links[0]?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        clearTimeout(debounceTimer);
+        showEmptyContent();
+        e.target.value = '';
+      }
+    });
+
+    searchCategorySelectEl.addEventListener('change', (event) => {
+      showEmptyContent();
+      emptyHeadingText = event.target.value;
+      document.querySelector('#tcdb-autocomplete__empty-content-heading').textContent = `Searching for ${emptyHeadingText}`;
+      debounceSubmitForm();
+    });
+
+    searchInputEl.addEventListener('focus', () => {
+      openDropdown();
+      if (!recentlyCollectedFetched) {
+        recentlyCollectedFetched = true;
+        createRecentlyCollectedContent();
+      }
+      // help's the user by scrolling the page when the header has more height
+      if (document.querySelector('.navbar-toggler.custom-toggler').checkVisibility()) {
+        return scrollWithCallback(searchFormEl, () => {
+          calculateMaxHeight();
+        });
+      }
+    });
+
+    function scrollWithCallback(element, callback) {
+      window.addEventListener('scrollend', function onScrollEnd() {
+        window.removeEventListener('scrollend', onScrollEnd);
+        callback();
+      });
+      element.scrollIntoView({ behavior: 'instant', block: 'start' });
+    }
+
+    function handleFocusout(e) {
+      const target = e.relatedTarget || document.activeElement;
+      const isFocusInside = searchInputEl.contains(target) || autocompleteWrapperEl.contains(target);
+      const isFocusFormElement = searchFormEl.querySelector('button[type="submit"]').contains(target) || searchCategorySelectEl.contains(target);
+
+      if (!isFocusInside && !isFocusFormElement) {
+        closeDropdown();
+      }
+    }
+
+    function addFocusoutHandler() {
+      document.addEventListener('focusout', handleFocusout);
+    }
+
+    function removeFocusoutHandler() {
+      document.removeEventListener('focusout', handleFocusout);
+    }
+  });

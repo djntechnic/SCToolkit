@@ -1,0 +1,622 @@
+body {font-family: Arial;font-size: 15px;color: #242729;background-color: #242729;text-align:center;margin:0;}
+a:link {text-decoration: none;}
+a:hover {text-decoration: underline; color: purple;}
+a:visited { color: #551A8B; text-decoration: none;}
+a.grayed{color: #CCCCCC;}
+a {word-wrap: break-word;overflow-wrap: break-word;-ms-word-break: break-all;word-break: break-all;word-break: break-word;-webkit-hyphens: auto;-moz-hyphens: auto;hyphens: auto;}
+p {display: block; margin-top: 1em; margin-bottom: 1em; margin-left: 0; margin-right: 0;}
+#topnav {background-color: #C6491A;width:auto;}
+#content {background-color: #F1F1F1;padding:5px 0px 5px 0px;}
+td.accountmenu {background-color: #C6491A;text-decoration: none;color: #FFFFFF;font-weight: normal;display: block;padding: 3px 8px 3px 3px;}
+td.accountmenu:hover{color: #FFFFFF;background-color: #242729;}
+a.accountlink {text-decoration: none;color: #FFFFFF;}
+a.accountlink:hover{text-decoration: underline;color: #FFFFFF;}
+.block1{border-radius:12px;border:1px solid #E8E8E8;margin-bottom:7px;padding:10px 12px;width:auto;background-color:#FFFFFF;text-align:left;}
+.blockad{border-radius:12px;border:1px solid #C6491A;margin-bottom:7px;padding:10px 12px;width:auto;background-color:#FFFFFF;}
+.block1--social{text-align:center;padding-top:1.25rem;padding-bottom:1.25rem;}
+h1.site {margin:0 0 0.5em;padding:0;font-size: 19px;font-weight: bold;color: #C6491A;}
+h2.site {margin:0 0 0.5em;padding:0;font-size: 19px;font-weight: bold;color: #D3741C;}
+h3.site {margin:0 0 0.5em;padding:0;font-size: 15px;font-weight: bold;color: #242729;}
+h4.site {margin:0 0 0.5em;padding:0;font-size: 19px;font-weight: bold;color: #242729;}
+h6.site {font-size: 12px;font-weight: bold;}
+hr{border: 1px #333;height: 1px;border-style: dotted none none none;padding-bottom: 8;}
+a.dropdown-item {padding:3;color: #000000;text-decoration:none;font-weight:normal;}
+.more{border-top:1px dotted #CCCCCC;clear:both;display:block;font-size:100%;margin:5px 0 0;padding:5px 0 0;text-align:left;}
+#bottomnav {background-color: #666666;font-size: 13px;padding:25px 15px 15px 35px;clear:both;text-align:left;}
+a.bottomnav {padding:0;color: #F1F1F1;text-decoration:none;font-weight:bold;}
+a.bottomnav:hover {padding:0;color: #FFFFFF;text-decoration:underline;}
+h3.bottomnav {color: #FFFFFF;}
+table.dotted {border-collapse: collapse;}
+td.dotted {border-top: 1px dotted #999;border-bottom: 1px dotted #999;}
+.error{font-family: Verdana;font-size: 14px;color: #C6491A;}
+.exp{font-size: 10px;color: #999999;text-decoration:none;}
+.stats_row > td {border-top: 1px dotted #999;border-bottom: 1px dotted #999;font-size: 14px;vertical-align: middle;height: 30px;}
+.collection_row > td {border-top: 1px dotted #CCC;border-bottom: 1px dotted #CCC;}
+.vertical {vertical-align: middle !important;}
+.nopadding {padding: 5px !important;margin: 0 !important;}
+.custom-toggler .navbar-toggler-icon {background-image: url("data:image/svg+xml;charset=utf8,%3Csvg viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke='rgba(255,255,255, 0.5)' stroke-width='2' stroke-linecap='round' stroke-miterlimit='10' d='M4 8h24M4 16h24M4 24h24'/%3E%3C/svg%3E");}
+.custom-toggler.navbar-toggler {border-color: rgb(255,255,255);}
+ol.breadcrumb {padding: 10px 16px; background-color: #E9ECEF; border-radius: 4px;}
+img.bshadow{border: 1px solid #ddd; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);}
+img.shadow{box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);}
+img.bshadow:hover{box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);}
+img.shadow:hover{box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);}
+img.hshadow:hover{transform: scale(1.05);}
+.small-in-heading{font-size:.8125rem;}
+.sub-header-container{display:grid;grid-template-columns:1fr auto;align-items:start;width:100%;gap:1rem}
+.sub-header-container__title{margin:0 !important;color: #242729 !important}
+.sub-header-container__actions{display:flex;gap:.5rem;justify-content:flex-end}
+.simple-image-container{display:flex;align-items:flex-end;gap:1rem;margin-top:1rem}
+.btn-mod-modal-open-overlay{position:absolute;top:0;left:0;width:100%;height:100%;z-index: 1;}
+.label-as-wrapper{display:inline-flex;flex-direction:column;gap:.25rem;width:100%;max-width:300px;font-weight:600;font-size:.875rem;text-align:left;margin-bottom:0}
+.tcdb-autocomplete {
+  display: none;
+  position: relative;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: #F1F1F1;
+  border: 1px solid rgba(0, 0, 0, .2);
+  border-radius: .3rem;
+  overflow-y: auto;
+  box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .25);
+}
+
+#cse-search-box {
+  scroll-margin-top: 10px;
+}
+
+@media (width <=700px) {
+  #cse-search-box {
+    position: relative;
+  }
+
+  td:has([name="q"]) {
+    position: static;
+  }
+}
+
+@media (width > 700px) {
+  #cse-search-box {
+    position: static;
+  }
+
+  td:has([name="q"]) {
+    position: relative;
+  }
+}
+
+.tcdb-autocomplete p:empty {
+  display: none;
+}
+
+.tcdb-autocomplete__empty-content {
+  padding: 0.5rem;
+  margin: 0.5rem;
+  background-color: #fff;
+  border-radius: 0.25rem;
+}
+
+.tcdb-autocomplete__empty-content p:has(kbd) {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tcdb-autocomplete__empty-content p:has(kbd) {
+    display: block;
+  }
+}
+
+@media (width <= 412px) {
+  .tcdb-autocomplete__empty-content p {
+    margin-top: 0.5rem !important;
+  }
+}
+
+.tcdb-autocomplete__empty-content-heading-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.tcdb-autocomplete__empty-content-heading-wrapper h3 {
+  border-right: 2px solid;
+  padding-right: 0.875rem;
+}
+
+@media (width <= 412px) {
+  .tcdb-autocomplete__empty-content-heading-wrapper {
+    gap: 0.5rem;
+  }
+
+  .tcdb-autocomplete__empty-content-heading-wrapper h3 {
+    padding-right: 0.5rem;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+}
+
+.tcdb-autocomplete__empty-content .tcdb-autocomplete__list {
+  margin-top: 1rem;
+}
+
+.tcdb-autocomplete__details {
+  /*
+      Needed for the transition of both open and close.
+      Not supported in Safari and Firefox as of 4/19/2026.
+      Treating the property as a progressive enhancement.
+  */
+  interpolate-size: allow-keywords;
+  padding: 0.375rem;
+}
+
+.tcdb-autocomplete__summary {
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  background-color: #fff;
+  border-radius: .3rem;
+  font-weight: 600;
+  z-index: 2;
+}
+
+@media (width <= 412px) {
+  .tcdb-autocomplete__summary {
+    font-size: 0.875rem;
+    line-height: 1;
+  }
+}
+
+.tcdb-autocomplete__summary::after {
+  content: "";
+  width: 1.25rem;
+  height: 1.25rem;
+  /* matching Bootstrap SVG */
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23212529'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-size: 1.25rem;
+  transition: transform .2s ease-in-out;
+}
+
+.tcdb-autocomplete__details-body {
+  margin: 1rem 0;
+}
+
+@media (width <= 412px) {
+  .tcdb-autocomplete__details-body {
+    margin-top: 0.5rem;
+  }
+}
+
+/*
+   Fallback transition for browsers that don't support interpolate-size: allow-keywords.
+   On "close" there is no transition. There isn't a pure CSS fix for this.
+   The accordion-body--inner div is needed only to make this fallback work.
+*/
+
+@supports not (interpolate-size: allow-keywords) {
+  .tcdb-autocomplete__details .tcdb-autocomplete__details-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.35s;
+  }
+
+  .tcdb-autocomplete__details[open] .tcdb-autocomplete__details-body {
+    grid-template-rows: 1fr;
+  }
+
+  .tcdb-autocomplete__details-body .tcdb-autocomplete__list {
+    overflow: clip;
+    min-height: 0;
+  }
+}
+
+.tcdb-autocomplete__summary:focus {
+  outline: .25rem solid rgba(13, 110, 253, .25);
+  outline-offset: -.23rem;
+}
+
+.tcdb-autocomplete__details[open] {
+  padding: 0;
+  transition: padding 0.15s;
+}
+
+.tcdb-autocomplete__details[open] .tcdb-autocomplete__summary {
+  position: sticky;
+  top: 0;
+  box-shadow: 0 0.25rem 0.25rem rgba(0, 0, 0, 0.25);
+  border-radius: 0;
+}
+
+.tcdb-autocomplete__details[open] .tcdb-autocomplete__summary::after {
+  transform: rotate(-180deg);
+  /* matching Bootstrap SVG */
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%230c63e4'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
+.tcdb-autocomplete__details::details-content {
+  height: 0;
+  overflow: hidden;
+  /* matching Bootstrap duration */
+  transition: height 0.35s ease, content-visibility 0.35s allow-discrete;
+}
+
+.tcdb-autocomplete__details[open]::details-content {
+  height: auto;
+}
+
+.tcdb-autocomplete__list {
+  display: flex;
+  margin: 0;
+  padding: 0.375rem;
+  flex-direction: column;
+  gap: 0.5rem;
+  background-color: #F1F1F1;
+}
+
+.tcdb-autocomplete__list-item {
+  display: flex;
+  align-items: stretch;
+  padding: 0.5rem;
+  background-color: #fff;
+  border-radius: 0.25rem;
+  gap: 1rem;
+}
+
+.tcdb-autocomplete__list-item:has(.alert) {
+  flex-wrap: wrap;
+}
+
+.tcdb-autocomplete__overview-link {
+  scroll-margin-top: 50px;
+  scroll-margin-bottom: 100px;
+}
+
+.tcdb-autocomplete__view-collection-link {
+  scroll-margin-top: 100px;
+  scroll-margin-bottom: 50px;
+}
+
+.tcdb-autocomplete__list-item--user:has(.tcdb-autocomplete__view-collection-link:focus),
+.tcdb-autocomplete__list-item--guest:has(.tcdb-autocomplete__overview-link:focus) {
+  box-shadow: inset 0 0 0 2px #ccc;
+}
+
+@media (width <= 412px) {
+  .tcdb-autocomplete__list-item {
+    gap: 0.875rem;
+  }
+}
+
+.tcdb-autocomplete__list-item-image {
+  max-width: 75px;
+  min-width: 75px;
+  height: auto;
+  max-height: 106px;
+  object-fit: scale-down;
+  object-position: top left;
+  font-size: 10px;
+}
+
+@media (width <= 412px) {
+  .tcdb-autocomplete__list-item-image {
+    max-width: 60px;
+    min-width: 60px;
+  }
+}
+
+.tcdb-autocomplete__body-content {
+  flex: 1;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+@media (width <= 412px) {
+  .tcdb-autocomplete__body-content {
+    gap: 0.875rem;
+  }
+}
+
+.tcdb-autocomplete__body-content-heading {
+  font-weight: 300;
+  font-size: 1rem;
+  margin: 0;
+  text-wrap: balance;
+  line-height: 1.4;
+}
+
+.tcdb-autocomplete__overview-link {
+  color: #0d6efd;
+}
+
+.tcdb-autocomplete__overview-link:focus {
+  outline: 2px solid rgba(13, 110, 253, 0.5);
+  outline-offset: 2px;
+  text-decoration: underline;
+}
+
+.tcdb-autocomplete__view-collection-link {
+  font-size: 0.95rem;
+}
+
+@media (width <= 412px) {
+  .tcdb-autocomplete__view-collection-link {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
+  }
+}
+
+.tcdb-autocomplete__view-collection-link:visited {
+  color: #212529;
+}
+
+.tcdb-autocomplete__view-collection-link:visited:focus {
+  color: #fff;
+}
+
+.tcdb-autocomplete__view-collection-link:focus {
+  color: #fff;
+  background-color: #212529;
+  border-color: #212529;
+}
+
+.tcdb-autocomplete__view-collection-link:visited:hover {
+  color: #fff;
+}
+
+@media (width <= 700px) {
+  select[name="SearchCategory"] {
+    width: auto;
+    max-width: 100px;
+    font-size: 14px;
+    height: calc(1.5em + 0.75rem + 4px);
+    padding-left: 0.5rem;
+    padding-right: 1.5rem;
+    background-position: right 0.25rem center;
+  }
+
+  #cse-search-box button[type="submit"] {
+    font-size: 14px;
+    height: calc(1.5em + 0.75rem + 4px);
+    padding: 0 .5rem;
+  }
+
+  #cse-search-box td:has(+ td.d-none) {
+    display: none;
+  }
+}
+
+#autocomplete-category-select {
+  display: inline-block;
+  width: auto;
+  font-size: inherit;
+  font-weight: normal;
+  vertical-align: baseline;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.tcdb-autocomplete__full-results-link {
+  display: block;
+  padding: 0.25rem;
+  border-bottom: 4px solid;
+  position: sticky;
+  bottom: -1px;
+  box-shadow: 0 -0.25rem 0.25rem rgba(0, 0, 0, 0.075);
+  font-size: 1rem;
+  background: rgb(248, 249, 250);
+  outline-offset: -2px;
+}
+
+.fa-tcdb-mod {
+  color: #666666;
+  font-size: 75px;
+  min-width: 75px;
+}
+
+@media (width <= 412px) {
+  .fa-tcdb-mod {
+    font-size: 65px;
+    min-width: 65px;
+  }
+}
+
+.autocomplete-is-open {
+  display: block;
+}
+
+input[name="q"]:focus+.autocomplete-is-open {
+  display: block;
+}
+
+.tcdb-autocomplete .alert {
+  display: flex;
+  align-items: flex-start;
+  padding-right: 1rem;
+  gap: 1rem;
+  text-align: left;
+}
+
+.tcdb-autocomplete .close {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #000;
+  text-shadow: 0 1px 0 #fff;
+  background-color: transparent;
+  border: 0;
+  cursor: pointer;
+  margin-left: auto;
+}
+.in-collection-svg {
+  margin-right: 5px;
+}
+
+td:has(.in-collection-svg) a {
+  vertical-align: middle;
+}
+
+/* Pricing table (Prices.cfm): horizontal scroll instead of wrapping on smaller screens */
+.price-table-scroll table {
+  margin-bottom: 0;
+}
+
+@media (max-width: 1200px) {
+  .price-table-scroll {
+    overflow-x: auto;
+  }
+
+  .price-table-scroll table {
+    white-space: nowrap;
+  }
+
+  .price-table-scroll-outer {
+    position: relative;
+  }
+
+  .price-table-scroll-outer::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 24px;
+    pointer-events: none;
+    box-shadow: inset -8px 0 8px -8px rgba(0, 0, 0, 0.25);
+    z-index: 10;
+    opacity: 1;
+    transition: opacity 300ms ease;
+  }
+
+  .price-table-scroll-outer.scrolled-end::after {
+    opacity: 0;
+  }
+
+  /* Gap between the three price column headers, but not after the last one */
+  .price-table-scroll thead tr:nth-child(1) th:nth-child(2),
+  .price-table-scroll thead tr:nth-child(1) th:nth-child(3) {
+    padding-right: 1rem;
+  }
+}
+
+/* JS-driven sticky header clone (price-table-sticky.js); shadow lives on the unscrolled outer wrapper */
+.price-table-sticky-wrapper {
+  position: fixed;
+  top: 0;
+  z-index: 20;
+  background: #fff;
+  display: none;
+}
+
+.price-table-sticky-scroll {
+  overflow: hidden;
+  width: 100%;
+}
+
+.price-table-sticky-wrapper table {
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.price-table-sticky-wrapper::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  pointer-events: none;
+  box-shadow: inset -8px 0 8px -8px rgba(0, 0, 0, 0.25);
+  opacity: 1;
+  transition: opacity 300ms ease;
+}
+
+.price-table-sticky-wrapper.scrolled-end::after {
+  opacity: 0;
+}
+
+/* Sort links are controls, not destinations, so :visited isn't helpful */
+.price-table__sort-link:visited {
+  color: #0d6efd;
+}
+
+/* Header labels should never wrap at any viewport width */
+.price-table-scroll thead th,
+.price-table-sticky-wrapper thead th {
+  white-space: nowrap;
+}
+
+h1.site.top-collectors__title {
+  font-size: 1.75rem;
+  line-height: 1.3;
+  margin-top: 0;
+  text-wrap: balance;
+}
+.top-collectors__title-name {
+  font-size: 0.85em;
+}
+.top-collectors__count {
+  margin-top: 0.5rem;
+}
+.lead.top-collectors__subhead {
+  font-size: 1rem;
+}
+.top-collectors__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.top-collectors__thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.top-collectors__table td:nth-child(1),
+.top-collectors__table td:nth-child(2) {
+  padding-right: 1.5rem;
+}
+.top-collectors__header > .top-collectors__carousel {
+  flex: 0 0 250px;
+}
+.top-collectors__header-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.top-collectors__carousel,
+.top-collectors__carousel .carousel-inner,
+.top-collectors__carousel .carousel-item {
+  height: 180px;
+}
+.top-collectors__carousel-link {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+.top-collectors__carousel-img {
+  max-width: 250px;
+  max-height: 180px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+@media (max-width: 899px) {
+  .top-collectors__header {
+    flex-direction: column;
+  }
+  .top-collectors__header > .top-collectors__carousel {
+    flex: 0 0 auto;
+  }
+  .top-collectors__carousel-link {
+    justify-content: flex-start;
+  }
+}

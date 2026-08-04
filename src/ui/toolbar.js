@@ -5,7 +5,7 @@
 
 import { Config } from '../core/config.js';
 import { Routes } from '../core/routes.js';
-import { extractSid } from '../core/sid.js';
+import { extractSid, extractParentSid } from '../core/sid.js';
 import { Log } from '../core/log.js';
 import { Pins, SET_YEAR_REGEX } from '../core/storage.js';
 import { Utils } from '../core/utils.js';
@@ -23,15 +23,23 @@ import { initDropdown, initDropdownDismissal } from './dropdown.js';
  * @param {string} sid
  * @param {string} [label] name used in the export's log and filename fallback
  * @param {'both'|'icon'|'text'} [displayMode] display mode for icons and text
+ * @param {string|null} [parentSid] optional parent set ID for sub-sets
  */
-export function appendShortcutBadges(container, sid, label = 'Set', displayMode = Config.global?.toolbarButtonDisplay || 'both') {
+export function appendShortcutBadges(
+  container,
+  sid,
+  label = 'Set',
+  displayMode = Config.global?.toolbarButtonDisplay || 'both',
+  parentSid = null
+) {
   renderBadgeSet(container, sid, {
     include: TOOLBAR_BADGES,
     onExport: (e) => {
       e.preventDefault();
       exportSetCSV(sid, label);
     },
-    displayMode
+    displayMode,
+    parentSid
   });
 }
 
@@ -259,6 +267,21 @@ export const Toolbar = {
     scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     container.appendChild(scrollTopBtn);
 
+    const scrollBottomBtn = document.createElement('button');
+    scrollBottomBtn.type = 'button';
+    scrollBottomBtn.className = 'tk-scroll-btn';
+    scrollBottomBtn.innerHTML = `${icon('chevronDown')}<span>Bottom</span>`;
+    scrollBottomBtn.title = 'Scroll to bottom of page';
+    scrollBottomBtn.addEventListener('click', () => {
+      const footer = document.querySelector('#bottomnav, footer, #footer, .footer');
+      if (footer) {
+        footer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }
+    });
+    container.appendChild(scrollBottomBtn);
+
     if (Routes.isCardPage()) {
       const titleNode = document.querySelector('#setname-content h1') || document.querySelector('#main-content-area h1');
       const subTitleNode = document.querySelector('#setname-content h3') || document.querySelector('#main-content-area h3');
@@ -271,7 +294,15 @@ export const Toolbar = {
       const cardSummary = `${player ? player + ' - ' : ''}${yearSet}${cardNo ? ' ' + cardNo : ''}`.trim();
       appendContextLabel(container, cardSummary || cleanDocTitle() || 'Card View');
 
-      if (currentSid) appendShortcutBadges(container, currentSid, cardSummary || 'Set');
+      if (currentSid) {
+        const parentSid = extractParentSid(document, currentSid);
+        if (parentSid) {
+          Log(`Determined parent set ID ${parentSid} for set ID ${currentSid}`, 'debug');
+        } else {
+          Log(`No parent set ID found for set ID ${currentSid}`, 'debug');
+        }
+        appendShortcutBadges(container, currentSid, cardSummary || 'Set', Config.global?.toolbarButtonDisplay || 'both', parentSid);
+      }
       return;
     }
 
@@ -292,8 +323,14 @@ export const Toolbar = {
         }
       }
 
+      const parentSid = extractParentSid(document, currentSid);
+      if (parentSid) {
+        Log(`Determined parent set ID ${parentSid} for set ID ${currentSid}`, 'debug');
+      } else {
+        Log(`No parent set ID found for set ID ${currentSid}`, 'debug');
+      }
       appendContextLabel(container, setName || 'Set View');
-      appendShortcutBadges(container, currentSid, setName || 'Set');
+      appendShortcutBadges(container, currentSid, setName || 'Set', Config.global?.toolbarButtonDisplay || 'both', parentSid);
       return;
     }
 

@@ -1,0 +1,5 @@
+.menu-listV {list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.15rem;}
+.menu-listV li {display: flex; align-items: center; gap: 0.4rem; padding: 0.1rem 0.4rem;}
+.menu-listV a {display: inline-flex; width: 100%; align-items: center; gap: 0.4rem; text-decoration: none; border-radius: 0.25rem; transition: background-color 0.2s, color 0.2s; line-height: 1.2;}
+.menu-listV a:hover {background-color: #e9ecef; text-decoration: none;}
+.menu-listV a.grayed {color: #aaaaaa; cursor: default;}

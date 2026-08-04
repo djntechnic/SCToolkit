@@ -1,0 +1,876 @@
+const AjaxNav = (function() {
+    'use strict';
+    
+    // Default configuration
+    let config = {
+        // Single container (backward compatible)
+        contentContainerId: 'main-content-area',
+        
+        // NEW: Multiple containers by ID
+        contentContainerIds: null,  // Array of IDs, e.g., ['main-content', 'sidebar', 'header-stats']
+        
+        // NEW: Update all elements with this class
+        updateClass: null,  // String, e.g., 'ajax-update-area'
+        
+        loadingIndicatorId: 'ajax-loading-indicator',
+        pagePatterns: [], // Array of page patterns to handle
+        excludeSelectors: ['.no-ajax', '[target="_blank"]', '[download]'],
+        enableLogging: false,
+        onBeforeLoad: null,
+        onAfterLoad: null,
+        onError: null,
+        scrollToTop: true,
+        updateTitle: true,
+        autoInit: false,  // Changed to false - let user explicitly init
+        
+        // GA4 Configuration
+        ga4: {
+            enabled: true,
+            trackPageViews: true,
+            trackClicks: true,
+            trackFormSubmissions: true,
+            measurementId: null,
+            customDimensions: {},
+            debug: false
+        }
+    };
+    
+    // State
+    let isInitialized = false;
+    
+    /**
+     * Initialize the AJAX navigation system
+     * @param {Object} options - Configuration options
+     */
+    function init(options = {}) {
+        if (isInitialized) {
+            log('Already initialized');
+            return;
+        }
+        
+        // Merge user options with defaults (deep merge for nested objects)
+        config = deepMerge(config, options);
+        
+        // Validate at least one container method is specified
+        const hasContainer = config.contentContainerId || 
+                            (config.contentContainerIds && config.contentContainerIds.length > 0) ||
+                            config.updateClass;
+        
+        if (!hasContainer) {
+            console.error('AjaxNav: No content container specified. Use contentContainerId, contentContainerIds, or updateClass');
+            return;
+        }
+        
+        // Validate containers exist
+        if (!validateContainers()) {
+            return;
+        }
+        
+        // Initialize GA4 tracking
+        if (config.ga4.enabled) {
+            initializeGA4();
+        }
+        
+        // Create loading indicator
+        createLoadingIndicator();
+        
+        // Attach event handlers
+        attachEventHandlers();
+        
+        // Initialize browser history
+        initializeHistory();
+        
+        isInitialized = true;
+        log('Initialized successfully');
+        log('Configuration:', config);
+    }
+    
+    /**
+     * Validate that configured containers exist
+     */
+    function validateContainers() {
+        let valid = true;
+        
+        // Check single container
+        if (config.contentContainerId) {
+            const container = document.getElementById(config.contentContainerId);
+            if (!container) {
+                console.warn(`AjaxNav: Container '#${config.contentContainerId}' not found`);
+                valid = false;
+            }
+        }
+        
+        // Check multiple containers
+        if (config.contentContainerIds && Array.isArray(config.contentContainerIds)) {
+            config.contentContainerIds.forEach(id => {
+                const container = document.getElementById(id);
+                if (!container) {
+                    console.warn(`AjaxNav: Container '#${id}' not found`);
+                }
+            });
+        }
+        
+        // Check class-based containers
+        if (config.updateClass) {
+            const elements = document.querySelectorAll('.' + config.updateClass);
+            if (elements.length === 0) {
+                console.warn(`AjaxNav: No elements found with class '${config.updateClass}'`);
+            } else {
+                log(`Found ${elements.length} elements with class '${config.updateClass}'`);
+                // Verify they have IDs
+                elements.forEach((el, index) => {
+                    if (!el.id) {
+                        console.warn(`AjaxNav: Element #${index + 1} with class '${config.updateClass}' has no ID - it will be skipped during updates`);
+                    }
+                });
+            }
+        }
+        
+        return valid;
+    }
+    
+    /**
+     * Initialize Google Analytics 4 tracking
+     */
+    function initializeGA4() {
+        if (typeof gtag === 'undefined') {
+            console.warn('AjaxNav: gtag not found. GA4 tracking disabled.');
+            config.ga4.enabled = false;
+            return;
+        }
+        
+        log('GA4 tracking initialized');
+        
+        if (config.ga4.debug) {
+            gtag('config', config.ga4.measurementId || 'G-VGXS6LWKSL', {
+                'debug_mode': true
+            });
+        }
+    }
+    
+    /**
+     * Track page view in GA4
+     */
+    function trackPageView(url, title) {
+        if (!config.ga4.enabled || !config.ga4.trackPageViews) return;
+        if (typeof gtag === 'undefined') return;
+        
+        const urlObj = new URL(url, window.location.origin);
+        const page_path = urlObj.pathname + urlObj.search;
+        
+        const eventParams = {
+            page_title: title || document.title,
+            page_location: url,
+            page_path: page_path,
+            ...config.ga4.customDimensions
+        };
+        
+        gtag('event', 'page_view', eventParams);
+        log(`GA4 Page View tracked: ${page_path}`);
+    }
+    
+    /**
+     * Track custom event in GA4
+     */
+    function trackEvent(eventName, eventParams = {}) {
+        if (!config.ga4.enabled) return;
+        if (typeof gtag === 'undefined') return;
+        
+        const params = {
+            ...config.ga4.customDimensions,
+            ...eventParams
+        };
+        
+        gtag('event', eventName, params);
+        log(`GA4 Event tracked: ${eventName}`, params);
+    }
+    
+    /**
+     * Track link click in GA4
+     */
+    function trackLinkClick(link, url) {
+        if (!config.ga4.enabled || !config.ga4.trackClicks) return;
+        
+        trackEvent('ajax_link_click', {
+            link_text: link.textContent.trim(),
+            link_url: url,
+            link_classes: link.className,
+            outbound: !url.includes(window.location.hostname)
+        });
+    }
+    
+    /**
+     * Track form submission in GA4
+     */
+    function trackFormSubmission(form, url) {
+        if (!config.ga4.enabled || !config.ga4.trackFormSubmissions) return;
+        
+        trackEvent('ajax_form_submit', {
+            form_id: form.id || 'unnamed',
+            form_action: form.action || url,
+            form_method: form.method || 'GET',
+            form_classes: form.className
+        });
+    }
+    
+    /**
+     * Track AJAX navigation timing
+     */
+    function trackTiming(url, duration) {
+        if (!config.ga4.enabled) return;
+        
+        trackEvent('ajax_navigation_timing', {
+            page_path: url,
+            value: duration,
+            metric_id: 'ajax_load_time'
+        });
+    }
+    
+    /**
+     * Deep merge objects
+     */
+    function deepMerge(target, source) {
+        const output = Object.assign({}, target);
+        if (isObject(target) && isObject(source)) {
+            Object.keys(source).forEach(key => {
+                if (isObject(source[key])) {
+                    if (!(key in target)) {
+                        Object.assign(output, { [key]: source[key] });
+                    } else {
+                        output[key] = deepMerge(target[key], source[key]);
+                    }
+                } else {
+                    Object.assign(output, { [key]: source[key] });
+                }
+            });
+        }
+        return output;
+    }
+    
+    function isObject(item) {
+        return item && typeof item === 'object' && !Array.isArray(item);
+    }
+    
+    /**
+     * Create the loading indicator  background: rgba(255, 255, 255, 0.8);
+     */
+    function createLoadingIndicator() {
+        if (document.getElementById(config.loadingIndicatorId)) {
+            return;
+        }
+        
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = config.loadingIndicatorId;
+        loadingDiv.className = 'ajax-loading-overlay';
+        loadingDiv.innerHTML = '<div class="ajax-spinner"></div>';
+        
+        if (!document.getElementById('ajax-nav-styles')) {
+            const style = document.createElement('style');
+            style.id = 'ajax-nav-styles';
+            style.textContent = `
+                .ajax-loading-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    
+                    display: none;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 9999;
+                }
+                .ajax-loading-overlay.active {
+                    display: flex;
+                }
+                .ajax-spinner {
+                    border: 4px solid #f3f3f3;
+                    border-top: 4px solid #3498db;
+                    border-radius: 50%;
+                    width: 50px;
+                    height: 50px;
+                    animation: ajax-spin 1s linear infinite;
+                }
+                @keyframes ajax-spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        document.body.appendChild(loadingDiv);
+    }
+    
+    /**
+     * Show loading indicator
+     */
+    function showLoading() {
+        const indicator = document.getElementById(config.loadingIndicatorId);
+        if (indicator) {
+            indicator.classList.add('active');
+        }
+    }
+    
+    /**
+     * Hide loading indicator
+     */
+    function hideLoading() {
+        const indicator = document.getElementById(config.loadingIndicatorId);
+        if (indicator) {
+            indicator.classList.remove('active');
+        }
+    }
+    
+    /**
+     * Attach event handlers
+     */
+    function attachEventHandlers() {
+        document.addEventListener('click', handleLinkClick);
+        document.addEventListener('submit', handleFormSubmit, true);
+        window.addEventListener('popstate', handlePopState);
+    }
+    
+    /**
+     * Initialize browser history
+     */
+    function initializeHistory() {
+        const currentUrl = window.location.href;
+        if (!history.state || !history.state.ajaxNav) {
+            history.replaceState({ ajaxNav: true, url: currentUrl }, '', currentUrl);
+        }
+    }
+    
+    /**
+     * Handle link clicks
+     */
+    function handleLinkClick(e) {
+        const link = e.target.closest('a');
+        if (!link) return;
+        
+        // Allow modified clicks to work normally (open in new tab/window)
+        // Check for: Ctrl+Click, Cmd+Click (Mac), Shift+Click, or Middle-Click
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) {
+            log('Modified click detected - allowing browser default behavior');
+            return;
+        }
+        
+        if (shouldHandleLink(link)) {
+            e.preventDefault();
+            const url = link.getAttribute('href');
+            trackLinkClick(link, url);
+            loadContent(url, true);
+        }
+    }
+    
+    /**
+     * Determine if a link should be handled with AJAX
+     */
+    function shouldHandleLink(link) {
+        const href = link.getAttribute('href');
+        
+        if (!href || href === '#' || href === '') {
+            return false;
+        }
+        
+        for (const selector of config.excludeSelectors) {
+            if (link.matches(selector)) {
+                return false;
+            }
+        }
+        
+        if (config.pagePatterns.length > 0) {
+            const matchesPattern = config.pagePatterns.some(pattern => 
+                href.includes(pattern)
+            );
+            if (!matchesPattern && !href.startsWith('?')) {
+                return false;
+            }
+        } else {
+            try {
+                const linkUrl = new URL(href, window.location.origin);
+                const currentUrl = new URL(window.location.href);
+                
+                if (linkUrl.origin !== currentUrl.origin) {
+                    return false;
+                }
+                
+                if (href.startsWith('?')) {
+                    return true;
+                }
+                
+                if (linkUrl.pathname === currentUrl.pathname) {
+                    return true;
+                }
+            } catch (e) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Handle form submissions
+     */
+    function handleFormSubmit(e) {
+        const form = e.target;
+        
+        // CRITICAL: Never intercept POST forms
+        const method = (form.getAttribute('method') || 'GET').toUpperCase();
+        if (method === 'POST') {
+            log('POST form detected - allowing normal submission');
+            return;
+        }
+        
+        // Don't intercept forms with ACTION parameter
+        const action = form.getAttribute('action') || '';
+        if (action.includes('ACTION=')) {
+            log('Form with ACTION parameter - allowing normal submission');
+            return;
+        }
+        
+        if (shouldHandleForm(form)) {
+            e.preventDefault();
+            trackFormSubmission(form, form.action || window.location.href);
+            submitForm(form);
+        }
+    }
+    
+    /**
+     * Determine if a form should be handled with AJAX
+     */
+    function shouldHandleForm(form) {
+        if (form.classList.contains('no-ajax')) {
+            return false;
+        }
+        
+        const action = form.getAttribute('action') || '';
+        
+        if (config.pagePatterns.length > 0) {
+            return config.pagePatterns.some(pattern => 
+                action.includes(pattern) || action.startsWith('?')
+            );
+        }
+        
+        return action === '' || action.startsWith('?') || 
+               action === window.location.pathname;
+    }
+    
+    /**
+     * Submit form via AJAX
+     */
+    async function submitForm(form) {
+        const startTime = performance.now();
+        
+        try {
+            showLoading();
+            
+            if (config.onBeforeLoad) {
+                config.onBeforeLoad();
+            }
+            
+            const formData = new FormData(form);
+            const action = form.getAttribute('action') || window.location.pathname;
+            const method = (form.getAttribute('method') || 'GET').toUpperCase();
+            
+            let url = action.startsWith('?') ? 
+                window.location.pathname + action : action;
+            
+            let fetchOptions = {
+                method: method,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            };
+            
+            if (method === 'GET') {
+                const params = new URLSearchParams(formData);
+                url += (url.includes('?') ? '&' : '?') + params.toString();
+            } else {
+                fetchOptions.body = formData;
+            }
+            
+            const response = await fetch(url, fetchOptions);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const html = await response.text();
+            updatePageContent(html);
+            
+            if (method === 'GET') {
+                history.pushState({ ajaxNav: true, url: url }, '', url);
+                
+                const endTime = performance.now();
+                trackPageView(url, document.title);
+                trackTiming(url, Math.round(endTime - startTime));
+            }
+            
+            handleScrolling(url);
+            
+            if (config.onAfterLoad) {
+                config.onAfterLoad(url);
+            }
+            
+        } catch (error) {
+            handleError('Form submission failed', error);
+            
+            trackEvent('ajax_error', {
+                error_type: 'form_submission',
+                error_message: error.message
+            });
+        } finally {
+            hideLoading();
+        }
+    }
+    
+    /**
+     * Handle browser back/forward
+     */
+    function handlePopState(e) {
+        if (e.state && e.state.ajaxNav && e.state.url) {
+            loadContent(e.state.url, false);
+        }
+    }
+    
+    /**
+     * Load content via AJAX
+     */
+    async function loadContent(url, updateHistory = true) {
+        const startTime = performance.now();
+        
+        try {
+            showLoading();
+            
+            if (config.onBeforeLoad) {
+                config.onBeforeLoad();
+            }
+            
+            const fullUrl = url.startsWith('?') ? 
+                window.location.pathname + url : url;
+            
+            log(`Loading: ${fullUrl}`);
+            
+            const response = await fetch(fullUrl, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const html = await response.text();
+            updatePageContent(html);
+            
+            if (updateHistory) {
+                history.pushState({ ajaxNav: true, url: fullUrl }, '', fullUrl);
+            }
+            
+            const endTime = performance.now();
+            trackPageView(fullUrl, document.title);
+            trackTiming(fullUrl, Math.round(endTime - startTime));
+            
+            handleScrolling(fullUrl);
+            
+            if (config.onAfterLoad) {
+                config.onAfterLoad(fullUrl);
+            }
+            
+            log('Content loaded successfully');
+            
+        } catch (error) {
+            handleError('Failed to load content', error);
+            
+            trackEvent('ajax_error', {
+                error_type: 'content_load',
+                error_message: error.message,
+                url: url
+            });
+        } finally {
+            hideLoading();
+        }
+    }
+    
+    /**
+     * Handle scrolling after content update
+     * Supports hash/anchor navigation
+     */
+    function handleScrolling(url) {
+        if (!config.scrollToTop) return;
+        
+        try {
+            const urlObj = new URL(url, window.location.origin);
+            const hash = urlObj.hash;
+            
+            if (hash) {
+                log('Scrolling to anchor: ' + hash);
+                
+                setTimeout(function() {
+                    const targetElement = document.querySelector(hash);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        log('Scrolled to element: ' + hash);
+                    } else {
+                        log('Anchor element not found: ' + hash);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                }, 100);
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        } catch (e) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }
+    
+    /**
+     * Update page content - supports multiple update areas
+     */
+    function updatePageContent(html) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        let updatedCount = 0;
+        
+        // Method 1: Update by class (if configured)
+        if (config.updateClass) {
+            const currentAreas = document.querySelectorAll('.' + config.updateClass);
+            
+            log(`Found ${currentAreas.length} areas with class '${config.updateClass}'`);
+            
+            currentAreas.forEach(function(currentArea) {
+                const areaId = currentArea.id;
+                if (areaId) {
+                    const newArea = doc.getElementById(areaId);
+                    if (newArea) {
+                        log('Updating area by class: ' + areaId);
+                        updateSingleContainer(currentArea, newArea);
+                        updatedCount++;
+                    } else {
+                        log('Warning: No matching area in response for ID: ' + areaId);
+                    }
+                } else {
+                    log('Warning: Update area has no ID, skipping');
+                }
+            });
+        }
+        
+        // Method 2: Update multiple container IDs
+        if (config.contentContainerIds && Array.isArray(config.contentContainerIds)) {
+            config.contentContainerIds.forEach(function(containerId) {
+                const currentContainer = document.getElementById(containerId);
+                const newContainer = doc.getElementById(containerId);
+                
+                if (currentContainer && newContainer) {
+                    log('Updating container by ID: ' + containerId);
+                    updateSingleContainer(currentContainer, newContainer);
+                    updatedCount++;
+                } else {
+                    log('Warning: Container not found: ' + containerId);
+                }
+            });
+        }
+        
+        // Method 3: Update single container (backward compatible)
+        if (config.contentContainerId && updatedCount === 0) {
+            const contentContainer = document.getElementById(config.contentContainerId);
+            
+            if (!contentContainer) {
+                throw new Error(`Content container '#${config.contentContainerId}' not found`);
+            }
+            
+            const newContent = doc.getElementById(config.contentContainerId);
+            
+            if (newContent) {
+                log('Updating single container: ' + config.contentContainerId);
+                updateSingleContainer(contentContainer, newContent);
+                updatedCount++;
+            } else {
+                log('Warning: Content container not found in response');
+                // Fallback: try to get body content
+                const bodyContent = doc.querySelector('body');
+                if (bodyContent) {
+                    contentContainer.innerHTML = bodyContent.innerHTML;
+                    updatedCount++;
+                } else {
+                    throw new Error('Could not extract content from response');
+                }
+            }
+        }
+        
+        if (updatedCount === 0) {
+            throw new Error('No content areas were updated');
+        }
+        
+        log(`Updated ${updatedCount} area(s) successfully`);
+        
+        // Update page title
+        if (config.updateTitle) {
+            const newTitle = doc.querySelector('title');
+            if (newTitle) {
+                document.title = newTitle.textContent;
+            }
+        }
+        
+        // Trigger custom event
+        const event = new CustomEvent('ajaxNavContentUpdated', {
+            detail: { 
+                timestamp: Date.now(),
+                areasUpdated: updatedCount
+            }
+        });
+        document.dispatchEvent(event);
+    }
+    
+    /**
+     * Update a single container's content, properly executing scripts
+     */
+    function updateSingleContainer(currentContainer, newContainer) {
+        // Clear the container
+        currentContainer.innerHTML = '';
+        
+        // Copy all child nodes
+        Array.from(newContainer.childNodes).forEach(function(node) {
+            if (node.nodeType === 1) { // Element node
+                var clonedNode = node.cloneNode(true);
+                currentContainer.appendChild(clonedNode);
+                
+                // If it's a script tag, recreate it to execute
+                if (node.nodeName === 'SCRIPT') {
+                    var newScript = document.createElement('script');
+                    
+                    // Copy attributes
+                    Array.from(node.attributes).forEach(function(attr) {
+                        newScript.setAttribute(attr.name, attr.value);
+                    });
+                    
+                    // Copy script content
+                    newScript.textContent = node.textContent;
+                    
+                    // Replace the cloned script with executable one
+                    clonedNode.parentNode.replaceChild(newScript, clonedNode);
+                } else {
+                    // Look for script tags inside this element
+                    var scripts = clonedNode.querySelectorAll('script');
+                    scripts.forEach(function(script) {
+                        var newScript = document.createElement('script');
+                        
+                        // Copy attributes
+                        Array.from(script.attributes).forEach(function(attr) {
+                            newScript.setAttribute(attr.name, attr.value);
+                        });
+                        
+                        // Copy script content
+                        newScript.textContent = script.textContent;
+                        
+                        // Replace with executable version
+                        script.parentNode.replaceChild(newScript, script);
+                    });
+                }
+            } else {
+                // Text node, comment, etc. - just append
+                currentContainer.appendChild(node.cloneNode(true));
+            }
+        });
+    }
+    
+    /**
+     * Handle errors
+     */
+    function handleError(message, error) {
+        console.error(`AjaxNav Error: ${message}`, error);
+        
+        if (config.onError) {
+            config.onError(message, error);
+        } else {
+            alert(`${message}. Please try again.`);
+        }
+    }
+    
+    /**
+     * Log messages (if logging enabled)
+     */
+    function log(message, data) {
+        if (config.enableLogging) {
+            if (data) {
+                console.log(`[AjaxNav] ${message}`, data);
+            } else {
+                console.log(`[AjaxNav] ${message}`);
+            }
+        }
+    }
+    
+    /**
+     * Destroy the AJAX navigation system
+     */
+    function destroy() {
+        if (!isInitialized) return;
+        
+        document.removeEventListener('click', handleLinkClick);
+        document.removeEventListener('submit', handleFormSubmit);
+        window.removeEventListener('popstate', handlePopState);
+        
+        const indicator = document.getElementById(config.loadingIndicatorId);
+        if (indicator) {
+            indicator.remove();
+        }
+        
+        isInitialized = false;
+        log('Destroyed');
+    }
+    
+    /**
+     * Programmatically navigate to a URL
+     */
+    function navigateTo(url) {
+        if (!isInitialized) {
+            console.error('AjaxNav not initialized');
+            return;
+        }
+        loadContent(url, true);
+    }
+    
+    /**
+     * Check if system is initialized
+     */
+    function isReady() {
+        return isInitialized;
+    }
+    
+    /**
+     * Manually track a custom event (public API)
+     */
+    function track(eventName, eventParams = {}) {
+        trackEvent(eventName, eventParams);
+    }
+    
+    /**
+     * Get current configuration
+     */
+    function getConfig() {
+        return { ...config };
+    }
+    
+    // Public API
+    return {
+        init: init,
+        destroy: destroy,
+        navigateTo: navigateTo,
+        isReady: isReady,
+        showLoading: showLoading,
+        hideLoading: hideLoading,
+        track: track,
+        getConfig: getConfig,
+        version: '2.0.0'
+    };
+})();
+
+// Make available globally
+window.AjaxNav = AjaxNav;

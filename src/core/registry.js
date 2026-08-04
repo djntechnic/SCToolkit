@@ -16,6 +16,7 @@ import { initAddMultiplesEnhancer } from '../modules/addMultiplesEnhancer.js';
 import { initCsvExportEngine } from '../modules/csvExportEngine.js';
 import { initPaginationLoader } from '../modules/paginationLoader.js';
 import { initCardNameFormatter } from '../modules/cardNameFormatter.js';
+import { initCollectionQuantityCounter } from '../modules/collectionQuantityCounter.js';
 
 /**
  * @typedef {object} ModuleDefinition
@@ -81,6 +82,13 @@ export const ModuleRegistry = [
     name: 'Card Name Formatter',
     description: 'Dynamically extracts card metadata based on text selection and formats/copies card strings according to a customizable template.',
     init: initCardNameFormatter,
+    isAsync: false
+  },
+  {
+    id: 'collectionQuantityCounter',
+    name: 'Collection Quantity Counter',
+    description: 'Counts distinct cards with Qty >= 1, total cards, and total item quantity on For Sale/Trade and Wantlist pages.',
+    init: initCollectionQuantityCounter,
     isAsync: false
   }
 ];

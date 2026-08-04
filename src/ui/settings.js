@@ -229,12 +229,21 @@ export const SettingsUI = {
     sectionTitle.textContent = 'Modules & Routes';
     pane.appendChild(sectionTitle);
 
-    ModuleRegistry.forEach((mod) => {
+    // Alphabetize modules by display name
+    const sortedModules = [...ModuleRegistry].sort((a, b) => a.name.localeCompare(b.name));
+
+    sortedModules.forEach((mod) => {
       const cfg = Config.modules[mod.id];
       if (!cfg) return;
 
       const row = document.createElement('div');
-      row.className = 'tk-settings-module-row';
+      row.className = 'tk-settings-module-row tk-accordion-item';
+
+      const header = document.createElement('div');
+      header.className = 'tk-accordion-header';
+
+      const headerLeft = document.createElement('div');
+      headerLeft.className = 'tk-accordion-header-left';
 
       const label = document.createElement('label');
       label.className = 'tk-module-label';
@@ -243,6 +252,9 @@ export const SettingsUI = {
       checkbox.type = 'checkbox';
       checkbox.checked = !!cfg.enabled;
       checkbox.title = 'Enable or disable this module on matching pages.';
+      checkbox.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
       checkbox.addEventListener('change', () => {
         cfg.enabled = checkbox.checked;
         Log(`Config change: module '${mod.id}' enabled = ${cfg.enabled}`, 'info');
@@ -250,16 +262,34 @@ export const SettingsUI = {
       });
 
       const nameSpan = document.createElement('span');
+      nameSpan.className = 'tk-module-name';
       nameSpan.textContent = mod.name;
 
       label.appendChild(checkbox);
       label.appendChild(nameSpan);
-      row.appendChild(label);
 
       const desc = document.createElement('div');
       desc.className = 'tk-settings-module-desc';
       desc.textContent = mod.description;
-      row.appendChild(desc);
+
+      headerLeft.appendChild(label);
+      headerLeft.appendChild(desc);
+      header.appendChild(headerLeft);
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.className = 'tk-accordion-toggle-btn';
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      toggleBtn.setAttribute('aria-label', `Expand routes for ${mod.name}`);
+      toggleBtn.title = 'Expand route patterns';
+      toggleBtn.innerHTML = icon('chevronDown');
+
+      header.appendChild(toggleBtn);
+      row.appendChild(header);
+
+      const body = document.createElement('div');
+      body.className = 'tk-accordion-body';
+      body.style.display = 'none';
 
       if (mod.actionLabels && Object.keys(mod.actionLabels).length > 0) {
         const actionsWrap = document.createElement('div');
@@ -285,10 +315,23 @@ export const SettingsUI = {
           actionsWrap.appendChild(actionLabel);
         });
 
-        row.appendChild(actionsWrap);
+        body.appendChild(actionsWrap);
       }
 
-      row.appendChild(SettingsUI._buildRouteEditor(mod, cfg));
+      body.appendChild(SettingsUI._buildRouteEditor(mod, cfg));
+      row.appendChild(body);
+
+      const toggleAccordion = (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.closest('label.tk-module-label')) {
+          return;
+        }
+        const isOpen = body.style.display !== 'none';
+        body.style.display = isOpen ? 'none' : 'block';
+        toggleBtn.setAttribute('aria-expanded', String(!isOpen));
+        row.classList.toggle('tk-accordion-open', !isOpen);
+      };
+
+      header.addEventListener('click', toggleAccordion);
       pane.appendChild(row);
     });
 
@@ -624,6 +667,31 @@ export const SettingsUI = {
       field.appendChild(select);
       pane.appendChild(field);
     });
+
+    const posField = document.createElement('div');
+    posField.className = 'tk-settings-field';
+    const posLabel = document.createElement('label');
+    posLabel.textContent = 'Quantity Counter Position';
+    const posSelect = document.createElement('select');
+    posSelect.title = 'Select position for Collection Quantity Counter widget.';
+    [
+      { value: 'bottom-right', label: 'Bottom-Right Corner (Overlay)' },
+      { value: 'bottom-left', label: 'Bottom-Left Corner (Overlay)' },
+      { value: 'toolbar', label: 'SCToolkit Toolbar' }
+    ].forEach(({ value, label }) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if ((Config.global.quantityCounterPosition || 'bottom-right') === value) opt.selected = true;
+      posSelect.appendChild(opt);
+    });
+    posSelect.addEventListener('change', () => {
+      Config.global.quantityCounterPosition = posSelect.value;
+      Log(`Config change: global.quantityCounterPosition = ${posSelect.value}`, 'info');
+      SettingsUI._persist();
+    });
+    posField.append(posLabel, posSelect);
+    pane.appendChild(posField);
 
     pane.appendChild(SettingsUI._buildXmlPanel());
 

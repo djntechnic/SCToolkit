@@ -66,6 +66,11 @@ export const ICONS = {
     strokeWidth: 2,
     body: '<path d="m18 15-6-6-6 6"/>',
   },
+  chevronDown: {
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="m6 9 6 6 6-6"/>',
+  },
   plus: {
     size: 11,
     strokeWidth: 2,

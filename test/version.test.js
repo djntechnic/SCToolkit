@@ -9,6 +9,6 @@ test('APP_VERSION: valid semantic version string', () => {
 });
 
 test('getAppVersion: consistently returns APP_VERSION as authoritative version', () => {
-  assert.equal(getAppVersion(), APP_VERSION);
-  assert.equal(getAppVersion(), '3.0.3');
+  assert.equal(getAppVersion(), '3.1.0');
+  assert.equal(APP_VERSION, '3.1.0');
 });

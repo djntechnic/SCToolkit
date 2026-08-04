@@ -31,6 +31,34 @@ export function applySaleTypeDefaults(root = document) {
 }
 
 /**
+ * Auto-scroll the element so it is vertically centered if it is currently outside
+ * the middle 80% vertically of the screen.
+ *
+ * @param {HTMLElement} el
+ * @returns {boolean} whether auto-scroll was triggered
+ */
+export function autoScrollIfOutsideMiddle80(el) {
+  if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+
+  const viewportHeight = (typeof window !== 'undefined' && window.innerHeight)
+    || (typeof document !== 'undefined' && document.documentElement ? document.documentElement.clientHeight : 0);
+  if (!viewportHeight) return false;
+
+  const rect = el.getBoundingClientRect();
+  const topThreshold = viewportHeight * 0.1;
+  const bottomThreshold = viewportHeight * 0.9;
+
+  if (rect.top < topThreshold || rect.bottom > bottomThreshold) {
+    if (typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Focus the first quantity field, and keep it focused against the page's own
  * scripts — but stop the instant the user does anything.
  *
@@ -67,9 +95,11 @@ function focusFirstQuantityField() {
       target.focus({ preventScroll: true });
       target.select();
     }
+    autoScrollIfOutsideMiddle80(target);
 
     if (Date.now() < deadline) {
-      requestAnimationFrame(assert);
+      const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame : null);
+      if (raf) raf(assert);
     } else {
       stop();
     }
@@ -79,6 +109,14 @@ function focusFirstQuantityField() {
 }
 
 export function initAddMultiplesEnhancer() {
+  if (typeof document !== 'undefined') {
+    document.addEventListener('focusin', (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) {
+        autoScrollIfOutsideMiddle80(e.target);
+      }
+    });
+  }
+
   const changed = applySaleTypeDefaults();
   if (changed > 0) Log(`Add Multiples: defaulted ${changed} sale-type select(s).`, 'debug');
 
@@ -91,3 +129,5 @@ export function initAddMultiplesEnhancer() {
 
   focusFirstQuantityField();
 }
+
+
