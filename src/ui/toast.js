@@ -25,7 +25,7 @@ export const STACK_LIMIT = 4;
  * @param {string} location
  * @returns {HTMLElement}
  */
-function containerFor(location) {
+export function containerFor(location) {
   const id = `tk-toast-container-${location}`;
   let container = document.getElementById(id);
   if (!container) {
@@ -65,14 +65,25 @@ export function showToast({
 } = {}) {
   const container = containerFor(location);
 
-  // A long export can otherwise bury the page under its own status updates.
-  while (container.children.length >= STACK_LIMIT) container.firstChild.remove();
+  // Limit only active toast messages, preserving persistent corner widgets
+  const toasts = Array.from(container.querySelectorAll('.tk-toast-message'));
+  while (toasts.length >= STACK_LIMIT) {
+    const oldest = toasts.shift();
+    oldest.remove();
+  }
 
   const toast = document.createElement('div');
   toast.className = 'tk-toast-message';
   toast.style.borderLeftColor = accent ?? TOAST_VARIANTS[variant] ?? TOAST_VARIANTS.info;
   toast.innerHTML = message;
-  container.appendChild(toast);
+
+  // Insert before persistent corner widget if present, so toasts stack above the card
+  const widget = container.querySelector('.sctk-qty-counter');
+  if (widget) {
+    container.insertBefore(toast, widget);
+  } else {
+    container.appendChild(toast);
+  }
 
   setTimeout(() => toast.classList.add('tk-toast-show'), 10);
 
@@ -86,7 +97,7 @@ function scheduleDismiss(toast, container, delay) {
     toast.classList.remove('tk-toast-show');
     setTimeout(() => {
       toast.remove();
-      if (container.childNodes.length === 0) container.remove();
+      if (container.children.length === 0) container.remove();
     }, 300);
   }, delay);
 }

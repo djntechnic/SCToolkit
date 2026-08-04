@@ -2,7 +2,7 @@
 
 A userscript toolkit for sports card database browsing: instant table & set list filtering, keyboard-first data entry, set shortcut badges, checklist links, customizable button display modes, and polite, rate-limited CSV export.
 
-> **Status:** v3.0.3 is available. Featuring Card Name Formatter Engine, Client Timezone Auto-Detection, custom timestamp format settings, visited button styling fixes, and universal real-time filtering.
+> **Status:** v3.1.0 is available. Featuring Collection Quantity Counter live overlay widget, Parent Set ID resolution for sub-sets, alphabetized accordion Settings modal, unified toast stacking container, and universal real-time filtering.
 
 ---
 
@@ -17,6 +17,7 @@ A userscript toolkit for sports card database browsing: instant table & set list
 | Feature | Where |
 |---|---|
 | Fixed toolbar with page context, pinned sets grouped by year, active module status popover, and checklist shortcut button | every page |
+| Collection Quantity Counter overlay widget (Card Count & Total Quantity live tracker) | ViewCollectionForSaleTrade, ViewCollectionWantlist |
 | Card Name Formatter Engine — token-based card metadata compiler & popover with auto-copy | set-scoped pages (Checklist, ViewCard, Collections) |
 | Shortcut badges — checklist, inserts, parallels, for-sale, add-multiples, wantlist | set-scoped pages |
 | Pin / CSV / shortcut badges beside set links | set listings & index pages |
@@ -26,7 +27,7 @@ A userscript toolkit for sports card database browsing: instant table & set list
 | Sale-type defaults and first-empty-field focus | add-multiples |
 | Multi-page checklist export to CSV — paced, retrying, and queued one at a time | set-scoped pages |
 | Raw-table CSV export | collection, player collection, print views |
-| Settings: per-module enablement, editable route patterns, Title Case thresholds, log level, timezone & format | toolbar gear icon |
+| Settings: alphabetized accordion module controls, editable route patterns, Title Case thresholds, log level, timezone & format | toolbar gear icon |
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed and what is still outstanding.
 

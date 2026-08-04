@@ -219,14 +219,15 @@ export const TOOLBAR_CSS = `
 
 /* Toast System */
 .tk-toast-container { position: fixed; z-index: 100000; display: flex; flex-direction: column; gap: 6px; pointer-events: none; font-family: var(--tk-font-ui); }
-.tk-toast-bottom-right { bottom: 16px; right: 16px; }
-.tk-toast-bottom-left { bottom: 16px; left: 16px; }
-.tk-toast-top-right { top: 44px; right: 16px; }
-.tk-toast-top-left { top: 44px; left: 16px; }
+.tk-toast-bottom-right { bottom: 16px; right: 16px; align-items: flex-end; }
+.tk-toast-bottom-left { bottom: 16px; left: 16px; align-items: flex-start; }
+.tk-toast-top-right { top: 44px; right: 16px; align-items: flex-end; }
+.tk-toast-top-left { top: 44px; left: 16px; align-items: flex-start; }
 .tk-toast-message { padding: 8px 12px; border-radius: var(--tk-radius-sm); background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border); border-left: 3px solid var(--tk-teal); box-shadow: var(--tk-shadow-elevated); opacity: 0; pointer-events: auto; line-height: 1.35; max-width: 320px; word-wrap: break-word; text-align: left; font-size: 11.5px; }
 .tk-toast-message.tk-toast-show { opacity: 1; }
 @media (prefers-reduced-motion: no-preference) {
-    .tk-toast-message { transform: translateY(8px); transition: opacity 0.25s ease, transform 0.25s ease; }
+    .tk-toast-message, .sctk-qty-counter { transition: opacity 0.25s ease, transform 0.25s ease; }
+    .tk-toast-message { transform: translateY(8px); }
     .tk-toast-message.tk-toast-show { transform: translateY(0); }
 }
 .tk-toast-hint { font-family: var(--tk-font-mono); font-size: 9px; color: var(--tk-text-muted); border: 1px solid var(--tk-border-strong); border-radius: 3px; padding: 0 3px; }
@@ -241,6 +242,16 @@ export const TOOLBAR_CSS = `
 /* Card Name Formatter Popover */
 .tk-formatter-popover { position: absolute; z-index: 200000; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 4px 8px; box-shadow: var(--tk-shadow-elevated); font-family: var(--tk-font-ui); font-size: 11px; display: flex; align-items: center; gap: 8px; }
 .tk-popover-label { font-family: var(--tk-font-mono); white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Quantity Counter Widget */
+.sctk-qty-counter { font-family: var(--tk-font-ui); font-size: 11.5px; color: var(--tk-text); background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-left: 3px solid var(--tk-accent); border-radius: var(--tk-radius-sm); padding: 5px 10px; box-shadow: var(--tk-shadow-elevated); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; user-select: none; pointer-events: auto; }
+.sctk-qty-counter-bottom-right { position: relative; inset: auto; z-index: auto; }
+.sctk-qty-counter-bottom-left { position: relative; inset: auto; z-index: auto; }
+.sctk-qty-counter-toolbar { position: relative; z-index: auto; border-radius: var(--tk-radius-sm); margin-left: 6px; padding: 2px 8px; height: 22px; box-shadow: none; }
+.sctk-qty-counter .tk-qty-label { font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; color: var(--tk-accent); text-transform: uppercase; }
+.sctk-qty-counter .tk-qty-val { font-family: var(--tk-font-mono); font-size: 12px; font-weight: 700; color: var(--tk-text); }
+.sctk-qty-counter .tk-qty-sep, .sctk-qty-counter .tk-qty-total { font-family: var(--tk-font-mono); font-size: 11px; color: var(--tk-text-muted); }
+.sctk-qty-counter .tk-qty-sub { font-size: 10.5px; color: var(--tk-text-muted); margin-left: 4px; }
 
 /* Height is measured and written to this variable by a ResizeObserver. The
    old fixed 38px was wrong the moment the toolbar wrapped to a second row, and
@@ -266,11 +277,19 @@ export const SETTINGS_CSS = `
 #tk-settings-tab-content { overflow-y: auto; flex-grow: 1; padding: 14px 16px; text-align: left; }
 #tk-settings-modules, #tk-settings-global { width: 100%; text-align: left; }
 .tk-settings-section-title { font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; color: var(--tk-teal); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px 0; text-align: left; }
-.tk-settings-module-row { border-bottom: 1px solid var(--tk-border); padding: 8px 0; text-align: left; }
+.tk-settings-module-row { border-bottom: 1px solid var(--tk-border); padding: 4px 0; text-align: left; }
 .tk-settings-module-row:last-child { border-bottom: none; }
-.tk-settings-module-row label.tk-module-label { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; font-size: 11.5px; font-weight: 700; text-align: left; }
-.tk-settings-module-desc { font-size: 10.5px; color: var(--tk-text-muted); margin: 2px 0 0 20px; line-height: 1.35; text-align: left; }
-.tk-settings-actions { margin: 4px 0 0 20px; display: flex; flex-direction: column; gap: 3px; text-align: left; }
+.tk-accordion-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; cursor: pointer; padding: 6px 8px; border-radius: var(--tk-radius-sm); user-select: none; }
+.tk-accordion-header:hover { background: var(--tk-bg-hover); }
+.tk-accordion-header-left { display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; min-width: 0; }
+.tk-accordion-header label.tk-module-label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11.5px; font-weight: 700; text-align: left; margin: 0; }
+.tk-settings-module-desc { font-size: 10.5px; color: var(--tk-text-muted); margin: 0 0 0 20px; line-height: 1.35; text-align: left; white-space: normal; word-break: break-word; }
+.tk-accordion-toggle-btn { display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--tk-text-muted); padding: 2px; margin-top: 2px; border-radius: var(--tk-radius-sm); cursor: pointer; flex-shrink: 0; transition: transform 0.2s ease, color 0.2s ease; }
+.tk-accordion-toggle-btn:hover { color: var(--tk-accent); }
+.tk-accordion-toggle-btn:focus-visible { outline: 2px solid var(--tk-accent); }
+.tk-accordion-open .tk-accordion-toggle-btn { transform: rotate(180deg); color: var(--tk-accent); }
+.tk-accordion-body { padding: 6px 8px 6px 20px; }
+.tk-settings-actions { margin: 4px 0 6px 0; display: flex; flex-direction: column; gap: 3px; text-align: left; }
 .tk-settings-actions label { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 400; cursor: pointer; color: var(--tk-text-muted); text-align: left; }
 .tk-settings-field { margin-bottom: 12px; text-align: left; }
 .tk-settings-field label { display: block; font-size: 10.5px; font-weight: 700; margin-bottom: 3px; text-align: left; }

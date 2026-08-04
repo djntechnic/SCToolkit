@@ -6,7 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [3.0.2] — 2026-08-02
+## [3.1.0] — 2026-08-03
+
+### Added
+- **Collection Quantity Counter Module**: Real-time distinct card count (`Qty >= 1`) and total item quantity counter overlay widget on `ViewCollectionForSaleTrade` and `ViewCollectionWantlist` pages (`Card Count: X / Z (Total Count: Y)`). Automatically updates on field quantity changes without requiring page refresh.
+- **Unified Corner Toast & Widget Container**: Stacked flex container (`#tk-toast-container-bottom-right` / `#tk-toast-container-bottom-left`) for corner widgets and toast notifications with smooth slide animations and zero visual overlap.
+- **Alphabetized & Accordion Settings Modal**: Sorted Modules & Routes alphabetically by display name. Rendered module rows as expandable accordions with header checkboxes, titles, full multi-line natural text wrapping descriptions, and smooth chevron expand buttons.
+- **Parent Set ID Resolution**: Resolved parent set IDs for child insert set pages from Overview navigation links, ensuring INS and PAR toolbar links correctly return to parent set scope.
+
 
 ### Fixed
 - **Set List Enhancer Contract & Observer Filtering**: Filtered self-generated DOM badge mutations in `MutationObserver` to prevent duplicate concurrent injection loops. Corrected total enhanced link calculation in contract reporting so Diagnostics accurately reflects page badge status.

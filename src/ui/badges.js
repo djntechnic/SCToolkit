@@ -21,27 +21,27 @@ export const BADGES = {
     text: 'INS',
     cssClass: 'tk-badge-link-i',
     title: 'View Insert Sets',
-    getUrl: (sid) => `/Inserts.cfm/sid/${sid}/#InsertSets`
+    getUrl: (sid, parentSid) => `/Inserts.cfm/sid/${parentSid || sid}/#InsertSets`
   },
   PARALLELS: {
     icon: 'gem',
     text: 'PAR',
     cssClass: 'tk-badge-link-p',
     title: 'View Parallel Sets',
-    getUrl: (sid) => `/Inserts.cfm/sid/${sid}/#ParallelSets`
+    getUrl: (sid, parentSid) => `/Inserts.cfm/sid/${parentSid || sid}/#ParallelSets`
   },
   FOR_SALE: {
     icon: 'tag',
     text: 'FS',
     cssClass: 'tk-badge-link-fs',
-    title: 'View For Sale / For Trade Items',
+    title: 'Add For Sale / For Trade Items',
     getUrl: (sid) => `/ViewCollectionForSaleTrade.cfm/sid/${sid}`
   },
   MULTI: {
     icon: 'layers',
     text: 'MULTI',
     cssClass: 'tk-badge-link-fsm',
-    title: 'Add Multiples to For Sale / For Trade',
+    title: 'Add For Sale / For Trade Items',
     getUrl: (sid) => `/CollectionAddMultiplesText.cfm/sid/${sid}`
   },
   WANTLIST: {
@@ -88,7 +88,7 @@ export const SET_LINK_BADGES = ['CHECKLIST', 'PIN', 'CSV', 'INSERTS', 'PARALLELS
  * @param {'both'|'icon'|'text'} [displayMode='both']
  * @returns {HTMLElement|null} `null` for an unknown badge key
  */
-export function createBadge(badgeKey, sid = null, onClickOverride = null, displayMode = 'both') {
+export function createBadge(badgeKey, sid = null, onClickOverride = null, displayMode = 'both', parentSid = null) {
   const config = BADGES[badgeKey];
   if (!config) return null;
 
@@ -104,7 +104,7 @@ export function createBadge(badgeKey, sid = null, onClickOverride = null, displa
 
   if (config.getUrl && !onClickOverride) {
     const link = document.createElement('a');
-    link.href = config.getUrl(sid);
+    link.href = config.getUrl(sid, parentSid);
     link.innerHTML = inner;
     link.className = `sctk-badge ${config.cssClass}`;
     link.title = config.title;
@@ -149,13 +149,15 @@ export function createBadge(badgeKey, sid = null, onClickOverride = null, displa
  * @param {((e: Event) => void)|null} [options.onExport] handler for `CSV`
  * @param {((e: Event) => void)|null} [options.onPin] handler for `PIN`
  * @param {'both'|'icon'|'text'} [options.displayMode] icon/text combination mode
+ * @param {string|null} [options.parentSid] optional parent set ID for sub-sets
  * @returns {HTMLElement} the container, for chaining
  */
 export function renderBadgeSet(container, sid, {
   include = TOOLBAR_BADGES,
   onExport = null,
   onPin = null,
-  displayMode = 'both'
+  displayMode = 'both',
+  parentSid = null
 } = {}) {
   const handlers = { CSV: onExport, PIN: onPin };
 
@@ -163,7 +165,7 @@ export function renderBadgeSet(container, sid, {
     const isAction = key in handlers;
     if (isAction && !handlers[key]) return;
 
-    const badge = createBadge(key, sid, isAction ? handlers[key] : null, displayMode);
+    const badge = createBadge(key, sid, isAction ? handlers[key] : null, displayMode, parentSid);
     if (badge) container.appendChild(badge);
   });
 

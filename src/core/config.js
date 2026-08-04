@@ -85,6 +85,14 @@ export const DEFAULT_CONFIG = {
       ],
       actions: {},
     },
+    collectionQuantityCounter: {
+      enabled: true,
+      urlMatch: [
+        { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
+        { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
+      ],
+      actions: {},
+    },
   },
   global: {
     exportBaseDelayMs: EXPORT_CONFIG.baseDelayMs,
@@ -104,6 +112,7 @@ export const DEFAULT_CONFIG = {
       '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}',
     cardFormatterOutputMode: "popover",
     cardFormatterPopoverDurationMs: 4000,
+    quantityCounterPosition: "bottom-right",
     theme: "auto",
     logLevel: "info",
     timezone: "auto",

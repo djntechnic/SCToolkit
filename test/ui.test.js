@@ -10,7 +10,7 @@ import { JSDOM } from 'jsdom';
 import { THEMES, resolveTheme } from '../src/ui/theme.js';
 import { fuzzyScore, rankCommands } from '../src/ui/palette.js';
 import { STACK_LIMIT, TOAST_VARIANTS } from '../src/ui/toast.js';
-import { SHORTCUT_KEYS, BADGES } from '../src/ui/badges.js';
+import { SHORTCUT_KEYS, BADGES, createBadge } from '../src/ui/badges.js';
 import { cleanDocTitle } from '../src/ui/toolbar.js';
 
 // --- theme ------------------------------------------------------------------
@@ -303,3 +303,46 @@ test('cleanDocTitle: ViewCollectionForSaleTrade.cfm / CollectionAddMultiplesText
     '2022 Bowman'
   );
 });
+
+test('createBadge: INSERTS and PARALLELS use parentSid when provided', () => {
+  const insBadge = createBadge('INSERTS', '355099', null, 'both', '294644');
+  assert.equal(insBadge.getAttribute('href'), '/Inserts.cfm/sid/294644/#InsertSets');
+
+  const parBadge = createBadge('PARALLELS', '355099', null, 'both', '294644');
+  assert.equal(parBadge.getAttribute('href'), '/Inserts.cfm/sid/294644/#ParallelSets');
+});
+
+test('createBadge: INSERTS and PARALLELS fall back to sid when parentSid is null', () => {
+  const insBadge = createBadge('INSERTS', '355099', null, 'both', null);
+  assert.equal(insBadge.getAttribute('href'), '/Inserts.cfm/sid/355099/#InsertSets');
+
+  const parBadge = createBadge('PARALLELS', '355099', null, 'both', null);
+  assert.equal(parBadge.getAttribute('href'), '/Inserts.cfm/sid/355099/#ParallelSets');
+});
+
+test('SettingsUI._buildModulesPane: alphabetizes modules and renders accordions', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+
+  const { SettingsUI } = await import('../src/ui/settings.js');
+  const pane = SettingsUI._buildModulesPane();
+
+  const titleEls = Array.from(pane.querySelectorAll('.tk-module-name'));
+  const renderedNames = titleEls.map((el) => el.textContent.trim());
+
+  const expectedSortedNames = [...renderedNames].sort((a, b) => a.localeCompare(b));
+  assert.deepEqual(renderedNames, expectedSortedNames, 'Modules should be rendered in alphabetical order');
+
+  const firstHeader = pane.querySelector('.tk-accordion-header');
+  const firstBody = pane.querySelector('.tk-accordion-body');
+  assert.equal(firstBody.style.display, 'none', 'Accordion body should start closed');
+
+  firstHeader.click();
+  assert.equal(firstBody.style.display, 'block', 'Accordion body should open on header click');
+
+  firstHeader.click();
+  assert.equal(firstBody.style.display, 'none', 'Accordion body should close on second header click');
+});
+
+

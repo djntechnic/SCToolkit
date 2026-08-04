@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SCToolkit
 // @namespace    https://github.com/djntechnic/SCToolkit
-// @version      3.0.3
+// @version      3.1.0
 // @description  Userscript toolkit for sports card database browsing: filtering, shortcuts, and polite CSV export.
 // @author       djntechnic
 // @license      MIT
@@ -327,6 +327,14 @@
           { pattern: "/viewcollectionwantlist\\.cfm", exclude: false }
         ],
         actions: {}
+      },
+      collectionQuantityCounter: {
+        enabled: true,
+        urlMatch: [
+          { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
+          { pattern: "/viewcollectionwantlist\\.cfm", exclude: false }
+        ],
+        actions: {}
       }
     },
     global: {
@@ -346,6 +354,7 @@
       cardFormatterTemplate: "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}",
       cardFormatterOutputMode: "popover",
       cardFormatterPopoverDurationMs: 4e3,
+      quantityCounterPosition: "bottom-right",
       theme: "auto",
       logLevel: "info",
       timezone: "auto",
@@ -802,6 +811,43 @@
     const match = String(url).match(/sid[=/](\d+)/i);
     return match ? match[1] : null;
   }
+  function extractParentSid(doc = document, currentSid = null) {
+    if (!doc || typeof doc.querySelector !== "function") return null;
+    const getHref = (el) => (el ? el.getAttribute ? el.getAttribute("href") || el.href : el.href : "") || "";
+    const candidateAnchors = Array.from(
+      doc.querySelectorAll(
+        '.menu-linksV a, .menu-listV a, #offcanvas a, #content a[href*="ViewSet.cfm/sid/"], a[href*="ViewSet.cfm/sid/"]'
+      )
+    );
+    const overviewLink = candidateAnchors.find((a) => {
+      const text = (a.textContent || "").trim().toLowerCase();
+      const href = getHref(a).toLowerCase();
+      return text.includes("overview") || href.includes("viewset.cfm/sid/");
+    });
+    if (overviewLink) {
+      const sid = extractSid(getHref(overviewLink));
+      if (sid && sid !== currentSid) return sid;
+    }
+    for (const link of candidateAnchors) {
+      const sid = extractSid(getHref(link));
+      if (sid && sid !== currentSid) return sid;
+    }
+    const breadcrumbLinks = doc.querySelectorAll(
+      '.breadcrumb a[href*="/sid/"], .breadcrumb a[href*="sid="], ol.breadcrumb a[href*="/sid/"], ul.breadcrumb a[href*="/sid/"], nav a[href*="/sid/"]'
+    );
+    for (const link of breadcrumbLinks) {
+      const sid = extractSid(getHref(link));
+      if (sid && sid !== currentSid) return sid;
+    }
+    const headerLink = doc.querySelector(
+      '#setname-content h1 a[href*="/sid/"], #main-content-area h1 a[href*="/sid/"]'
+    );
+    if (headerLink) {
+      const sid = extractSid(getHref(headerLink));
+      if (sid && sid !== currentSid) return sid;
+    }
+    return null;
+  }
 
   // src/data/csv.js
   function escapeField(value) {
@@ -1197,12 +1243,21 @@
     accent
   } = {}) {
     const container = containerFor(location);
-    while (container.children.length >= STACK_LIMIT) container.firstChild.remove();
+    const toasts = Array.from(container.querySelectorAll(".tk-toast-message"));
+    while (toasts.length >= STACK_LIMIT) {
+      const oldest = toasts.shift();
+      oldest.remove();
+    }
     const toast = document.createElement("div");
     toast.className = "tk-toast-message";
     toast.style.borderLeftColor = accent ?? TOAST_VARIANTS[variant] ?? TOAST_VARIANTS.info;
     toast.innerHTML = message;
-    container.appendChild(toast);
+    const widget = container.querySelector(".sctk-qty-counter");
+    if (widget) {
+      container.insertBefore(toast, widget);
+    } else {
+      container.appendChild(toast);
+    }
     setTimeout(() => toast.classList.add("tk-toast-show"), 10);
     if (duration !== Infinity) scheduleDismiss(toast, container, duration);
     return toast;
@@ -1212,7 +1267,7 @@
       toast.classList.remove("tk-toast-show");
       setTimeout(() => {
         toast.remove();
-        if (container.childNodes.length === 0) container.remove();
+        if (container.children.length === 0) container.remove();
       }, 300);
     }, delay);
   }
@@ -1791,6 +1846,11 @@
       strokeWidth: 2,
       body: '<path d="m18 15-6-6-6 6"/>'
     },
+    chevronDown: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="m6 9 6 6 6-6"/>'
+    },
     plus: {
       size: 11,
       strokeWidth: 2,
@@ -1847,27 +1907,27 @@
       text: "INS",
       cssClass: "tk-badge-link-i",
       title: "View Insert Sets",
-      getUrl: (sid) => `/Inserts.cfm/sid/${sid}/#InsertSets`
+      getUrl: (sid, parentSid) => `/Inserts.cfm/sid/${parentSid || sid}/#InsertSets`
     },
     PARALLELS: {
       icon: "gem",
       text: "PAR",
       cssClass: "tk-badge-link-p",
       title: "View Parallel Sets",
-      getUrl: (sid) => `/Inserts.cfm/sid/${sid}/#ParallelSets`
+      getUrl: (sid, parentSid) => `/Inserts.cfm/sid/${parentSid || sid}/#ParallelSets`
     },
     FOR_SALE: {
       icon: "tag",
       text: "FS",
       cssClass: "tk-badge-link-fs",
-      title: "View For Sale / For Trade Items",
+      title: "Add For Sale / For Trade Items",
       getUrl: (sid) => `/ViewCollectionForSaleTrade.cfm/sid/${sid}`
     },
     MULTI: {
       icon: "layers",
       text: "MULTI",
       cssClass: "tk-badge-link-fsm",
-      title: "Add Multiples to For Sale / For Trade",
+      title: "Add For Sale / For Trade Items",
       getUrl: (sid) => `/CollectionAddMultiplesText.cfm/sid/${sid}`
     },
     WANTLIST: {
@@ -1899,7 +1959,7 @@
   var SHORTCUT_KEYS = ["CHECKLIST", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
   var TOOLBAR_BADGES = ["CHECKLIST", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST", "CSV"];
   var SET_LINK_BADGES = ["CHECKLIST", "PIN", "CSV", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
-  function createBadge(badgeKey, sid = null, onClickOverride = null, displayMode = "both") {
+  function createBadge(badgeKey, sid = null, onClickOverride = null, displayMode = "both", parentSid = null) {
     const config = BADGES[badgeKey];
     if (!config) return null;
     const showIcon = displayMode === "both" || displayMode === "icon";
@@ -1910,7 +1970,7 @@
     const inner = `${iconSvg}${textSpan}`;
     if (config.getUrl && !onClickOverride) {
       const link = document.createElement("a");
-      link.href = config.getUrl(sid);
+      link.href = config.getUrl(sid, parentSid);
       link.innerHTML = inner;
       link.className = `sctk-badge ${config.cssClass}`;
       link.title = config.title;
@@ -1938,13 +1998,14 @@
     include = TOOLBAR_BADGES,
     onExport = null,
     onPin = null,
-    displayMode = "both"
+    displayMode = "both",
+    parentSid = null
   } = {}) {
     const handlers = { CSV: onExport, PIN: onPin };
     include.forEach((key) => {
       const isAction = key in handlers;
       if (isAction && !handlers[key]) return;
-      const badge = createBadge(key, sid, isAction ? handlers[key] : null, displayMode);
+      const badge = createBadge(key, sid, isAction ? handlers[key] : null, displayMode, parentSid);
       if (badge) container.appendChild(badge);
     });
     return container;
@@ -2197,14 +2258,15 @@
 
 /* Toast System */
 .tk-toast-container { position: fixed; z-index: 100000; display: flex; flex-direction: column; gap: 6px; pointer-events: none; font-family: var(--tk-font-ui); }
-.tk-toast-bottom-right { bottom: 16px; right: 16px; }
-.tk-toast-bottom-left { bottom: 16px; left: 16px; }
-.tk-toast-top-right { top: 44px; right: 16px; }
-.tk-toast-top-left { top: 44px; left: 16px; }
+.tk-toast-bottom-right { bottom: 16px; right: 16px; align-items: flex-end; }
+.tk-toast-bottom-left { bottom: 16px; left: 16px; align-items: flex-start; }
+.tk-toast-top-right { top: 44px; right: 16px; align-items: flex-end; }
+.tk-toast-top-left { top: 44px; left: 16px; align-items: flex-start; }
 .tk-toast-message { padding: 8px 12px; border-radius: var(--tk-radius-sm); background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border); border-left: 3px solid var(--tk-teal); box-shadow: var(--tk-shadow-elevated); opacity: 0; pointer-events: auto; line-height: 1.35; max-width: 320px; word-wrap: break-word; text-align: left; font-size: 11.5px; }
 .tk-toast-message.tk-toast-show { opacity: 1; }
 @media (prefers-reduced-motion: no-preference) {
-    .tk-toast-message { transform: translateY(8px); transition: opacity 0.25s ease, transform 0.25s ease; }
+    .tk-toast-message, .sctk-qty-counter { transition: opacity 0.25s ease, transform 0.25s ease; }
+    .tk-toast-message { transform: translateY(8px); }
     .tk-toast-message.tk-toast-show { transform: translateY(0); }
 }
 .tk-toast-hint { font-family: var(--tk-font-mono); font-size: 9px; color: var(--tk-text-muted); border: 1px solid var(--tk-border-strong); border-radius: 3px; padding: 0 3px; }
@@ -2219,6 +2281,16 @@
 /* Card Name Formatter Popover */
 .tk-formatter-popover { position: absolute; z-index: 200000; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 4px 8px; box-shadow: var(--tk-shadow-elevated); font-family: var(--tk-font-ui); font-size: 11px; display: flex; align-items: center; gap: 8px; }
 .tk-popover-label { font-family: var(--tk-font-mono); white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Quantity Counter Widget */
+.sctk-qty-counter { font-family: var(--tk-font-ui); font-size: 11.5px; color: var(--tk-text); background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-left: 3px solid var(--tk-accent); border-radius: var(--tk-radius-sm); padding: 5px 10px; box-shadow: var(--tk-shadow-elevated); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; user-select: none; pointer-events: auto; }
+.sctk-qty-counter-bottom-right { position: relative; inset: auto; z-index: auto; }
+.sctk-qty-counter-bottom-left { position: relative; inset: auto; z-index: auto; }
+.sctk-qty-counter-toolbar { position: relative; z-index: auto; border-radius: var(--tk-radius-sm); margin-left: 6px; padding: 2px 8px; height: 22px; box-shadow: none; }
+.sctk-qty-counter .tk-qty-label { font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; color: var(--tk-accent); text-transform: uppercase; }
+.sctk-qty-counter .tk-qty-val { font-family: var(--tk-font-mono); font-size: 12px; font-weight: 700; color: var(--tk-text); }
+.sctk-qty-counter .tk-qty-sep, .sctk-qty-counter .tk-qty-total { font-family: var(--tk-font-mono); font-size: 11px; color: var(--tk-text-muted); }
+.sctk-qty-counter .tk-qty-sub { font-size: 10.5px; color: var(--tk-text-muted); margin-left: 4px; }
 
 /* Height is measured and written to this variable by a ResizeObserver. The
    old fixed 38px was wrong the moment the toolbar wrapped to a second row, and
@@ -2242,11 +2314,19 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
 #tk-settings-tab-content { overflow-y: auto; flex-grow: 1; padding: 14px 16px; text-align: left; }
 #tk-settings-modules, #tk-settings-global { width: 100%; text-align: left; }
 .tk-settings-section-title { font-family: var(--tk-font-mono); font-size: 10px; font-weight: 700; color: var(--tk-teal); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px 0; text-align: left; }
-.tk-settings-module-row { border-bottom: 1px solid var(--tk-border); padding: 8px 0; text-align: left; }
+.tk-settings-module-row { border-bottom: 1px solid var(--tk-border); padding: 4px 0; text-align: left; }
 .tk-settings-module-row:last-child { border-bottom: none; }
-.tk-settings-module-row label.tk-module-label { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; font-size: 11.5px; font-weight: 700; text-align: left; }
-.tk-settings-module-desc { font-size: 10.5px; color: var(--tk-text-muted); margin: 2px 0 0 20px; line-height: 1.35; text-align: left; }
-.tk-settings-actions { margin: 4px 0 0 20px; display: flex; flex-direction: column; gap: 3px; text-align: left; }
+.tk-accordion-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; cursor: pointer; padding: 6px 8px; border-radius: var(--tk-radius-sm); user-select: none; }
+.tk-accordion-header:hover { background: var(--tk-bg-hover); }
+.tk-accordion-header-left { display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; min-width: 0; }
+.tk-accordion-header label.tk-module-label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11.5px; font-weight: 700; text-align: left; margin: 0; }
+.tk-settings-module-desc { font-size: 10.5px; color: var(--tk-text-muted); margin: 0 0 0 20px; line-height: 1.35; text-align: left; white-space: normal; word-break: break-word; }
+.tk-accordion-toggle-btn { display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--tk-text-muted); padding: 2px; margin-top: 2px; border-radius: var(--tk-radius-sm); cursor: pointer; flex-shrink: 0; transition: transform 0.2s ease, color 0.2s ease; }
+.tk-accordion-toggle-btn:hover { color: var(--tk-accent); }
+.tk-accordion-toggle-btn:focus-visible { outline: 2px solid var(--tk-accent); }
+.tk-accordion-open .tk-accordion-toggle-btn { transform: rotate(180deg); color: var(--tk-accent); }
+.tk-accordion-body { padding: 6px 8px 6px 20px; }
+.tk-settings-actions { margin: 4px 0 6px 0; display: flex; flex-direction: column; gap: 3px; text-align: left; }
 .tk-settings-actions label { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 400; cursor: pointer; color: var(--tk-text-muted); text-align: left; }
 .tk-settings-field { margin-bottom: 12px; text-align: left; }
 .tk-settings-field label { display: block; font-size: 10.5px; font-weight: 700; margin-bottom: 3px; text-align: left; }
@@ -2348,14 +2428,15 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   }
 
   // src/ui/toolbar.js
-  function appendShortcutBadges(container, sid, label = "Set", displayMode = Config.global?.toolbarButtonDisplay || "both") {
+  function appendShortcutBadges(container, sid, label = "Set", displayMode = Config.global?.toolbarButtonDisplay || "both", parentSid = null) {
     renderBadgeSet(container, sid, {
       include: TOOLBAR_BADGES,
       onExport: (e) => {
         e.preventDefault();
         exportSetCSV(sid, label);
       },
-      displayMode
+      displayMode,
+      parentSid
     });
   }
   function cleanDocTitle(rawTitle) {
@@ -2532,6 +2613,20 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       scrollTopBtn.title = "Scroll to top of page";
       scrollTopBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
       container.appendChild(scrollTopBtn);
+      const scrollBottomBtn = document.createElement("button");
+      scrollBottomBtn.type = "button";
+      scrollBottomBtn.className = "tk-scroll-btn";
+      scrollBottomBtn.innerHTML = `${icon("chevronDown")}<span>Bottom</span>`;
+      scrollBottomBtn.title = "Scroll to bottom of page";
+      scrollBottomBtn.addEventListener("click", () => {
+        const footer = document.querySelector("#bottomnav, footer, #footer, .footer");
+        if (footer) {
+          footer.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+          window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+        }
+      });
+      container.appendChild(scrollBottomBtn);
       if (Routes.isCardPage()) {
         const titleNode = document.querySelector("#setname-content h1") || document.querySelector("#main-content-area h1");
         const subTitleNode = document.querySelector("#setname-content h3") || document.querySelector("#main-content-area h3");
@@ -2541,7 +2636,15 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         const player = playerNode ? playerNode.innerText.trim() : "";
         const cardSummary = `${player ? player + " - " : ""}${yearSet}${cardNo ? " " + cardNo : ""}`.trim();
         appendContextLabel(container, cardSummary || cleanDocTitle() || "Card View");
-        if (currentSid) appendShortcutBadges(container, currentSid, cardSummary || "Set");
+        if (currentSid) {
+          const parentSid = extractParentSid(document, currentSid);
+          if (parentSid) {
+            Log(`Determined parent set ID ${parentSid} for set ID ${currentSid}`, "debug");
+          } else {
+            Log(`No parent set ID found for set ID ${currentSid}`, "debug");
+          }
+          appendShortcutBadges(container, currentSid, cardSummary || "Set", Config.global?.toolbarButtonDisplay || "both", parentSid);
+        }
         return;
       }
       if (currentSid && Routes.isSetPage()) {
@@ -2556,8 +2659,14 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
             setName += (setName ? " - " : "") + subHeader.innerText.trim();
           }
         }
+        const parentSid = extractParentSid(document, currentSid);
+        if (parentSid) {
+          Log(`Determined parent set ID ${parentSid} for set ID ${currentSid}`, "debug");
+        } else {
+          Log(`No parent set ID found for set ID ${currentSid}`, "debug");
+        }
         appendContextLabel(container, setName || "Set View");
-        appendShortcutBadges(container, currentSid, setName || "Set");
+        appendShortcutBadges(container, currentSid, setName || "Set", Config.global?.toolbarButtonDisplay || "both", parentSid);
         return;
       }
       if (Routes.isPlayerPage()) {
@@ -2761,6 +2870,21 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     });
     return changed;
   }
+  function autoScrollIfOutsideMiddle80(el) {
+    if (!el || typeof el.getBoundingClientRect !== "function") return false;
+    const viewportHeight = typeof window !== "undefined" && window.innerHeight || (typeof document !== "undefined" && document.documentElement ? document.documentElement.clientHeight : 0);
+    if (!viewportHeight) return false;
+    const rect = el.getBoundingClientRect();
+    const topThreshold = viewportHeight * 0.1;
+    const bottomThreshold = viewportHeight * 0.9;
+    if (rect.top < topThreshold || rect.bottom > bottomThreshold) {
+      if (typeof el.scrollIntoView === "function") {
+        el.scrollIntoView({ block: "center", inline: "nearest" });
+      }
+      return true;
+    }
+    return false;
+  }
   function focusFirstQuantityField() {
     const target = (() => {
       const inputs = InputIndex.getValidInputs();
@@ -2781,8 +2905,10 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         target.focus({ preventScroll: true });
         target.select();
       }
+      autoScrollIfOutsideMiddle80(target);
       if (Date.now() < deadline) {
-        requestAnimationFrame(assert);
+        const raf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : typeof window !== "undefined" && typeof window.requestAnimationFrame === "function" ? window.requestAnimationFrame : null;
+        if (raf) raf(assert);
       } else {
         stop();
       }
@@ -2790,6 +2916,13 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     assert();
   }
   function initAddMultiplesEnhancer() {
+    if (typeof document !== "undefined") {
+      document.addEventListener("focusin", (e) => {
+        if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA")) {
+          autoScrollIfOutsideMiddle80(e.target);
+        }
+      });
+    }
     const changed = applySaleTypeDefaults();
     if (changed > 0) Log(`Add Multiples: defaulted ${changed} sale-type select(s).`, "debug");
     recordContract(
@@ -3126,6 +3259,119 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     });
   }
 
+  // src/modules/collectionQuantityCounter.js
+  var activeObserver = null;
+  var boundListeners = [];
+  function countCollectionQuantities(root = document) {
+    let distinctQtyCount = 0;
+    let totalCardRows = 0;
+    let totalQuantitySum = 0;
+    let cardRows = Array.from(root.querySelectorAll("tr.collection_row"));
+    if (cardRows.length === 0) {
+      cardRows = Array.from(
+        root.querySelectorAll("#main-content-area table tr, #content table tr")
+      ).filter((tr) => {
+        if (tr.closest("#sctk-toolbar") || tr.closest("#tk-checklist-filter-wrap") || tr.closest(".col-md-3") || tr.closest(".col-lg-3") || tr.closest("#offcanvas") || tr.closest(".sidebar")) {
+          return false;
+        }
+        return !!tr.querySelector('a[href*="ViewCard.cfm"], a[href*="CollectionEdit.cfm"]');
+      });
+    }
+    totalCardRows = cardRows.length;
+    cardRows.forEach((row) => {
+      let qty = 0;
+      const badge = row.querySelector('.badge, span.badge, a[href*="CollectionEdit.cfm"] .badge');
+      if (badge) {
+        const parsed = parseInt(badge.textContent.trim(), 10);
+        if (!isNaN(parsed)) qty = Math.max(0, parsed);
+      }
+      if (qty === 0) {
+        const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]');
+        if (qtyInput && qtyInput.value) {
+          const parsed = parseInt(qtyInput.value.trim(), 10);
+          if (!isNaN(parsed)) qty = Math.max(0, parsed);
+        } else {
+          const checkbox = row.querySelector('input[type="checkbox"]');
+          if (checkbox && checkbox.checked) {
+            qty = 1;
+          }
+        }
+      }
+      if (qty >= 1) {
+        distinctQtyCount++;
+        totalQuantitySum += qty;
+      }
+    });
+    return { distinctQtyCount, totalCardRows, totalQuantitySum };
+  }
+  function updateQuantityCounterWidget(counts) {
+    let widget = document.getElementById("sctk-qty-counter");
+    if (!widget) {
+      widget = document.createElement("div");
+      widget.id = "sctk-qty-counter";
+    }
+    const position = Config.global?.quantityCounterPosition || "bottom-right";
+    widget.className = `sctk-qty-counter sctk-qty-counter-${position}`;
+    const html = `
+    <span class="tk-qty-label">Card Count:</span>
+    <strong class="tk-qty-val">${counts.distinctQtyCount}</strong>
+    <span class="tk-qty-sep">/</span>
+    <span class="tk-qty-total">${counts.totalCardRows}</span>
+    <span class="tk-qty-sub">(Total Count: <strong>${counts.totalQuantitySum}</strong>)</span>
+  `;
+    widget.innerHTML = html;
+    widget.title = `Card Count: ${counts.distinctQtyCount} / ${counts.totalCardRows} (Total Count: ${counts.totalQuantitySum})`;
+    if (position === "toolbar") {
+      const toolbarCenter = document.getElementById("tk-center-context") || document.getElementById("tk-actions");
+      if (toolbarCenter && widget.parentElement !== toolbarCenter) {
+        toolbarCenter.appendChild(widget);
+      }
+    } else {
+      const container = containerFor(position);
+      if (widget.parentElement !== container) {
+        container.appendChild(widget);
+      }
+    }
+  }
+  function initCollectionQuantityCounter() {
+    Log("Initializing Collection Quantity Counter module", "debug");
+    const update = () => {
+      const counts = countCollectionQuantities(document);
+      updateQuantityCounterWidget(counts);
+    };
+    update();
+    cleanupCollectionQuantityCounter();
+    const handleEvent = (e) => {
+      const target = e.target;
+      if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.classList?.contains("badge") || target.closest?.(".badge"))) {
+        setTimeout(update, 50);
+      }
+    };
+    document.addEventListener("change", handleEvent, true);
+    document.addEventListener("input", handleEvent, true);
+    document.addEventListener("click", handleEvent, true);
+    boundListeners.push({ type: "change", fn: handleEvent }, { type: "input", fn: handleEvent }, { type: "click", fn: handleEvent });
+    const targetArea = document.querySelector("#main-content-area") || document.querySelector("#content") || document.body;
+    if (targetArea && typeof MutationObserver !== "undefined") {
+      let debounceTimer = null;
+      activeObserver = new MutationObserver(() => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(update, 100);
+      });
+      activeObserver.observe(targetArea, { childList: true, subtree: true, attributes: true });
+    }
+  }
+  function cleanupCollectionQuantityCounter() {
+    if (activeObserver) {
+      activeObserver.disconnect();
+      activeObserver = null;
+    }
+    boundListeners.forEach(({ type, fn }) => {
+      document.removeEventListener(type, fn, true);
+    });
+    boundListeners = [];
+  }
+
   // src/core/registry.js
   var ModuleRegistry = [
     {
@@ -3179,6 +3425,13 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       description: "Dynamically extracts card metadata based on text selection and formats/copies card strings according to a customizable template.",
       init: initCardNameFormatter,
       isAsync: false
+    },
+    {
+      id: "collectionQuantityCounter",
+      name: "Collection Quantity Counter",
+      description: "Counts distinct cards with Qty >= 1, total cards, and total item quantity on For Sale/Trade and Wantlist pages.",
+      init: initCollectionQuantityCounter,
+      isAsync: false
     }
   ];
   function resolveModules(url = window.location.href) {
@@ -3219,7 +3472,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   }
 
   // src/core/version.js
-  var APP_VERSION = "3.0.3";
+  var APP_VERSION = "3.1.0";
   function getAppVersion() {
     return APP_VERSION;
   }
@@ -3472,31 +3725,53 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       sectionTitle.className = "tk-settings-section-title";
       sectionTitle.textContent = "Modules & Routes";
       pane.appendChild(sectionTitle);
-      ModuleRegistry.forEach((mod) => {
+      const sortedModules = [...ModuleRegistry].sort((a, b) => a.name.localeCompare(b.name));
+      sortedModules.forEach((mod) => {
         const cfg = Config.modules[mod.id];
         if (!cfg) return;
         const row = document.createElement("div");
-        row.className = "tk-settings-module-row";
+        row.className = "tk-settings-module-row tk-accordion-item";
+        const header = document.createElement("div");
+        header.className = "tk-accordion-header";
+        const headerLeft = document.createElement("div");
+        headerLeft.className = "tk-accordion-header-left";
         const label = document.createElement("label");
         label.className = "tk-module-label";
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = !!cfg.enabled;
         checkbox.title = "Enable or disable this module on matching pages.";
+        checkbox.addEventListener("click", (e) => {
+          e.stopPropagation();
+        });
         checkbox.addEventListener("change", () => {
           cfg.enabled = checkbox.checked;
           Log(`Config change: module '${mod.id}' enabled = ${cfg.enabled}`, "info");
           SettingsUI._persist();
         });
         const nameSpan = document.createElement("span");
+        nameSpan.className = "tk-module-name";
         nameSpan.textContent = mod.name;
         label.appendChild(checkbox);
         label.appendChild(nameSpan);
-        row.appendChild(label);
         const desc = document.createElement("div");
         desc.className = "tk-settings-module-desc";
         desc.textContent = mod.description;
-        row.appendChild(desc);
+        headerLeft.appendChild(label);
+        headerLeft.appendChild(desc);
+        header.appendChild(headerLeft);
+        const toggleBtn = document.createElement("button");
+        toggleBtn.type = "button";
+        toggleBtn.className = "tk-accordion-toggle-btn";
+        toggleBtn.setAttribute("aria-expanded", "false");
+        toggleBtn.setAttribute("aria-label", `Expand routes for ${mod.name}`);
+        toggleBtn.title = "Expand route patterns";
+        toggleBtn.innerHTML = icon("chevronDown");
+        header.appendChild(toggleBtn);
+        row.appendChild(header);
+        const body = document.createElement("div");
+        body.className = "tk-accordion-body";
+        body.style.display = "none";
         if (mod.actionLabels && Object.keys(mod.actionLabels).length > 0) {
           const actionsWrap = document.createElement("div");
           actionsWrap.className = "tk-settings-actions";
@@ -3517,9 +3792,20 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
             actionLabel.appendChild(actionText);
             actionsWrap.appendChild(actionLabel);
           });
-          row.appendChild(actionsWrap);
+          body.appendChild(actionsWrap);
         }
-        row.appendChild(SettingsUI._buildRouteEditor(mod, cfg));
+        body.appendChild(SettingsUI._buildRouteEditor(mod, cfg));
+        row.appendChild(body);
+        const toggleAccordion = (e) => {
+          if (e.target.tagName === "INPUT" || e.target.closest("label.tk-module-label")) {
+            return;
+          }
+          const isOpen2 = body.style.display !== "none";
+          body.style.display = isOpen2 ? "none" : "block";
+          toggleBtn.setAttribute("aria-expanded", String(!isOpen2));
+          row.classList.toggle("tk-accordion-open", !isOpen2);
+        };
+        header.addEventListener("click", toggleAccordion);
         pane.appendChild(row);
       });
       return pane;
@@ -3815,6 +4101,30 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         field.appendChild(select);
         pane.appendChild(field);
       });
+      const posField = document.createElement("div");
+      posField.className = "tk-settings-field";
+      const posLabel = document.createElement("label");
+      posLabel.textContent = "Quantity Counter Position";
+      const posSelect = document.createElement("select");
+      posSelect.title = "Select position for Collection Quantity Counter widget.";
+      [
+        { value: "bottom-right", label: "Bottom-Right Corner (Overlay)" },
+        { value: "bottom-left", label: "Bottom-Left Corner (Overlay)" },
+        { value: "toolbar", label: "SCToolkit Toolbar" }
+      ].forEach(({ value, label }) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        if ((Config.global.quantityCounterPosition || "bottom-right") === value) opt.selected = true;
+        posSelect.appendChild(opt);
+      });
+      posSelect.addEventListener("change", () => {
+        Config.global.quantityCounterPosition = posSelect.value;
+        Log(`Config change: global.quantityCounterPosition = ${posSelect.value}`, "info");
+        SettingsUI._persist();
+      });
+      posField.append(posLabel, posSelect);
+      pane.appendChild(posField);
       pane.appendChild(SettingsUI._buildXmlPanel());
       const help = document.createElement("div");
       help.id = "tk-settings-help";

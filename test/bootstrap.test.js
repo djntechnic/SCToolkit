@@ -13,6 +13,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { JSDOM, VirtualConsole } from 'jsdom';
 
+import { ModuleRegistry } from '../src/core/registry.js';
+
 const BUNDLE = fileURLToPath(new URL('../dist/sctoolkit.user.js', import.meta.url));
 
 const PAGE = `<!doctype html>
@@ -97,7 +99,7 @@ test('the settings modal opens and closes, and its CSS arrives only then', async
 
   doc.getElementById('tk-settings-trigger').click();
   assert.ok(doc.getElementById('tk-settings-panel'), 'settings panel should open');
-  assert.equal(doc.querySelectorAll('.tk-settings-module-row').length, 7);
+  assert.equal(doc.querySelectorAll('.tk-settings-module-row').length, ModuleRegistry.length);
 
   // The modal's stylesheet is injected on first open, not at page load.
   assert.equal(doc.querySelectorAll('head style').length, stylesAtBoot + 1);
