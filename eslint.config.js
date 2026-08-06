@@ -59,7 +59,10 @@ export default [
         URL: 'readonly',
         Buffer: 'readonly',
         setTimeout: 'readonly',
-        clearTimeout: 'readonly'
+        clearTimeout: 'readonly',
+        global: 'readonly',
+        document: 'readonly',
+        window: 'readonly'
       }
     }
   },

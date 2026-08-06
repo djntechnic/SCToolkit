@@ -14,7 +14,7 @@ import { Routes } from '../core/routes.js';
 import { CSV } from '../data/csv.js';
 import { underscoreSegment } from '../data/filename.js';
 import { assessPrintCollectionPageCount, exportPrintCollectionCSV } from '../net/printCollectionExport.js';
-import { enableAction, setStatus } from '../ui/status.js';
+import { setStatus } from '../ui/status.js';
 import { showToast } from '../ui/toast.js';
 import { Toolbar } from '../ui/toolbar.js';
 

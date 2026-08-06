@@ -1296,7 +1296,7 @@ export const SettingsUI = {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
 
-      let matches = [];
+      const matches = [];
       if (re.global) {
         let m;
         while ((m = re.exec(subjectStr)) !== null) {

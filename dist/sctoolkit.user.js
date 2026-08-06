@@ -3224,7 +3224,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       const prefixMatch = titleData.match(/^Collection\s+-\s+.*?\s+-\s+(\d{4}.*)$/);
       if (prefixMatch) {
         let details = prefixMatch[1];
-        const sportMatch = details.match(/(.*)\s+([a-zA-Z\-]+)$/);
+        const sportMatch = details.match(/(.*)\s+([a-zA-Z-]+)$/);
         if (sportMatch) {
           sport = sportMatch[2];
           details = sportMatch[1];
@@ -3276,7 +3276,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   }
   function parseCollectionBrowsePlayer(root) {
     let globalPlayer = "Unknown";
-    let globalSport = detectPageSport(root);
+    const globalSport = detectPageSport(root);
     const listType = normalizeListType(root);
     const docTitle = root.title || "";
     try {
@@ -4021,7 +4021,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
               const url = new URL(link.getAttribute("href"), window.location.href);
               const page = parseInt(url.searchParams.get("PageIndex") || url.searchParams.get("page"));
               if (page && page > maxPage) maxPage = page;
-            } catch (e) {
+            } catch {
             }
           });
           Log(`[PaginationLoader] Detected currentPage: ${currentPageIndex}, maxPage: ${maxPage}`, "info", "client");
@@ -4047,18 +4047,17 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           root.querySelectorAll("form").forEach((form) => {
             if (form.querySelector('input[name*="PageIndex" i]')) form.remove();
           });
-          const throttleThreshold = Config.global.paginationThrottleStartPage ?? 6;
           (async () => {
             for (let i = 0; i < urlsToFetch.length; i++) {
               const item = urlsToFetch[i];
               const pageNum = item.pageIndex;
               const nextUrl = item.href;
               const shortUrl = Utils.formatLogUrl(nextUrl);
-              const throttleThreshold2 = Math.max(1, Config.global.paginationThrottleStartPage || 6);
-              const shouldThrottle = pageNum >= throttleThreshold2;
+              const throttleThreshold = Math.max(1, Config.global.paginationThrottleStartPage || 6);
+              const shouldThrottle = pageNum >= throttleThreshold;
               if (shouldThrottle) {
                 const pacedMs = Math.round(EXPORT_CONFIG.baseDelayMs + (Pacing.penaltyMs || 0) + Math.random() * EXPORT_CONFIG.jitterMaxMs);
-                Log(`[PaginationLoader] Page ${pageNum}/${targetMaxPage} reached threshold (${throttleThreshold2}+). Applying pacing delay (~${pacedMs}ms)...`, "debug", "client");
+                Log(`[PaginationLoader] Page ${pageNum}/${targetMaxPage} reached threshold (${throttleThreshold}+). Applying pacing delay (~${pacedMs}ms)...`, "debug", "client");
                 await jitteredDelay();
               }
               Log(`HTTP GET Request -> ${shortUrl}`, "info", "server");
@@ -5726,7 +5725,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           return;
         }
         const esc = (str) => String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-        let matches = [];
+        const matches = [];
         if (re.global) {
           let m;
           while ((m = re.exec(subjectStr)) !== null) {

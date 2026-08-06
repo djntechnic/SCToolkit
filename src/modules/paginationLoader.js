@@ -133,7 +133,7 @@ export function initPaginationLoader(root = document) {
             const url = new URL(link.getAttribute('href'), window.location.href);
             const page = parseInt(url.searchParams.get('PageIndex') || url.searchParams.get('page'));
             if (page && page > maxPage) maxPage = page;
-          } catch (e) {
+          } catch {
             // Ignore parse errors
           }
         });
@@ -167,7 +167,6 @@ export function initPaginationLoader(root = document) {
           if (form.querySelector('input[name*="PageIndex" i]')) form.remove();
         });
 
-        const throttleThreshold = Config.global.paginationThrottleStartPage ?? 6;
         (async () => {
           for (let i = 0; i < urlsToFetch.length; i++) {
             const item = urlsToFetch[i];

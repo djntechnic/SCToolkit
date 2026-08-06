@@ -156,7 +156,7 @@ export function parseCollectionBrowseSet(root) {
     if (prefixMatch) {
       let details = prefixMatch[1];
 
-      const sportMatch = details.match(/(.*)\s+([a-zA-Z\-]+)$/);
+      const sportMatch = details.match(/(.*)\s+([a-zA-Z-]+)$/);
       if (sportMatch) {
         sport = sportMatch[2];
         details = sportMatch[1];
@@ -229,7 +229,7 @@ export function parseCollectionBrowseSet(root) {
  */
 export function parseCollectionBrowsePlayer(root) {
   let globalPlayer = 'Unknown';
-  let globalSport = detectPageSport(root);
+  const globalSport = detectPageSport(root);
   const listType = normalizeListType(root);
 
   const docTitle = root.title || '';
