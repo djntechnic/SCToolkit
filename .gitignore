@@ -21,4 +21,7 @@ legacy/
 # account's handle, third-party user handles, and the browser's saved asset
 # directories. Run them through scripts/sanitize-fixture.js and commit the
 # output under test/fixtures/real/ instead.
-test/fixtures/
+test/fixtures/*
+!test/fixtures/*.html
+!test/fixtures/real/
+!test/fixtures/submitted/
