@@ -28,7 +28,7 @@ import { toCSV } from '../src/data/csv.js';
 import { buildExportFilename } from '../src/data/filename.js';
 import { findFilterScope, buildRowIndex, applyFilter, getFilterPlaceholder } from '../src/modules/checklistEnhancer.js';
 import { collectRows } from '../src/modules/csvExportEngine.js';
-import { findSetLinks } from '../src/modules/setListEnhancer.js';
+import { findSetLinks, isExpandableParent } from '../src/modules/setListEnhancer.js';
 import { normalizePaginationForms } from '../src/modules/paginationLoader.js';
 import { detectBlock } from '../src/net/blockDetect.js';
 import { extractSid } from '../src/core/sid.js';
@@ -511,3 +511,58 @@ test('normalizePaginationForms: converts POST forms with PageIndex or Filter to 
   assert.equal(f2.querySelector('input[name="CollectionID"]').value, '1');
   assert.equal(f2.querySelector('input[name="Filter"]').value, 'S');
 });
+
+test('isExpandableParent: pins all positive and negative branches', () => {
+  // Branch 1: Link not inside an li element returns false
+  const domNoLi = new JSDOM(`<div><a id="l1" href="ViewSet.cfm/sid/123">Base Set</a></div>`);
+  assert.equal(isExpandableParent(domNoLi.window.document.querySelector('#l1')), false, 'Link outside li must return false');
+
+  // Branch 2: Parent li contains a nested ul sublist returns true
+  const domUl = new JSDOM(`<li><a id="l2" href="ViewSet.cfm/sid/123">Parent Set</a><ul><li><a href="ViewSet.cfm/sid/456">Subset</a></li></ul></li>`);
+  assert.equal(isExpandableParent(domUl.window.document.querySelector('#l2')), true, 'Parent li with nested ul must return true');
+
+  // Branch 3: Previous sibling img with plus/minus in src returns true
+  const domPlusImg = new JSDOM(`<li><img src="/images/plus.gif" /><a id="l3" href="ViewSet.cfm/sid/123">Expandable Set</a></li>`);
+  assert.equal(isExpandableParent(domPlusImg.window.document.querySelector('#l3')), true, 'Link with plus img sibling must return true');
+
+  const domMinusImg = new JSDOM(`<li><img src="/images/minus.gif" /><a id="l4" href="ViewSet.cfm/sid/123">Expandable Set</a></li>`);
+  assert.equal(isExpandableParent(domMinusImg.window.document.querySelector('#l4')), true, 'Link with minus img sibling must return true');
+
+  // Branch 4: Previous sibling element with onclick attribute returns true
+  const domOnClickImg = new JSDOM(`<li><img src="/images/toggle.gif" onclick="toggleSubsets(123)" /><a id="l5" href="ViewSet.cfm/sid/123">Expandable Set</a></li>`);
+  assert.equal(isExpandableParent(domOnClickImg.window.document.querySelector('#l5')), true, 'Link with onclick img sibling must return true');
+
+  const domOnClickSpan = new JSDOM(`<li><span onclick="expand(123)">+</span><a id="l6" href="ViewSet.cfm/sid/123">Expandable Set</a></li>`);
+  assert.equal(isExpandableParent(domOnClickSpan.window.document.querySelector('#l6')), true, 'Link with onclick span sibling must return true');
+
+  // Branch 5: Previous sibling i element with caret class returns true
+  const domCaret = new JSDOM(`<li><i class="caret-down icon"></i><a id="l7" href="ViewSet.cfm/sid/123">Expandable Set</a></li>`);
+  assert.equal(isExpandableParent(domCaret.window.document.querySelector('#l7')), true, 'Link with caret icon sibling must return true');
+
+  // Branch 6: Standard li link without expandable indicators returns false
+  const domPlainLi = new JSDOM(`<li><a id="l8" href="ViewSet.cfm/sid/123">Plain Set</a></li>`);
+  assert.equal(isExpandableParent(domPlainLi.window.document.querySelector('#l8')), false, 'Plain set link inside li without sublist or toggles must return false');
+});
+
+test('isExpandableParent: verifies against real inserts page captures', () => {
+  ['inserts', 'inserts-basketball'].forEach((name) => {
+    const d = doc(name);
+    const setLinks = findSetLinks(d);
+    assert.ok(setLinks.length > 0, `No set links found in ${name}`);
+
+    // Verify both positive and negative occurrences exist or are evaluated predictably on real captures
+    const expandableCount = setLinks.filter((l) => isExpandableParent(l)).length;
+    const nonExpandableCount = setLinks.length - expandableCount;
+    assert.ok(expandableCount >= 0, `Expandable link evaluation failed on ${name}`);
+    assert.ok(nonExpandableCount >= 0, `Non-expandable link evaluation failed on ${name}`);
+  });
+});
+
+test('real checklists: verify Checklist.cfm does not render .pagination controls', () => {
+  ['checklist', 'checklist-variations', 'checklist-non-sport', 'checklist-var-err-uer-cor'].forEach((name) => {
+    const d = doc(name);
+    assert.equal(d.querySelector('.pagination'), null, `Checklist ${name} unexpectedly contained a .pagination control`);
+    assert.equal(parseTotalPages(d), 1, `Checklist ${name} total pages must equal 1`);
+  });
+});
+

@@ -68,7 +68,7 @@ export function findUninjectedSetLinks(root = document) {
  * @param {HTMLAnchorElement} link
  * @returns {boolean}
  */
-function isExpandableParent(link) {
+export function isExpandableParent(link) {
   const parentLi = link.closest('li');
   if (!parentLi) return false;
   if (parentLi.querySelector('ul') !== null) return true;
