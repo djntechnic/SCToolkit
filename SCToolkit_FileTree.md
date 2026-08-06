@@ -18,6 +18,10 @@ SCToolkit
 │   ├── 📝 REMOVED.md
 │   └── 📝 TESTPLAN.md
 ├── 📁 legacy
+│   ├── 📜 CollectionBrowseExport.js
+│   ├── 📜 CollectionBrowsePExport.js
+│   ├── 📜 pagination.js
+│   ├── 📜 TCDBPrintPDFtoCSV.js
 │   └── 📜 v2.42.0-monolith.user.js
 ├── 📁 scripts
 │   ├── 📜 banner.js
@@ -39,8 +43,10 @@ SCToolkit
 │   │   └── 📜 version.js
 │   ├── 📁 data
 │   │   ├── 📜 checklistParser.js
+│   │   ├── 📜 collectionBrowseParser.js
 │   │   ├── 📜 csv.js
-│   │   └── 📜 filename.js
+│   │   ├── 📜 filename.js
+│   │   └── 📜 printCollectionParser.js
 │   ├── 📁 modules
 │   │   ├── 📜 addMultiplesEnhancer.js
 │   │   ├── 📜 cardNameFormatter.js
@@ -55,6 +61,7 @@ SCToolkit
 │   │   ├── 📜 cache.js
 │   │   ├── 📜 fetcher.js
 │   │   ├── 📜 pacing.js
+│   │   ├── 📜 printCollectionExport.js
 │   │   ├── 📜 queue.js
 │   │   ├── 📜 setExport.js
 │   │   └── 📜 throttle.js
@@ -1480,6 +1487,16 @@ SCToolkit
 │   │   │   │   ├── 📄 LogoYT40.gif
 │   │   │   │   ├── 📄 search-autocomplete.js.download
 │   │   │   │   └── 📄 TCDbLogo.gif
+│   │   │   ├── 📁 Collection_files
+│   │   │   │   ├── 🎨 all.min.css
+│   │   │   │   ├── 📄 bootstrap.bundle.min.js.download
+│   │   │   │   ├── 🎨 bootstrap.min.css
+│   │   │   │   ├── 🎨 default6.css
+│   │   │   │   ├── 📄 LogoFB40.gif
+│   │   │   │   ├── 📄 LogoX40.gif
+│   │   │   │   ├── 📄 LogoYT40.gif
+│   │   │   │   ├── 📄 search-autocomplete.js.download
+│   │   │   │   └── 📄 TCDbLogo.gif
 │   │   │   ├── 📁 CollectionAddMultiples_files
 │   │   │   │   ├── 🖼️ 357729_21211724Thumb.jpg
 │   │   │   │   ├── 🖼️ 357729_21211724Thumb3.jpg
@@ -1731,7 +1748,39 @@ SCToolkit
 │   │   │   │   ├── 📄 masks.js.download
 │   │   │   │   ├── 📄 search-autocomplete.js.download
 │   │   │   │   └── 📄 TCDbLogo.gif
+│   │   │   ├── 📁 CollectionBrowse2_files
+│   │   │   │   ├── 🖼️ 217624_13788985.jpg
+│   │   │   │   ├── 🎨 all.min.css
+│   │   │   │   ├── 🖼️ backbaseball.jpg
+│   │   │   │   ├── 🎨 bootstrap-icons.css
+│   │   │   │   ├── 📄 bootstrap.bundle.min.js.download
+│   │   │   │   ├── 🎨 bootstrap.min.css
+│   │   │   │   ├── 📄 cfajax.js.download
+│   │   │   │   ├── 📄 cfmessage.js.download
+│   │   │   │   ├── 🎨 default6.css
+│   │   │   │   ├── 🎨 default6SetLinksV.css
+│   │   │   │   ├── 🖼️ djncards-small.jpg
+│   │   │   │   ├── 📄 LogoFB40.gif
+│   │   │   │   ├── 📄 LogoX40.gif
+│   │   │   │   ├── 📄 LogoYT40.gif
+│   │   │   │   ├── 📄 search-autocomplete.js.download
+│   │   │   │   └── 📄 TCDbLogo.gif
 │   │   │   ├── 📁 CollectionBrowseP_files
+│   │   │   │   ├── 🎨 all.min.css
+│   │   │   │   ├── 📄 bootstrap.bundle.min.js.download
+│   │   │   │   ├── 🎨 bootstrap.min.css
+│   │   │   │   ├── 📄 cfajax.js.download
+│   │   │   │   ├── 📄 cfform.js.download
+│   │   │   │   ├── 📄 cfmessage.js.download
+│   │   │   │   ├── 🎨 default6.css
+│   │   │   │   ├── 🖼️ djncards-small.jpg
+│   │   │   │   ├── 📄 LogoFB40.gif
+│   │   │   │   ├── 📄 LogoX40.gif
+│   │   │   │   ├── 📄 LogoYT40.gif
+│   │   │   │   ├── 📄 masks.js.download
+│   │   │   │   ├── 📄 search-autocomplete.js.download
+│   │   │   │   └── 📄 TCDbLogo.gif
+│   │   │   ├── 📁 CollectionBrowseT_files
 │   │   │   │   ├── 🎨 all.min.css
 │   │   │   │   ├── 📄 bootstrap.bundle.min.js.download
 │   │   │   │   ├── 🎨 bootstrap.min.css
@@ -2748,6 +2797,36 @@ SCToolkit
 │   │   │   │   ├── 📄 masks.js.download
 │   │   │   │   ├── 📄 search-autocomplete.js.download
 │   │   │   │   └── 📄 TCDbLogo.gif
+│   │   │   ├── 📁 ViewCollectionMode-Pagination_files
+│   │   │   │   ├── 🎨 all.min.css
+│   │   │   │   ├── 📄 bootstrap.bundle.min.js.download
+│   │   │   │   ├── 🎨 bootstrap.min.css
+│   │   │   │   ├── 📄 cfajax.js.download
+│   │   │   │   ├── 📄 cfform.js.download
+│   │   │   │   ├── 📄 cfmessage.js.download
+│   │   │   │   ├── 🎨 default6.css
+│   │   │   │   ├── 🖼️ djncards-small.jpg
+│   │   │   │   ├── 📄 LogoFB40.gif
+│   │   │   │   ├── 📄 LogoX40.gif
+│   │   │   │   ├── 📄 LogoYT40.gif
+│   │   │   │   ├── 📄 masks.js.download
+│   │   │   │   ├── 📄 search-autocomplete.js.download
+│   │   │   │   └── 📄 TCDbLogo.gif
+│   │   │   ├── 📁 ViewCollectionMode-Pagination2_files
+│   │   │   │   ├── 🎨 all.min.css
+│   │   │   │   ├── 📄 bootstrap.bundle.min.js.download
+│   │   │   │   ├── 🎨 bootstrap.min.css
+│   │   │   │   ├── 📄 cfajax.js.download
+│   │   │   │   ├── 📄 cfform.js.download
+│   │   │   │   ├── 📄 cfmessage.js.download
+│   │   │   │   ├── 🎨 default6.css
+│   │   │   │   ├── 🖼️ djncards-small.jpg
+│   │   │   │   ├── 📄 LogoFB40.gif
+│   │   │   │   ├── 📄 LogoX40.gif
+│   │   │   │   ├── 📄 LogoYT40.gif
+│   │   │   │   ├── 📄 masks.js.download
+│   │   │   │   ├── 📄 search-autocomplete.js.download
+│   │   │   │   └── 📄 TCDbLogo.gif
 │   │   │   ├── 📁 ViewCollectionPWantlist_files
 │   │   │   │   ├── 🖼️ 10180_10899411Thumb.jpg
 │   │   │   │   ├── 🖼️ 10180_10899411Thumb3.jpg
@@ -3044,10 +3123,13 @@ SCToolkit
 │   │   │   ├── 🌐 Checklist with VAR-ERR-UER-COR & Multiple Tags.html
 │   │   │   ├── 🌐 Checklist.html
 │   │   │   ├── 🌐 Checklist.html (with Vars).html
+│   │   │   ├── 🌐 Collection.html
 │   │   │   ├── 🌐 CollectionAddMultiples.html
 │   │   │   ├── 🌐 CollectionAddMultiplesText.html
 │   │   │   ├── 🌐 CollectionBrowse.html
+│   │   │   ├── 🌐 CollectionBrowse2.html
 │   │   │   ├── 🌐 CollectionBrowseP.html
+│   │   │   ├── 🌐 CollectionBrowseT.html
 │   │   │   ├── 🌐 ForSaleTradeQuantityCount.html
 │   │   │   ├── 🌐 ForSaleTradeQuantityCount2.html
 │   │   │   ├── 🌐 homepage.html
@@ -3059,6 +3141,8 @@ SCToolkit
 │   │   │   ├── 🌐 ViewCard.html
 │   │   │   ├── 🌐 ViewCollection.html
 │   │   │   ├── 🌐 ViewCollectionForSaleTrade.html
+│   │   │   ├── 🌐 ViewCollectionMode-Pagination.html
+│   │   │   ├── 🌐 ViewCollectionMode-Pagination2.html
 │   │   │   ├── 🌐 ViewCollectionMode.html
 │   │   │   ├── 🌐 ViewCollectionPWantlist.html
 │   │   │   └── 🌐 ViewCollectionWantlist.html
@@ -3078,6 +3162,7 @@ SCToolkit
 │   ├── 📜 bootstrap.test.js
 │   ├── 📜 cardNameFormatter.test.js
 │   ├── 📜 checklistParser.test.js
+│   ├── 📜 collectionBrowse.test.js
 │   ├── 📜 config.test.js
 │   ├── 📜 csv.test.js
 │   ├── 📜 diagnostics.test.js
@@ -3087,8 +3172,10 @@ SCToolkit
 │   ├── 📜 log.test.js
 │   ├── 📜 meta.test.js
 │   ├── 📜 perf.test.js
+│   ├── 📜 printCollectionParser.test.js
 │   ├── 📜 quantityCounter.test.js
 │   ├── 📜 realPages.test.js
+│   ├── 📜 regexTester.test.js
 │   ├── 📜 registry.test.js
 │   ├── 📜 selectors.test.js
 │   ├── 📜 setListEnhancer.test.js

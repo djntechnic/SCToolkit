@@ -21,7 +21,7 @@ import { SELECTOR_REGISTRY } from '../core/selectors.js';
 import { Utils } from '../core/utils.js';
 
 /** Links processed per idle slice. */
-const CHUNK_SIZE = 25;
+export const CHUNK_SIZE = Config.global?.setListEnhancerChunkSize ?? 25;
 
 export const SET_LINK_SELECTOR = SELECTOR_REGISTRY.setLinks.join(', ');
 
@@ -126,6 +126,8 @@ function buildBadgeGroup(link, setId, currentPageSid) {
     },
     onExport: (e) => {
       e.preventDefault();
+      const fullUrl = Utils.toFullUrl(link.getAttribute('href') || `/Checklist.cfm/sid/${setId}/`);
+      Log(`[CLIENT] Set list badge CSV Export requested for set ID ${setId} (${setName}) — ${fullUrl}`, 'info', 'client');
       exportSetCSV(setId, setName);
     },
     displayMode: Config.global?.setButtonDisplay || 'both'
@@ -192,10 +194,11 @@ export function injectSetActions(links) {
 function injectInChunks(links, onDone = () => {}) {
   let cursor = 0;
   let total = 0;
+  const chunkSize = Config.global?.setListEnhancerChunkSize ?? CHUNK_SIZE;
 
   const step = () => {
-    const slice = links.slice(cursor, cursor + CHUNK_SIZE);
-    cursor += CHUNK_SIZE;
+    const slice = links.slice(cursor, cursor + chunkSize);
+    cursor += chunkSize;
     total += injectSetActions(slice);
 
     if (cursor < links.length) {

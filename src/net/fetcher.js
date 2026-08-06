@@ -12,6 +12,7 @@
 
 import { EXPORT_CONFIG } from '../core/config.js';
 import { Log } from '../core/log.js';
+import { Utils } from '../core/utils.js';
 import { isBlockedStatus } from './blockDetect.js';
 import { Pacing } from './pacing.js';
 import { waitForSlot } from './throttle.js';
@@ -141,7 +142,7 @@ async function timedFetch(url, runSignal) {
       throw runSignal?.aborted
         ? new AbortedError('Export cancelled.', true)
         : new AbortedError(
-          `Request timed out after ${Math.round(EXPORT_CONFIG.requestTimeoutMs / 1000)}s.`, false
+          `Request timed out after ${Math.round(EXPORT_CONFIG.requestTimeoutMs / 1000)}s for ${Utils.toFullUrl(url)}.`, false
         );
     }
     throw error;
@@ -166,36 +167,37 @@ async function timedFetch(url, runSignal) {
  * @throws {AbortedError|BlockedError|Error}
  */
 export async function fetchPageWithRetry(fetchUrl, pageIndex, { onStatus = () => {}, signal } = {}) {
+  const fullUrl = Utils.toFullUrl(fetchUrl);
   let attempt = 0;
 
   for (;;) {
     attempt++;
     if (signal?.aborted) throw new AbortedError('Export cancelled.', true);
 
-    // Shared across every tab running this script, so a second tab interleaves
-    // with this one rather than doubling the rate.
-    await waitForSlot(EXPORT_CONFIG.baseDelayMs + Pacing.penaltyMs);
+    const slotWaitMs = EXPORT_CONFIG.baseDelayMs + Pacing.penaltyMs;
+    Log(`Reserving request slot for ${Utils.formatLogUrl(fullUrl)} (base delay ${EXPORT_CONFIG.baseDelayMs}ms, pacing penalty ${Pacing.penaltyMs}ms)...`, 'debug', 'client');
+    await waitForSlot(slotWaitMs);
 
     let response;
     try {
-      response = await timedFetch(fetchUrl, signal);
+      response = await timedFetch(fullUrl, signal);
     } catch (error) {
       if (error instanceof AbortedError) throw error;
 
       if (attempt > EXPORT_CONFIG.maxRetries) {
         throw new Error(
-          `Network error fetching page ${pageIndex} after ${attempt - 1} retries: ${error.message}`
+          `Network error fetching page ${pageIndex} (${fullUrl}) after ${attempt - 1} retries: ${error.message}`
         );
       }
       const backoff = computeBackoff(attempt, EXPORT_CONFIG.backoffBaseMs, EXPORT_CONFIG.backoffCapMs);
-      Log(`Network error on page ${pageIndex} (attempt ${attempt}). Retrying in ${backoff}ms.`, 'warn', 'server');
+      Log(`Network error on page ${pageIndex} (${fullUrl}) (attempt ${attempt}): ${error.message}. Retrying in ${backoff}ms.`, 'warn', 'server');
       await interruptibleSleep(backoff, signal);
       continue;
     }
 
     if (isBlockedStatus(response.status)) {
       Pacing.penalize();
-      throw new BlockedError(`Server refused the request (HTTP ${response.status}).`);
+      throw new BlockedError(`Server refused the request for ${fullUrl} (HTTP ${response.status}).`);
     }
 
     if (THROTTLE_STATUSES.includes(response.status)) {
@@ -203,21 +205,21 @@ export async function fetchPageWithRetry(fetchUrl, pageIndex, { onStatus = () =>
 
       if (attempt > EXPORT_CONFIG.maxRetries) {
         throw new Error(
-          `Server rate limit persisted on page ${pageIndex} after ${attempt - 1} retries (HTTP ${response.status}).`
+          `Server rate limit persisted on page ${pageIndex} (${fullUrl}) after ${attempt - 1} retries (HTTP ${response.status}).`
         );
       }
       let backoff = parseRetryAfter(response.headers.get('Retry-After'));
       if (backoff <= 0) {
         backoff = computeBackoff(attempt, EXPORT_CONFIG.backoffBaseMs, EXPORT_CONFIG.backoffCapMs);
       }
-      Log(`HTTP ${response.status} on page ${pageIndex} (attempt ${attempt}). Backing off ${backoff}ms.`, 'warn', 'server');
+      Log(`HTTP ${response.status} rate limit on page ${pageIndex} (${fullUrl}) (attempt ${attempt}). Backing off ${backoff}ms.`, 'warn', 'server');
       onStatus(`Throttled — retrying in ${Math.round(backoff / 1000)}s...`);
       await interruptibleSleep(backoff, signal);
       continue;
     }
 
     if (!response.ok) {
-      throw new Error(`Server returned status HTTP ${response.status} on page ${pageIndex}`);
+      throw new Error(`Server returned status HTTP ${response.status} on page ${pageIndex} for ${fullUrl}`);
     }
 
     Pacing.record(Pacing.lastLatencyMs ?? 0, false);

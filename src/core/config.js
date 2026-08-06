@@ -16,7 +16,7 @@ import { getValue, setValue } from "./storage.js";
  * loop reads it on every iteration; `syncExportConfig()` is the only writer.
  */
 export const EXPORT_CONFIG = {
-  baseDelayMs: 500,
+  baseDelayMs: 1000,
   jitterMaxMs: 700,
   maxRetries: 3,
   backoffBaseMs: 1000,
@@ -36,6 +36,7 @@ export const DEFAULT_CONFIG = {
       // what moves the feature.
       urlMatch: [
         { pattern: "/checklist\\.cfm", exclude: false },
+        { pattern: "/viewcollectionmode\\.cfm", exclude: false },
         { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
         { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
         { pattern: "/collectionaddmultiples", exclude: false },
@@ -63,9 +64,10 @@ export const DEFAULT_CONFIG = {
     csvExportEngine: {
       enabled: true,
       urlMatch: [
-        { pattern: "/collection", exclude: false },
+        { pattern: "collection", exclude: false },
         { pattern: "(?=.*/person)(?=.*collection)", exclude: false },
         { pattern: "/print\\.cfm", exclude: false },
+        { pattern: "printyourcollectionpdf\\.cfm", exclude: false },
         { pattern: "addmultiples", exclude: true },
       ],
       actions: {},
@@ -88,6 +90,7 @@ export const DEFAULT_CONFIG = {
     collectionQuantityCounter: {
       enabled: true,
       urlMatch: [
+        { pattern: "/viewcollectionmode\\.cfm", exclude: false },
         { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
         { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
       ],
@@ -105,8 +108,20 @@ export const DEFAULT_CONFIG = {
     exportBlockCooldownMinutes: 5,
     exportCacheTtlHours: 24,
     toastDurationMs: 4000,
+    toastStackLimit: 4,
     checklistFilterDebounceMs: 150,
     paginationLoaderDelayMs: 1000,
+    paginationThrottleStartPage: 6,
+    pacingPenaltyStepMs: 500,
+    pacingPenaltyCapMs: 8000,
+    pacingSlowResponseMs: 4000,
+    pacingSampleWindow: 10,
+    pacingReliefStepMs: 100,
+    throttleMaxSliceMs: 250,
+    exportCacheMaxEntries: 20,
+    exportCacheMaxRows: 20000,
+    addMultiplesFocusDeadlineMs: 1200,
+    setListEnhancerChunkSize: 25,
     settingsSaveDebounceMs: 400,
     cardFormatterTemplate:
       '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}',
@@ -240,13 +255,13 @@ export const Config = SettingsStore.cloneDefaults();
  * drift.
  */
 export function syncExportConfig() {
-  EXPORT_CONFIG.baseDelayMs = Config.global.exportBaseDelayMs;
-  EXPORT_CONFIG.jitterMaxMs = Config.global.exportJitterMaxMs;
-  EXPORT_CONFIG.maxRetries = Config.global.exportMaxRetries;
-  EXPORT_CONFIG.backoffBaseMs = Config.global.exportBackoffBaseMs;
-  EXPORT_CONFIG.backoffCapMs = Config.global.exportBackoffCapMs;
-  EXPORT_CONFIG.maxPages = Config.global.exportMaxPages;
-  EXPORT_CONFIG.requestTimeoutMs = Config.global.exportRequestTimeoutMs;
+  EXPORT_CONFIG.baseDelayMs = Config.global.exportBaseDelayMs ?? 1000;
+  EXPORT_CONFIG.jitterMaxMs = Config.global.exportJitterMaxMs ?? 700;
+  EXPORT_CONFIG.maxRetries = Config.global.exportMaxRetries ?? 3;
+  EXPORT_CONFIG.backoffBaseMs = Config.global.exportBackoffBaseMs ?? 1000;
+  EXPORT_CONFIG.backoffCapMs = Config.global.exportBackoffCapMs ?? 15000;
+  EXPORT_CONFIG.maxPages = Config.global.exportMaxPages ?? 200;
+  EXPORT_CONFIG.requestTimeoutMs = Config.global.exportRequestTimeoutMs ?? 30000;
 }
 
 /**

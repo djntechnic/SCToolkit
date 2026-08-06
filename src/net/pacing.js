@@ -15,6 +15,8 @@
  * covers the shared case.
  */
 
+import { Config } from '../core/config.js';
+
 /** Added on the first strain signal, and again on each subsequent one. */
 export const PENALTY_STEP_MS = 500;
 
@@ -55,10 +57,13 @@ export function median(values) {
  * @returns {number} the new penalty, clamped to [0, PENALTY_CAP_MS]
  */
 export function nextPenalty(current, signal) {
+  const step = Config.global?.pacingPenaltyStepMs ?? PENALTY_STEP_MS;
+  const cap = Config.global?.pacingPenaltyCapMs ?? PENALTY_CAP_MS;
+  const relief = Config.global?.pacingReliefStepMs ?? RELIEF_STEP_MS;
   if (signal === 'throttled' || signal === 'slow') {
-    return Math.min(current + PENALTY_STEP_MS, PENALTY_CAP_MS);
+    return Math.min(current + step, cap);
   }
-  return Math.max(current - RELIEF_STEP_MS, 0);
+  return Math.max(current - relief, 0);
 }
 
 /**
@@ -89,13 +94,15 @@ export const Pacing = {
    */
   record(latencyMs, throttled = false) {
     // Store latest response latency state
+    const sampleWindow = Config.global?.pacingSampleWindow ?? SAMPLE_WINDOW;
     Pacing.lastLatencyMs = latencyMs;
     Pacing.samples.push(latencyMs);
-    if (Pacing.samples.length > SAMPLE_WINDOW) Pacing.samples.shift();
+    if (Pacing.samples.length > sampleWindow) Pacing.samples.shift();
 
+    const slowThreshold = Config.global?.pacingSlowResponseMs ?? SLOW_RESPONSE_MS;
     const signal = throttled
       ? 'throttled'
-      : (median(Pacing.samples) > SLOW_RESPONSE_MS ? 'slow' : 'ok');
+      : (median(Pacing.samples) > slowThreshold ? 'slow' : 'ok');
 
     Pacing.penaltyMs = nextPenalty(Pacing.penaltyMs, signal);
     return signal;

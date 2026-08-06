@@ -12,6 +12,7 @@
 
 import { Config, EXPORT_CONFIG } from '../core/config.js';
 import { Log } from '../core/log.js';
+import { Utils } from '../core/utils.js';
 import { BLOCK_TS_KEY, getValue, setValue } from '../core/storage.js';
 import { CSV } from '../data/csv.js';
 import { buildExportFilename } from '../data/filename.js';
@@ -70,9 +71,17 @@ export function cooldownRemainingMinutes(now = Date.now()) {
  *
  * @param {string} detail
  */
-function recordBlock(detail) {
+/**
+ * Record that we were blocked, starting the cooldown.
+ *
+ * @param {string} detail
+ * @param {string} [targetUrl]
+ */
+function recordBlock(detail, targetUrl = '') {
   setValue(BLOCK_TS_KEY, Date.now());
-  Log(`Anti-scraping block detected (${detail}). Cooldown started.`, 'warn', 'server');
+  const fullUrl = targetUrl ? Utils.toFullUrl(targetUrl) : '';
+  const urlLabel = fullUrl ? ` for ${fullUrl}` : '';
+  Log(`Anti-scraping block detected${urlLabel} (${detail}). Cooldown started.`, 'warn', 'server');
 }
 
 /**
@@ -83,6 +92,8 @@ function recordBlock(detail) {
  * @param {string} setName label for logs, toasts, and year fallback
  */
 export function exportSetCSV(setId, setName) {
+  const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${setId}/`);
+  Log(`[CLIENT] Checklist CSV Export queued for set ID ${setId} (${setName}) — ${fullUrl}`, 'debug', 'client');
   ExportQueue.enqueue(setName || `Set ${setId}`, () => runExportSetCSV(setId, setName));
 }
 
@@ -114,7 +125,8 @@ function downloadResult({ identity, rows }, fallbackLabel) {
  *
  * @param {string} setId
  * @param {AbortSignal} signal
- * @returns {Promise<{identity: object, rows: Array<object>, totalPages: number}>}
+ * @param {object} [progress]
+ * @returns {Promise<{identity: object, rows: Array<object>, totalPages: number, totalDiscoveredPages: number}>}
  */
 async function fetchAllPages(setId, signal, progress) {
   let pageIndex = 1;
@@ -127,15 +139,24 @@ async function fetchAllPages(setId, signal, progress) {
     if (signal.aborted) throw new AbortedError('Export cancelled.', true);
     if (pageIndex > 1) await jitteredDelay();
 
+    const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
+    const fullFetchUrl = Utils.toFullUrl(fetchUrl);
+    fetchAllPages.lastRequestedUrl = fullFetchUrl;
+
     const label = `Page ${pageIndex}${totalPages > 1 ? ' of ' + totalPages : ''}${Pacing.describe()}`;
     setStatus(`Fetching ${label}...`);
     progress?.update(label);
 
-    const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
-    Log(`HTTP GET Request -> ${fetchUrl}`, 'info', 'server');
+    Log(`HTTP GET Request -> ${fullFetchUrl}`, 'info', 'server');
 
     const response = await fetchPageWithRetry(fetchUrl, pageIndex, { onStatus: setStatus, signal });
     const html = await response.text();
+
+    Log(
+      `[CLIENT] HTTP ${response.status} response received for ${fullFetchUrl} (${Math.round(html.length / 1024)} KB, latency ${Pacing.lastLatencyMs || 0}ms)`,
+      'debug',
+      'client'
+    );
 
     const blockMarker = detectBlock(html);
     if (blockMarker) {
@@ -155,8 +176,9 @@ async function fetchAllPages(setId, signal, progress) {
         const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${totalDiscoveredPages})`;
         setStatus(cappedStatus);
         Log(
-          `Discovered page count (${totalDiscoveredPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
-          'warn'
+          `[CLIENT] Discovered page count (${totalDiscoveredPages}) for ${fullFetchUrl} exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
+          'warn',
+          'client'
         );
         showToast({
           message:
@@ -166,12 +188,12 @@ async function fetchAllPages(setId, signal, progress) {
         });
       } else {
         totalPages = totalDiscoveredPages;
-        Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, 'info');
+        Log(`[CLIENT] Discovered ${totalPages} total page(s) for set ID ${setId} (${fullFetchUrl})`, 'info', 'client');
       }
     }
 
     rows.push(...parsed.rows);
-    Log(`Page ${pageIndex}/${totalPages} parsed successfully. ${parsed.rows.length} rows retrieved.`, 'info');
+    Log(`[CLIENT] Page ${pageIndex}/${totalPages} parsed successfully for ${fullFetchUrl}. ${parsed.rows.length} rows retrieved (Total accumulated: ${rows.length}).`, 'info', 'client');
 
     pageIndex++;
   } while (pageIndex <= totalPages);
@@ -185,9 +207,12 @@ async function fetchAllPages(setId, signal, progress) {
  * @returns {Promise<void>}
  */
 export async function runExportSetCSV(setId, setName) {
+  const fullTargetUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${setId}/`);
+
+  Log(`[CLIENT] Step 1/4: Checking anti-scraping cooldown status for ${fullTargetUrl}...`, 'debug', 'client');
   const remainingMin = cooldownRemainingMinutes();
   if (remainingMin > 0) {
-    Log(`Export refused: anti-scraping cooldown active (${remainingMin} min remaining).`, 'warn');
+    Log(`Export refused: anti-scraping cooldown active (${remainingMin} min remaining) for ${fullTargetUrl}.`, 'warn', 'client');
     setStatus('Export blocked (cooldown)');
     showToast({
       message:
@@ -197,12 +222,14 @@ export async function runExportSetCSV(setId, setName) {
     });
     return;
   }
+  Log(`[CLIENT] Cooldown check passed for ${fullTargetUrl}.`, 'debug', 'client');
 
+  Log(`[CLIENT] Step 2/4: Checking export cache for ${fullTargetUrl}...`, 'debug', 'client');
   const ttlHours = Config.global.exportCacheTtlHours;
   const cached = cache.read(setId, ttlHours);
   if (cached) {
     const filename = downloadResult(cached, setName);
-    Log(`Export served from cache: ${filename} (${cached.rows.length} rows, zero requests).`, 'info');
+    Log(`Export served from cache for ${fullTargetUrl}: ${filename} (${cached.rows.length} rows, 0 network requests).`, 'info', 'client');
     setStatus('Export Complete (cached)');
     showToast({
       message: `Exported <b>${cached.rows.length}</b> cards from cache — no requests made.`,
@@ -210,12 +237,13 @@ export async function runExportSetCSV(setId, setName) {
     });
     return;
   }
+  Log(`[CLIENT] Cache miss for ${fullTargetUrl}. Initializing network fetch...`, 'debug', 'client');
 
+  Log(`[CLIENT] Step 3/4: Starting checklist fetch for set ID ${setId} (${setName}) at ${fullTargetUrl}...`, 'info', 'client');
   const controller = new AbortController();
   CurrentRun.controller = controller;
   CurrentRun.onStart?.();
 
-  Log(`Starting checklist fetch for set ID ${setId} (${setName})`, 'info');
   setStatus(`Fetching ${setName}...`);
 
   // A progress toast that updates in place, with the cancel affordance next to
@@ -227,18 +255,20 @@ export async function runExportSetCSV(setId, setName) {
 
   try {
     const result = await fetchAllPages(setId, controller.signal, progress);
-    if (result.rows.length === 0) throw new Error('No valid checklist rows identified within tables.');
+    if (result.rows.length === 0) throw new Error(`No valid checklist rows identified within tables at ${fullTargetUrl}.`);
 
     let label = result.identity.baseSet;
     if (result.identity.setName) label += ` - ${result.identity.setName}`;
     Log(
-      `Export complete for: ${label} (${result.rows.length} cards across ${result.totalPages} page(s), ` +
+      `[CLIENT] Step 4/4: Export complete for ${fullTargetUrl}: ${label} (${result.rows.length} cards across ${result.totalPages} page(s), ` +
       `median latency ${Math.round(Pacing.medianLatencyMs())}ms)`,
-      'info'
+      'info',
+      'client'
     );
 
     cache.write(setId, result, ttlHours);
-    downloadResult(result, setName);
+    const filename = downloadResult(result, setName);
+    Log(`[CLIENT] CSV file generated and download triggered: ${filename} (${result.rows.length} rows).`, 'info', 'client');
 
     if (result.totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
       const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${result.totalDiscoveredPages})`;
@@ -250,15 +280,16 @@ export async function runExportSetCSV(setId, setName) {
     }
   } catch (error) {
     if (error instanceof BlockedError) {
-      recordBlock(error.message);
+      const lastUrl = fetchAllPages.lastRequestedUrl || fullTargetUrl;
+      recordBlock(error.message, lastUrl);
       progress.finish('Stopped — the site returned a challenge.', 'error');
       setStatus('Export blocked');
     } else if (error instanceof AbortedError) {
-      Log(`Export stopped: ${error.message}`, error.byUser ? 'info' : 'warn');
+      Log(`Export stopped for ${fullTargetUrl}: ${error.message}`, error.byUser ? 'info' : 'warn', 'client');
       progress.finish(error.byUser ? 'Cancelled.' : 'Timed out.', error.byUser ? 'muted' : 'error');
       setStatus(error.byUser ? 'Export cancelled' : 'Export timed out');
     } else {
-      Log(`CSV Export Failed: ${error.message}`, 'error');
+      Log(`CSV Export Failed for ${fullTargetUrl}: ${error.message}`, 'error', 'client');
       progress.finish(`Failed: ${error.message}`, 'error');
       setStatus('Export Failed');
     }

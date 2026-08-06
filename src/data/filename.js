@@ -83,3 +83,30 @@ export function buildExportFilename({
     ? `${cleanYear}_${cleanBaseSet}${cleanSubSet}${suffix}.csv`
     : `${cleanBaseSet}${cleanSubSet}${suffix}.csv`;
 }
+
+/**
+ * Build download filename for Print Collection PDF export matching legacy script:
+ * YYYYMMDD_TCDBCollection[Full|PageN][WithPrice].csv
+ *
+ * @param {object} [options]
+ * @param {boolean} [options.includePrice]
+ * @param {number|string} [options.part]
+ * @param {Date} [options.date]
+ * @returns {string}
+ */
+export function buildPrintCollectionFilename({
+  includePrice = false,
+  part = null,
+  date = new Date()
+} = {}) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const dateStr = `${yyyy}${mm}${dd}`;
+
+  const priceSuffix = includePrice ? 'WithPrice' : '';
+  const pageSegment = part ? `Page${part}` : 'Full';
+
+  return `${dateStr}_TCDBCollection${pageSegment}${priceSuffix}.csv`;
+}
+

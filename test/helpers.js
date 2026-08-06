@@ -23,8 +23,8 @@ export function fixtureHtml(name) {
  * @param {string} name
  * @returns {Document}
  */
-export function fixtureDocument(name) {
-  return new JSDOM(fixtureHtml(name)).window.document;
+export function fixtureDocument(name, url) {
+  return new JSDOM(fixtureHtml(name), url ? { url } : undefined).window.document;
 }
 
 /**

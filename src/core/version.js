@@ -1,7 +1,7 @@
 /**
  * Single source of truth for the application version.
  */
-export const APP_VERSION = '3.1.0';
+export const APP_VERSION = '0.1.0-beta';
 
 /**
  * Get the current application version string.
@@ -12,5 +12,8 @@ export const APP_VERSION = '3.1.0';
  * @returns {string}
  */
 export function getAppVersion() {
+  if (typeof GM_info !== 'undefined' && GM_info?.script?.version) {
+    return GM_info.script.version;
+  }
   return APP_VERSION;
 }

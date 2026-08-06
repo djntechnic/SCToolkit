@@ -10,6 +10,7 @@
  * objects. Raw HTML is never persisted.
  */
 
+import { Config } from '../core/config.js';
 import { Log } from '../core/log.js';
 import { getValue, setValue } from '../core/storage.js';
 
@@ -34,7 +35,7 @@ function readAll() {
 }
 
 /**
- * Drop entries older than the TTL, then evict oldest until within MAX_ENTRIES.
+ * Drop entries older than `ttlMs` or beyond the capacity cap.
  *
  * @param {Record<string, {ts: number}>} entries
  * @param {number} ttlMs
@@ -42,10 +43,11 @@ function readAll() {
  * @returns {Record<string, {ts: number}>} a new object; the input is untouched
  */
 export function prune(entries, ttlMs, now) {
+  const maxEntries = Config.global?.exportCacheMaxEntries ?? MAX_ENTRIES;
   const live = Object.entries(entries)
     .filter(([, entry]) => entry && typeof entry.ts === 'number' && now - entry.ts < ttlMs)
     .sort(([, a], [, b]) => b.ts - a.ts)
-    .slice(0, MAX_ENTRIES);
+    .slice(0, maxEntries);
 
   return Object.fromEntries(live);
 }
@@ -72,19 +74,20 @@ export function read(sid, ttlHours, now = Date.now()) {
 }
 
 /**
- * Store an export result, pruning the cache in the same write.
+ * Store an export result.
  *
  * @param {string} sid
  * @param {{identity: object, rows: Array<object>, totalPages: number}} payload
- * @param {number} ttlHours
+ * @param {number} ttlHours 0 disables the cache
  * @param {number} [now]
  * @returns {boolean} whether it was stored
  */
 export function write(sid, payload, ttlHours, now = Date.now()) {
   if (ttlHours <= 0) return false;
 
-  if (payload.rows.length > MAX_ROWS) {
-    Log(`Export of ${payload.rows.length} rows exceeds the cache limit (${MAX_ROWS}) — not cached.`, 'debug');
+  const maxRows = Config.global?.exportCacheMaxRows ?? MAX_ROWS;
+  if (payload.rows.length > maxRows) {
+    Log(`Export of ${payload.rows.length} rows exceeds the cache limit (${maxRows}) — not cached.`, 'debug');
     return false;
   }
 

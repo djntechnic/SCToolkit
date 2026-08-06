@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SCToolkit
 // @namespace    https://github.com/djntechnic/SCToolkit
-// @version      3.1.0
+// @version      0.1.0-beta
 // @description  Userscript toolkit for sports card database browsing: filtering, shortcuts, and polite CSV export.
 // @author       djntechnic
 // @license      MIT
@@ -143,19 +143,31 @@
   function Log(msg, level = "info", source = "client") {
     if (LOG_LEVELS.indexOf(level) < LOG_LEVELS.indexOf(RuntimeSettings.logLevel)) return;
     const consoleMethod = level === "debug" ? "log" : level;
-    const sourceLabel = source === "server" ? "[SERVER]" : "[CLIENT]";
+    const timestamp = formatLogTimestamp();
+    const cleanMsg = String(msg || "").replace(/^\[(CLIENT|SERVER)\]\s*/i, "");
     if (level === "error") {
-      console.error(`%c${sourceLabel} ${msg}`, "color:#dc3545; font-weight:bold");
+      const sourceTag = source === "server" ? "[SERVER]" : "[CLIENT]";
+      const sourceStyle = source === "server" ? LOG_STYLES.source.server : LOG_STYLES.source.client;
+      console.error(
+        `%c[SCToolkit | ${timestamp}] %c${sourceTag}%c ${cleanMsg}`,
+        LOG_STYLES.prefix,
+        sourceStyle,
+        "color:#dc3545; font-weight:bold"
+      );
       return;
     }
     if (source === "server") {
-      console[consoleMethod](`%c[SERVER] ${msg}`, "color:#0d6efd; font-weight:bold");
+      console[consoleMethod](
+        `%c[SCToolkit | ${timestamp}] %c[SERVER]%c ${cleanMsg}`,
+        LOG_STYLES.prefix,
+        LOG_STYLES.source.server,
+        "color:#0d6efd; font-weight:bold"
+      );
       return;
     }
-    const timestamp = formatLogTimestamp();
     const levelStyle = LOG_STYLES.level[level] || LOG_STYLES.level.info;
     console[consoleMethod](
-      `%c[SCToolkit | ${timestamp}] %c[CLIENT]%c ${msg}`,
+      `%c[SCToolkit | ${timestamp}] %c[CLIENT]%c ${cleanMsg}`,
       LOG_STYLES.prefix,
       LOG_STYLES.source.client,
       levelStyle
@@ -179,6 +191,47 @@
       }
       const match = String(text || "").match(LEADING_YEAR_REGEX);
       return match ? match[1] : null;
+    },
+    /**
+     * Convert a path or relative URL to a complete absolute URL.
+     *
+     * @param {string} [path] e.g. "/Checklist.cfm/sid/311171/"
+     * @returns {string} full URL e.g. "https://www.tcdb.com/Checklist.cfm/sid/311171/"
+     */
+    toFullUrl(path2 = "") {
+      if (!path2) return "";
+      if (path2.startsWith("http://") || path2.startsWith("https://")) return path2;
+      const origin = typeof window !== "undefined" && window.location && window.location.origin ? window.location.origin : "https://www.tcdb.com";
+      return `${origin}${path2.startsWith("/") ? "" : "/"}${path2}`;
+    },
+    /**
+     * Format a URL into a concise, readable string for console logging.
+     * Prevents long URLs from causing ugly line wrapping in developer tools.
+     *
+     * @param {string} [url]
+     * @returns {string} e.g. "ViewCollectionMode.cfm?PageIndex=2"
+     */
+    formatLogUrl(url = "") {
+      if (!url) return "";
+      try {
+        const parsed = new URL(url, typeof window !== "undefined" && window.location ? window.location.href : "https://www.tcdb.com");
+        const filename = parsed.pathname.split("/").pop() || parsed.pathname;
+        const partParam = parsed.searchParams.get("Part");
+        if (partParam) {
+          return `${filename}?Part=${partParam}`;
+        }
+        const pageIndex = parsed.searchParams.get("PageIndex") || parsed.searchParams.get("page");
+        if (pageIndex) {
+          return `${filename}?PageIndex=${pageIndex}`;
+        }
+        const search = parsed.search;
+        if (search && search.length > 40) {
+          return `${filename}${search.slice(0, 37)}...`;
+        }
+        return `${filename}${search}`;
+      } catch {
+        return url;
+      }
     },
     escape: {
       /**
@@ -260,7 +313,7 @@
 
   // src/core/config.js
   var EXPORT_CONFIG = {
-    baseDelayMs: 500,
+    baseDelayMs: 1e3,
     jitterMaxMs: 700,
     maxRetries: 3,
     backoffBaseMs: 1e3,
@@ -279,6 +332,7 @@
         // what moves the feature.
         urlMatch: [
           { pattern: "/checklist\\.cfm", exclude: false },
+          { pattern: "/viewcollectionmode\\.cfm", exclude: false },
           { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
           { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
           { pattern: "/collectionaddmultiples", exclude: false },
@@ -306,9 +360,10 @@
       csvExportEngine: {
         enabled: true,
         urlMatch: [
-          { pattern: "/collection", exclude: false },
+          { pattern: "collection", exclude: false },
           { pattern: "(?=.*/person)(?=.*collection)", exclude: false },
           { pattern: "/print\\.cfm", exclude: false },
+          { pattern: "printyourcollectionpdf\\.cfm", exclude: false },
           { pattern: "addmultiples", exclude: true }
         ],
         actions: {}
@@ -331,6 +386,7 @@
       collectionQuantityCounter: {
         enabled: true,
         urlMatch: [
+          { pattern: "/viewcollectionmode\\.cfm", exclude: false },
           { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
           { pattern: "/viewcollectionwantlist\\.cfm", exclude: false }
         ],
@@ -348,8 +404,20 @@
       exportBlockCooldownMinutes: 5,
       exportCacheTtlHours: 24,
       toastDurationMs: 4e3,
+      toastStackLimit: 4,
       checklistFilterDebounceMs: 150,
       paginationLoaderDelayMs: 1e3,
+      paginationThrottleStartPage: 6,
+      pacingPenaltyStepMs: 500,
+      pacingPenaltyCapMs: 8e3,
+      pacingSlowResponseMs: 4e3,
+      pacingSampleWindow: 10,
+      pacingReliefStepMs: 100,
+      throttleMaxSliceMs: 250,
+      exportCacheMaxEntries: 20,
+      exportCacheMaxRows: 2e4,
+      addMultiplesFocusDeadlineMs: 1200,
+      setListEnhancerChunkSize: 25,
       settingsSaveDebounceMs: 400,
       cardFormatterTemplate: "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}",
       cardFormatterOutputMode: "popover",
@@ -457,13 +525,13 @@
   };
   var Config = SettingsStore.cloneDefaults();
   function syncExportConfig() {
-    EXPORT_CONFIG.baseDelayMs = Config.global.exportBaseDelayMs;
-    EXPORT_CONFIG.jitterMaxMs = Config.global.exportJitterMaxMs;
-    EXPORT_CONFIG.maxRetries = Config.global.exportMaxRetries;
-    EXPORT_CONFIG.backoffBaseMs = Config.global.exportBackoffBaseMs;
-    EXPORT_CONFIG.backoffCapMs = Config.global.exportBackoffCapMs;
-    EXPORT_CONFIG.maxPages = Config.global.exportMaxPages;
-    EXPORT_CONFIG.requestTimeoutMs = Config.global.exportRequestTimeoutMs;
+    EXPORT_CONFIG.baseDelayMs = Config.global.exportBaseDelayMs ?? 1e3;
+    EXPORT_CONFIG.jitterMaxMs = Config.global.exportJitterMaxMs ?? 700;
+    EXPORT_CONFIG.maxRetries = Config.global.exportMaxRetries ?? 3;
+    EXPORT_CONFIG.backoffBaseMs = Config.global.exportBackoffBaseMs ?? 1e3;
+    EXPORT_CONFIG.backoffCapMs = Config.global.exportBackoffCapMs ?? 15e3;
+    EXPORT_CONFIG.maxPages = Config.global.exportMaxPages ?? 200;
+    EXPORT_CONFIG.requestTimeoutMs = Config.global.exportRequestTimeoutMs ?? 3e4;
   }
   function initConfig() {
     const loaded = SettingsStore.load();
@@ -653,6 +721,8 @@
     const type = el.type ? el.type.toLowerCase() : "text";
     if (type !== "text" && type !== "number") return false;
     if (el.readOnly || el.disabled || el.hidden || el.getAttribute("hidden") !== null) return false;
+    if (el.name && el.name.toLowerCase() === "pageindex") return false;
+    if (el.id && el.id.toLowerCase() === "pageindex") return false;
     return el.offsetParent !== null || el.value === "0";
   }
   var cache = { inputs: null };
@@ -675,7 +745,7 @@
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.code !== "NumpadEnter") return;
       const active = document.activeElement;
-      if (!active || active.tagName !== "INPUT" || active.id === "tk-checklist-filter") return;
+      if (!active || active.tagName !== "INPUT" || active.id === "tk-checklist-filter" || active.name?.toLowerCase() === "pageindex" || active.id?.toLowerCase() === "pageindex") return;
       const inputs = getValidInputs();
       const index = inputs.indexOf(active);
       if (index === -1) return;
@@ -698,6 +768,141 @@
     InputIndex.getValidInputs = getValidInputs;
   }
 
+  // src/ui/icons.js
+  var ICONS = {
+    list: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'
+    },
+    bolt: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M15.914 4a1.5 1.5 0 0 0-2.474-1.561l-9 9A1.5 1.5 0 0 0 5.5 14h4.002a.5.5 0 0 1 .471.666L8.086 20a1.5 1.5 0 0 0 2.475 1.56l9-9A1.5 1.5 0 0 0 18.5 10h-3.997a.5.5 0 0 1-.472-.667z"/>'
+    },
+    gem: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M10.5 3 8 9l4 13 4-13-2.5-6"/><path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z"/><path d="M2 9h20"/>'
+    },
+    tag: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>'
+    },
+    layers: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/>'
+    },
+    star: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>'
+    },
+    download: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>'
+    },
+    pin: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>'
+    },
+    x: {
+      size: 11,
+      strokeWidth: 2,
+      body: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
+    },
+    chevronUp: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="m18 15-6-6-6 6"/>'
+    },
+    chevronDown: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="m6 9 6 6 6-6"/>'
+    },
+    plus: {
+      size: 11,
+      strokeWidth: 2,
+      body: '<path d="M5 12h14"/><path d="M12 5v14"/>'
+    },
+    gear: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/>'
+    },
+    copy: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'
+    },
+    check: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M20 6 9 17l-5-5"/>'
+    }
+  };
+  var SPRITE_ID = "sctk-icon-sprite";
+  var symbolId = (name) => `tk-i-${name}`;
+  function buildSprite() {
+    const symbols = Object.entries(ICONS).map(
+      ([name, { strokeWidth, body }]) => `<symbol id="${symbolId(name)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${body}</symbol>`
+    ).join("");
+    return `<svg id="${SPRITE_ID}" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">${symbols}</svg>`;
+  }
+  function installIconSprite() {
+    const existing = document.getElementById(SPRITE_ID);
+    if (existing) existing.remove();
+    const holder = document.createElement("div");
+    holder.innerHTML = buildSprite();
+    document.body.prepend(holder.firstChild);
+  }
+  function icon(name) {
+    const def = ICONS[name];
+    if (!def) return "";
+    return `<svg class="tk-icon" width="${def.size}" height="${def.size}" aria-hidden="true"><use href="#${symbolId(name)}"/></svg>`;
+  }
+
+  // src/core/routes.js
+  var path = () => window.location.pathname.toLowerCase();
+  var SET_PAGE_PREDICATES = [
+    "isChecklist",
+    "isViewSet",
+    "isViewAll",
+    "isInserts",
+    "isForSaleTrade",
+    "isWantlist",
+    "isAddMultiples"
+  ];
+  var Routes = {
+    isCollection: () => path().includes("collection") && !path().includes("addmultiples") && !path().includes("printyourcollection") && !window.location.search.toLowerCase().includes("mode=print"),
+    isCollectionBrowse: () => path().includes("collectionbrowse.cfm") && !path().includes("collectionbrowsep.cfm") && !path().includes("collectionbrowset.cfm"),
+    isCollectionBrowseP: () => path().includes("collectionbrowsep.cfm"),
+    isCollectionBrowseT: () => path().includes("collectionbrowset.cfm"),
+    isPlayerCollection: () => path().includes("/person") && window.location.search.toLowerCase().includes("collection"),
+    isPlayerPage: () => path().includes("/person.cfm"),
+    isCardPage: () => path().includes("/viewcard.cfm"),
+    isChecklist: () => path().includes("/checklist.cfm"),
+    isViewSet: () => path().includes("/viewset.cfm"),
+    isInserts: () => path().includes("/inserts.cfm"),
+    isPrintPDF: () => path().includes("/print.cfm") || path().includes("printyourcollectionpdf.cfm") || path().includes("printyourcollection") || path().includes("collection") && window.location.search.toLowerCase().includes("mode=print"),
+    isViewAll: () => path().includes("/viewall.cfm") || path().includes("/inserts.cfm"),
+    isForSaleTrade: () => path().includes("/viewcollectionforsaletrade.cfm"),
+    isWantlist: () => path().includes("/viewcollectionwantlist.cfm"),
+    isAddMultiples: () => path().includes("/collectionaddmultiples"),
+    /**
+     * True on any page scoped to one set. Composed from the individual
+     * predicates rather than re-listing the same seven path fragments, so adding
+     * a set-scoped route cannot leave this out of date.
+     */
+    isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()),
+    hasPagination: (root = document) => !path().includes("addmultiples") && (!!root.querySelector(".pagination") || Routes.isSetPage() || Routes.isCollection() || Routes.isPlayerCollection())
+  };
+
   // src/core/selectors.js
   var SELECTOR_REGISTRY = {
     checklist: {
@@ -716,6 +921,21 @@
   };
 
   // src/modules/checklistEnhancer.js
+  function getFilterPlaceholder() {
+    if (Routes.isViewAll()) {
+      return "Filter sets by name, year, or category...";
+    }
+    if (Routes.isChecklist() || Routes.isViewSet()) {
+      return "Filter cards by #, player, team, note, or serial #...";
+    }
+    if (Routes.isCollection() || Routes.isForSaleTrade() || Routes.isWantlist()) {
+      return "Filter collection by player, set, card #, or status...";
+    }
+    if (Routes.isPlayerPage() || Routes.isPlayerCollection()) {
+      return "Filter cards by set, year, card #, or attribute...";
+    }
+    return "Filter items by name, number, or keyword...";
+  }
   var FILTER_SCOPES = SELECTOR_REGISTRY.checklist.scopes;
   var DATA_ROW_SELECTOR = SELECTOR_REGISTRY.checklist.dataRows;
   var ITEM_ELEMENT_SELECTOR = SELECTOR_REGISTRY.checklist.itemElements;
@@ -775,22 +995,53 @@
     const index = buildRowIndex(mainContent);
     Log(`Checklist filter indexed ${index.length} data item(s).`, "info");
     recordContract("checklistEnhancer", `indexed ${index.length} data item(s)`, index.length > 0);
+    const placeholderText = getFilterPlaceholder();
     const filterWrap = document.createElement("div");
     filterWrap.id = "tk-checklist-filter-wrap";
     filterWrap.innerHTML = `
     <strong>Filter Items:</strong>
-    <input type="text" id="tk-checklist-filter" placeholder="Filter by Player, Card #, Set Name, Tag, Team..."
-           title="Type to filter active listing items in real time" aria-label="Filter items">
+    <div id="tk-checklist-filter-container">
+      <input type="text" id="tk-checklist-filter" placeholder="${placeholderText}"
+             title="Type to filter active listing items in real time" aria-label="Filter items">
+      <button type="button" id="tk-checklist-filter-clear" title="Clear filter" aria-label="Clear filter" style="display: none;">
+        ${icon("x")}
+      </button>
+    </div>
     <span id="tk-filter-count" aria-live="polite"></span>
   `;
     targetElement.before(filterWrap);
     const countEl = filterWrap.querySelector("#tk-filter-count");
     const input = filterWrap.querySelector("#tk-checklist-filter");
+    const clearBtn = filterWrap.querySelector("#tk-checklist-filter-clear");
+    const updateClearVisibility = () => {
+      if (clearBtn) {
+        clearBtn.style.display = input.value.trim() !== "" ? "inline-flex" : "none";
+      }
+    };
     const run = debounce((term) => {
       const visible = applyFilter(index, term);
       countEl.textContent = term === "" ? "" : `${visible} of ${index.length}`;
     }, Config.global.checklistFilterDebounceMs);
-    input.addEventListener("input", (e) => run(e.target.value.toLowerCase().trim()));
+    const performFilter = () => {
+      const val = input.value.toLowerCase().trim();
+      updateClearVisibility();
+      run(val);
+    };
+    input.addEventListener("input", performFilter);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && input.value !== "") {
+        e.stopPropagation();
+        input.value = "";
+        performFilter();
+      }
+    });
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        input.value = "";
+        input.focus();
+        performFilter();
+      });
+    }
   }
   function initChecklistEnhancer() {
     if (!Config.modules.checklistEnhancer.actions.realtimeFilter) return;
@@ -902,6 +1153,19 @@
     const cleanSubSet = setName ? `_${compactSegment(setName)}` : "";
     const suffix = EXPORT_KIND_SUFFIX[kind] ?? EXPORT_KIND_SUFFIX.checklist;
     return cleanYear ? `${cleanYear}_${cleanBaseSet}${cleanSubSet}${suffix}.csv` : `${cleanBaseSet}${cleanSubSet}${suffix}.csv`;
+  }
+  function buildPrintCollectionFilename({
+    includePrice = false,
+    part = null,
+    date = /* @__PURE__ */ new Date()
+  } = {}) {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}${mm}${dd}`;
+    const priceSuffix = includePrice ? "WithPrice" : "";
+    const pageSegment = part ? `Page${part}` : "Full";
+    return `${dateStr}_TCDBCollection${pageSegment}${priceSuffix}.csv`;
   }
 
   // src/data/checklistParser.js
@@ -1244,7 +1508,8 @@
   } = {}) {
     const container = containerFor(location);
     const toasts = Array.from(container.querySelectorAll(".tk-toast-message"));
-    while (toasts.length >= STACK_LIMIT) {
+    const stackLimit = Config.global?.toastStackLimit ?? STACK_LIMIT;
+    while (toasts.length >= stackLimit) {
       const oldest = toasts.shift();
       oldest.remove();
     }
@@ -1311,7 +1576,8 @@
     return raw && typeof raw === "object" ? raw : {};
   }
   function prune(entries, ttlMs2, now) {
-    const live = Object.entries(entries).filter(([, entry]) => entry && typeof entry.ts === "number" && now - entry.ts < ttlMs2).sort(([, a], [, b]) => b.ts - a.ts).slice(0, MAX_ENTRIES);
+    const maxEntries = Config.global?.exportCacheMaxEntries ?? MAX_ENTRIES;
+    const live = Object.entries(entries).filter(([, entry]) => entry && typeof entry.ts === "number" && now - entry.ts < ttlMs2).sort(([, a], [, b]) => b.ts - a.ts).slice(0, maxEntries);
     return Object.fromEntries(live);
   }
   var ttlMs = (ttlHours) => ttlHours * 36e5;
@@ -1324,8 +1590,9 @@
   }
   function write(sid, payload, ttlHours, now = Date.now()) {
     if (ttlHours <= 0) return false;
-    if (payload.rows.length > MAX_ROWS) {
-      Log(`Export of ${payload.rows.length} rows exceeds the cache limit (${MAX_ROWS}) — not cached.`, "debug");
+    const maxRows = Config.global?.exportCacheMaxRows ?? MAX_ROWS;
+    if (payload.rows.length > maxRows) {
+      Log(`Export of ${payload.rows.length} rows exceeds the cache limit (${maxRows}) — not cached.`, "debug");
       return false;
     }
     const entries = prune(readAll(), ttlMs(ttlHours), now);
@@ -1386,10 +1653,13 @@
     return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   }
   function nextPenalty(current, signal) {
+    const step = Config.global?.pacingPenaltyStepMs ?? PENALTY_STEP_MS;
+    const cap = Config.global?.pacingPenaltyCapMs ?? PENALTY_CAP_MS;
+    const relief = Config.global?.pacingReliefStepMs ?? RELIEF_STEP_MS;
     if (signal === "throttled" || signal === "slow") {
-      return Math.min(current + PENALTY_STEP_MS, PENALTY_CAP_MS);
+      return Math.min(current + step, cap);
     }
-    return Math.max(current - RELIEF_STEP_MS, 0);
+    return Math.max(current - relief, 0);
   }
   var Pacing = {
     penaltyMs: 0,
@@ -1409,10 +1679,12 @@
      * @param {boolean} [throttled] true when the response was an HTTP 429/503
      */
     record(latencyMs, throttled = false) {
+      const sampleWindow = Config.global?.pacingSampleWindow ?? SAMPLE_WINDOW;
       Pacing.lastLatencyMs = latencyMs;
       Pacing.samples.push(latencyMs);
-      if (Pacing.samples.length > SAMPLE_WINDOW) Pacing.samples.shift();
-      const signal = throttled ? "throttled" : median(Pacing.samples) > SLOW_RESPONSE_MS ? "slow" : "ok";
+      if (Pacing.samples.length > sampleWindow) Pacing.samples.shift();
+      const slowThreshold = Config.global?.pacingSlowResponseMs ?? SLOW_RESPONSE_MS;
+      const signal = throttled ? "throttled" : median(Pacing.samples) > slowThreshold ? "slow" : "ok";
       Pacing.penaltyMs = nextPenalty(Pacing.penaltyMs, signal);
       return signal;
     },
@@ -1465,7 +1737,8 @@
         write2(claimTs);
         return waited;
       }
-      const slice = Math.min(wait, MAX_SLICE_MS);
+      const maxSlice = Config.global?.throttleMaxSliceMs ?? MAX_SLICE_MS;
+      const slice = Math.min(wait, maxSlice);
       await sleep2(slice);
       waited += slice;
     }
@@ -1534,7 +1807,7 @@
     } catch (error) {
       if (error.name === "AbortError") {
         throw runSignal?.aborted ? new AbortedError("Export cancelled.", true) : new AbortedError(
-          `Request timed out after ${Math.round(EXPORT_CONFIG.requestTimeoutMs / 1e3)}s.`,
+          `Request timed out after ${Math.round(EXPORT_CONFIG.requestTimeoutMs / 1e3)}s for ${Utils.toFullUrl(url)}.`,
           false
         );
       }
@@ -1547,48 +1820,51 @@
   }
   async function fetchPageWithRetry(fetchUrl, pageIndex, { onStatus = () => {
   }, signal } = {}) {
+    const fullUrl = Utils.toFullUrl(fetchUrl);
     let attempt = 0;
     for (; ; ) {
       attempt++;
       if (signal?.aborted) throw new AbortedError("Export cancelled.", true);
-      await waitForSlot(EXPORT_CONFIG.baseDelayMs + Pacing.penaltyMs);
+      const slotWaitMs = EXPORT_CONFIG.baseDelayMs + Pacing.penaltyMs;
+      Log(`Reserving request slot for ${Utils.formatLogUrl(fullUrl)} (base delay ${EXPORT_CONFIG.baseDelayMs}ms, pacing penalty ${Pacing.penaltyMs}ms)...`, "debug", "client");
+      await waitForSlot(slotWaitMs);
       let response;
       try {
-        response = await timedFetch(fetchUrl, signal);
+        response = await timedFetch(fullUrl, signal);
       } catch (error) {
         if (error instanceof AbortedError) throw error;
         if (attempt > EXPORT_CONFIG.maxRetries) {
           throw new Error(
-            `Network error fetching page ${pageIndex} after ${attempt - 1} retries: ${error.message}`
+            `Network error fetching page ${pageIndex} (${fullUrl}) after ${attempt - 1} retries: ${error.message}`
           );
         }
         const backoff = computeBackoff(attempt, EXPORT_CONFIG.backoffBaseMs, EXPORT_CONFIG.backoffCapMs);
-        Log(`Network error on page ${pageIndex} (attempt ${attempt}). Retrying in ${backoff}ms.`, "warn", "server");
+        Log(`Network error on page ${pageIndex} (${fullUrl}) (attempt ${attempt}): ${error.message}. Retrying in ${backoff}ms.`, "warn", "server");
         await interruptibleSleep(backoff, signal);
         continue;
       }
       if (isBlockedStatus(response.status)) {
         Pacing.penalize();
-        throw new BlockedError(`Server refused the request (HTTP ${response.status}).`);
+        throw new BlockedError(`Server refused the request for ${fullUrl} (HTTP ${response.status}).`);
       }
       if (THROTTLE_STATUSES.includes(response.status)) {
         Pacing.record(Pacing.lastLatencyMs ?? 0, true);
         if (attempt > EXPORT_CONFIG.maxRetries) {
           throw new Error(
-            `Server rate limit persisted on page ${pageIndex} after ${attempt - 1} retries (HTTP ${response.status}).`
+            `Server rate limit persisted on page ${pageIndex} (${fullUrl}) after ${attempt - 1} retries (HTTP ${response.status}).`
           );
         }
         let backoff = parseRetryAfter(response.headers.get("Retry-After"));
         if (backoff <= 0) {
           backoff = computeBackoff(attempt, EXPORT_CONFIG.backoffBaseMs, EXPORT_CONFIG.backoffCapMs);
         }
-        Log(`HTTP ${response.status} on page ${pageIndex} (attempt ${attempt}). Backing off ${backoff}ms.`, "warn", "server");
+        Log(`HTTP ${response.status} rate limit on page ${pageIndex} (${fullUrl}) (attempt ${attempt}). Backing off ${backoff}ms.`, "warn", "server");
         onStatus(`Throttled — retrying in ${Math.round(backoff / 1e3)}s...`);
         await interruptibleSleep(backoff, signal);
         continue;
       }
       if (!response.ok) {
-        throw new Error(`Server returned status HTTP ${response.status} on page ${pageIndex}`);
+        throw new Error(`Server returned status HTTP ${response.status} on page ${pageIndex} for ${fullUrl}`);
       }
       Pacing.record(Pacing.lastLatencyMs ?? 0, false);
       return response;
@@ -1607,7 +1883,7 @@
       ExportQueue.queue.push({ label, task });
       const position = ExportQueue.queue.length;
       if (ExportQueue.active) {
-        Log(`Export queued behind ${position - 1} pending job(s): ${label}`, "info");
+        Log(`[CLIENT] Export job queued behind ${position - 1} pending job(s): '${label}' (Queue position: #${position})`, "info", "client");
         showToast({
           message: `Queued: <b>${Utils.escape.html(label)}</b> (position ${position})`,
           variant: "muted"
@@ -1623,11 +1899,12 @@
       }
       ExportQueue.active = true;
       const { label, task } = ExportQueue.queue.shift();
-      Log(`Export job starting: ${label}`, "info");
+      const remaining = ExportQueue.queue.length;
+      Log(`[CLIENT] Export job starting: '${label}' (${remaining} job(s) remaining in queue)`, "info", "client");
       try {
         await task();
       } catch (error) {
-        Log(`Export job threw uncaught error: ${error.message}`, "error");
+        Log(`[CLIENT] Export job threw uncaught error for '${label}': ${error.message}`, "error", "client");
       }
       ExportQueue.processNext();
     }
@@ -1657,11 +1934,15 @@
     if (elapsed >= cooldownMs) return 0;
     return Math.ceil((cooldownMs - elapsed) / 6e4);
   }
-  function recordBlock(detail) {
+  function recordBlock(detail, targetUrl = "") {
     setValue(BLOCK_TS_KEY, Date.now());
-    Log(`Anti-scraping block detected (${detail}). Cooldown started.`, "warn", "server");
+    const fullUrl = targetUrl ? Utils.toFullUrl(targetUrl) : "";
+    const urlLabel = fullUrl ? ` for ${fullUrl}` : "";
+    Log(`Anti-scraping block detected${urlLabel} (${detail}). Cooldown started.`, "warn", "server");
   }
   function exportSetCSV(setId, setName) {
+    const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${setId}/`);
+    Log(`[CLIENT] Checklist CSV Export queued for set ID ${setId} (${setName}) — ${fullUrl}`, "debug", "client");
     ExportQueue.enqueue(setName || `Set ${setId}`, () => runExportSetCSV(setId, setName));
   }
   function downloadResult({ identity, rows }, fallbackLabel) {
@@ -1684,13 +1965,20 @@
     do {
       if (signal.aborted) throw new AbortedError("Export cancelled.", true);
       if (pageIndex > 1) await jitteredDelay();
+      const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
+      const fullFetchUrl = Utils.toFullUrl(fetchUrl);
+      fetchAllPages.lastRequestedUrl = fullFetchUrl;
       const label = `Page ${pageIndex}${totalPages > 1 ? " of " + totalPages : ""}${Pacing.describe()}`;
       setStatus(`Fetching ${label}...`);
       progress?.update(label);
-      const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
-      Log(`HTTP GET Request -> ${fetchUrl}`, "info", "server");
+      Log(`HTTP GET Request -> ${fullFetchUrl}`, "info", "server");
       const response = await fetchPageWithRetry(fetchUrl, pageIndex, { onStatus: setStatus, signal });
       const html = await response.text();
+      Log(
+        `[CLIENT] HTTP ${response.status} response received for ${fullFetchUrl} (${Math.round(html.length / 1024)} KB, latency ${Pacing.lastLatencyMs || 0}ms)`,
+        "debug",
+        "client"
+      );
       const blockMarker = detectBlock(html);
       if (blockMarker) {
         throw new BlockedError(`Challenge page received instead of content (matched '${blockMarker}').`);
@@ -1705,8 +1993,9 @@
           const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${totalDiscoveredPages})`;
           setStatus(cappedStatus);
           Log(
-            `Discovered page count (${totalDiscoveredPages}) exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
-            "warn"
+            `[CLIENT] Discovered page count (${totalDiscoveredPages}) for ${fullFetchUrl} exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
+            "warn",
+            "client"
           );
           showToast({
             message: `Set has <b>${totalDiscoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). Exporting first ${EXPORT_CONFIG.maxPages} pages only.`,
@@ -1714,19 +2003,21 @@
           });
         } else {
           totalPages = totalDiscoveredPages;
-          Log(`Discovered ${totalPages} total page(s) for set ID ${setId}`, "info");
+          Log(`[CLIENT] Discovered ${totalPages} total page(s) for set ID ${setId} (${fullFetchUrl})`, "info", "client");
         }
       }
       rows.push(...parsed.rows);
-      Log(`Page ${pageIndex}/${totalPages} parsed successfully. ${parsed.rows.length} rows retrieved.`, "info");
+      Log(`[CLIENT] Page ${pageIndex}/${totalPages} parsed successfully for ${fullFetchUrl}. ${parsed.rows.length} rows retrieved (Total accumulated: ${rows.length}).`, "info", "client");
       pageIndex++;
     } while (pageIndex <= totalPages);
     return { identity, rows, totalPages, totalDiscoveredPages };
   }
   async function runExportSetCSV(setId, setName) {
+    const fullTargetUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${setId}/`);
+    Log(`[CLIENT] Step 1/4: Checking anti-scraping cooldown status for ${fullTargetUrl}...`, "debug", "client");
     const remainingMin = cooldownRemainingMinutes();
     if (remainingMin > 0) {
-      Log(`Export refused: anti-scraping cooldown active (${remainingMin} min remaining).`, "warn");
+      Log(`Export refused: anti-scraping cooldown active (${remainingMin} min remaining) for ${fullTargetUrl}.`, "warn", "client");
       setStatus("Export blocked (cooldown)");
       showToast({
         message: `Export paused — an anti-scraping block was detected recently. Try again in ~${remainingMin} min, or adjust the cooldown in Settings.`,
@@ -1734,11 +2025,13 @@
       });
       return;
     }
+    Log(`[CLIENT] Cooldown check passed for ${fullTargetUrl}.`, "debug", "client");
+    Log(`[CLIENT] Step 2/4: Checking export cache for ${fullTargetUrl}...`, "debug", "client");
     const ttlHours = Config.global.exportCacheTtlHours;
     const cached = read(setId, ttlHours);
     if (cached) {
       const filename = downloadResult(cached, setName);
-      Log(`Export served from cache: ${filename} (${cached.rows.length} rows, zero requests).`, "info");
+      Log(`Export served from cache for ${fullTargetUrl}: ${filename} (${cached.rows.length} rows, 0 network requests).`, "info", "client");
       setStatus("Export Complete (cached)");
       showToast({
         message: `Exported <b>${cached.rows.length}</b> cards from cache — no requests made.`,
@@ -1746,10 +2039,11 @@
       });
       return;
     }
+    Log(`[CLIENT] Cache miss for ${fullTargetUrl}. Initializing network fetch...`, "debug", "client");
+    Log(`[CLIENT] Step 3/4: Starting checklist fetch for set ID ${setId} (${setName}) at ${fullTargetUrl}...`, "info", "client");
     const controller = new AbortController();
     CurrentRun.controller = controller;
     CurrentRun.onStart?.();
-    Log(`Starting checklist fetch for set ID ${setId} (${setName})`, "info");
     setStatus(`Fetching ${setName}...`);
     const progress = showProgressToast({
       title: `Exporting ${setName}`,
@@ -1757,15 +2051,17 @@
     });
     try {
       const result = await fetchAllPages(setId, controller.signal, progress);
-      if (result.rows.length === 0) throw new Error("No valid checklist rows identified within tables.");
+      if (result.rows.length === 0) throw new Error(`No valid checklist rows identified within tables at ${fullTargetUrl}.`);
       let label = result.identity.baseSet;
       if (result.identity.setName) label += ` - ${result.identity.setName}`;
       Log(
-        `Export complete for: ${label} (${result.rows.length} cards across ${result.totalPages} page(s), median latency ${Math.round(Pacing.medianLatencyMs())}ms)`,
-        "info"
+        `[CLIENT] Step 4/4: Export complete for ${fullTargetUrl}: ${label} (${result.rows.length} cards across ${result.totalPages} page(s), median latency ${Math.round(Pacing.medianLatencyMs())}ms)`,
+        "info",
+        "client"
       );
       write(setId, result, ttlHours);
-      downloadResult(result, setName);
+      const filename = downloadResult(result, setName);
+      Log(`[CLIENT] CSV file generated and download triggered: ${filename} (${result.rows.length} rows).`, "info", "client");
       if (result.totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
         const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${result.totalDiscoveredPages})`;
         setStatus(cappedStatus);
@@ -1776,15 +2072,16 @@
       }
     } catch (error) {
       if (error instanceof BlockedError) {
-        recordBlock(error.message);
+        const lastUrl = fetchAllPages.lastRequestedUrl || fullTargetUrl;
+        recordBlock(error.message, lastUrl);
         progress.finish("Stopped — the site returned a challenge.", "error");
         setStatus("Export blocked");
       } else if (error instanceof AbortedError) {
-        Log(`Export stopped: ${error.message}`, error.byUser ? "info" : "warn");
+        Log(`Export stopped for ${fullTargetUrl}: ${error.message}`, error.byUser ? "info" : "warn", "client");
         progress.finish(error.byUser ? "Cancelled." : "Timed out.", error.byUser ? "muted" : "error");
         setStatus(error.byUser ? "Export cancelled" : "Export timed out");
       } else {
-        Log(`CSV Export Failed: ${error.message}`, "error");
+        Log(`CSV Export Failed for ${fullTargetUrl}: ${error.message}`, "error", "client");
         progress.finish(`Failed: ${error.message}`, "error");
         setStatus("Export Failed");
       }
@@ -1792,105 +2089,6 @@
       CurrentRun.controller = null;
       CurrentRun.onEnd?.();
     }
-  }
-
-  // src/ui/icons.js
-  var ICONS = {
-    list: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>'
-    },
-    bolt: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="M15.914 4a1.5 1.5 0 0 0-2.474-1.561l-9 9A1.5 1.5 0 0 0 5.5 14h4.002a.5.5 0 0 1 .471.666L8.086 20a1.5 1.5 0 0 0 2.475 1.56l9-9A1.5 1.5 0 0 0 18.5 10h-3.997a.5.5 0 0 1-.472-.667z"/>'
-    },
-    gem: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="M10.5 3 8 9l4 13 4-13-2.5-6"/><path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z"/><path d="M2 9h20"/>'
-    },
-    tag: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>'
-    },
-    layers: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/>'
-    },
-    star: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>'
-    },
-    download: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>'
-    },
-    pin: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>'
-    },
-    x: {
-      size: 11,
-      strokeWidth: 2,
-      body: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
-    },
-    chevronUp: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="m18 15-6-6-6 6"/>'
-    },
-    chevronDown: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="m6 9 6 6 6-6"/>'
-    },
-    plus: {
-      size: 11,
-      strokeWidth: 2,
-      body: '<path d="M5 12h14"/><path d="M12 5v14"/>'
-    },
-    gear: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/>'
-    },
-    copy: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'
-    },
-    check: {
-      size: 12,
-      strokeWidth: 2,
-      body: '<path d="M20 6 9 17l-5-5"/>'
-    }
-  };
-  var SPRITE_ID = "sctk-icon-sprite";
-  var symbolId = (name) => `tk-i-${name}`;
-  function buildSprite() {
-    const symbols = Object.entries(ICONS).map(
-      ([name, { strokeWidth, body }]) => `<symbol id="${symbolId(name)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${body}</symbol>`
-    ).join("");
-    return `<svg id="${SPRITE_ID}" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">${symbols}</svg>`;
-  }
-  function installIconSprite() {
-    const existing = document.getElementById(SPRITE_ID);
-    if (existing) existing.remove();
-    const holder = document.createElement("div");
-    holder.innerHTML = buildSprite();
-    document.body.prepend(holder.firstChild);
-  }
-  function icon(name) {
-    const def = ICONS[name];
-    if (!def) return "";
-    return `<svg class="tk-icon" width="${def.size}" height="${def.size}" aria-hidden="true"><use href="#${symbolId(name)}"/></svg>`;
   }
 
   // src/ui/badges.js
@@ -2011,39 +2209,6 @@
     return container;
   }
 
-  // src/core/routes.js
-  var path = () => window.location.pathname.toLowerCase();
-  var SET_PAGE_PREDICATES = [
-    "isChecklist",
-    "isViewSet",
-    "isViewAll",
-    "isInserts",
-    "isForSaleTrade",
-    "isWantlist",
-    "isAddMultiples"
-  ];
-  var Routes = {
-    isCollection: () => path().includes("/collection") && !path().includes("addmultiples"),
-    isPlayerCollection: () => path().includes("/person") && window.location.search.toLowerCase().includes("collection"),
-    isPlayerPage: () => path().includes("/person.cfm"),
-    isCardPage: () => path().includes("/viewcard.cfm"),
-    isChecklist: () => path().includes("/checklist.cfm"),
-    isViewSet: () => path().includes("/viewset.cfm"),
-    isInserts: () => path().includes("/inserts.cfm"),
-    isPrintPDF: () => path().includes("/print.cfm"),
-    isViewAll: () => path().includes("/viewall.cfm") || path().includes("/inserts.cfm"),
-    isForSaleTrade: () => path().includes("/viewcollectionforsaletrade.cfm"),
-    isWantlist: () => path().includes("/viewcollectionwantlist.cfm"),
-    isAddMultiples: () => path().includes("/collectionaddmultiples"),
-    /**
-     * True on any page scoped to one set. Composed from the individual
-     * predicates rather than re-listing the same seven path fragments, so adding
-     * a set-scoped route cannot leave this out of date.
-     */
-    isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()),
-    hasPagination: (root = document) => !path().includes("addmultiples") && (!!root.querySelector(".pagination") || Routes.isSetPage() || Routes.isCollection() || Routes.isPlayerCollection())
-  };
-
   // src/ui/styles.js
   var TOOLBAR_CSS = `
 /* ---- Design tokens ----
@@ -2119,9 +2284,9 @@
 :root[data-sctk-theme="dark"] #sctk-toolbar { background: linear-gradient(180deg, #001845 0%, #001233 100%); border-bottom: 2px solid var(--tk-accent); box-shadow: 0 4px 14px rgba(0, 18, 51, 0.6); }
 
 /* Wordmark */
-#sctk-toolbar .tk-wordmark { display: flex; flex-direction: column; justify-content: center; padding: 2px 6px; margin-right: 8px; flex-shrink: 0; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-top: 2px solid var(--tk-accent); border-radius: 0 0 3px 3px; line-height: 1.1; }
-#sctk-toolbar .tk-wordmark-title { font-family: var(--tk-font-mono); font-weight: 700; font-size: 11px; letter-spacing: 0.02em; color: var(--tk-text); }
-#sctk-toolbar .tk-wordmark-sub { font-family: var(--tk-font-mono); font-size: 7.5px; letter-spacing: 0.14em; color: var(--tk-text-muted); text-transform: uppercase; }
+#sctk-toolbar .tk-wordmark { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 2px 6px; margin-right: 8px; flex-shrink: 0; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-top: 2px solid var(--tk-accent); border-radius: 0 0 3px 3px; line-height: 1.1; }
+#sctk-toolbar .tk-wordmark-title { font-family: var(--tk-font-mono); font-weight: 700; font-size: 11px; letter-spacing: 0.02em; color: var(--tk-text); text-align: center; display: block; width: 100%; }
+#sctk-toolbar .tk-wordmark-sub { font-family: var(--tk-font-mono); font-size: 7.5px; letter-spacing: 0.14em; color: var(--tk-text-muted); text-transform: uppercase; text-align: center; display: block; width: 100%; }
 
 #sctk-toolbar .toolbar-group { display: flex; gap: 4px; margin-right: 8px; border-right: 1px solid var(--tk-border); padding-right: 8px; flex-shrink: 0; align-items: center; }
 
@@ -2226,9 +2391,12 @@
 
 /* Filter Bar CSS */
 #tk-checklist-filter-wrap { margin: 8px 0; display: flex; align-items: center; gap: 6px; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-left: 3px solid var(--tk-accent); padding: 6px 10px; border-radius: 4px; font-family: var(--tk-font-ui); color: var(--tk-text); font-size: 11.5px; }
-#tk-checklist-filter-wrap strong { font-family: var(--tk-font-mono); font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tk-accent); font-weight: 700; }
-#tk-checklist-filter { padding: 3px 6px; border: 1px solid var(--tk-border-strong); background: var(--tk-bg-elevated); color: var(--tk-text); border-radius: 3px; font-size: 11.5px; width: 240px; font-family: var(--tk-font-ui); }
-#tk-filter-count { font-family: var(--tk-font-mono); font-size: 10px; color: var(--tk-text-muted); white-space: nowrap; }
+#tk-checklist-filter-wrap strong { font-family: var(--tk-font-mono); font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tk-accent); font-weight: 700; flex-shrink: 0; }
+#tk-checklist-filter-container { position: relative; display: inline-flex; align-items: center; }
+#tk-checklist-filter { padding: 3px 22px 3px 6px; border: 1px solid var(--tk-border-strong); background: var(--tk-bg-elevated); color: var(--tk-text); border-radius: 3px; font-size: 11.5px; width: 320px; font-family: var(--tk-font-ui); box-sizing: border-box; }
+#tk-checklist-filter-clear { position: absolute; right: 4px; background: transparent; border: none; color: var(--tk-text-muted); padding: 2px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 2px; height: 16px; width: 16px; margin: 0; }
+#tk-checklist-filter-clear:hover { color: var(--tk-red); background: var(--tk-bg-hover); }
+#tk-filter-count { font-family: var(--tk-font-mono); font-size: 10px; color: var(--tk-text-muted); white-space: nowrap; flex-shrink: 0; }
 #tk-checklist-filter:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; border-color: var(--tk-accent); }
 
 /* Responsive Breakpoints */
@@ -2299,7 +2467,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
 `;
   var SETTINGS_CSS = `
 #tk-settings-overlay { position: fixed; inset: 0; z-index: 200000; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-family: var(--tk-font-ui); }
-#tk-settings-panel { background: var(--tk-bg-elevated); color: var(--tk-text); width: min(560px, 92vw); max-height: 85vh; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); box-shadow: var(--tk-shadow-elevated); display: flex; flex-direction: column; overflow: hidden; text-align: left; }
+#tk-settings-panel { background: var(--tk-bg-elevated); color: var(--tk-text); width: min(580px, 92vw); height: min(580px, 85vh); min-height: 480px; border-radius: var(--tk-radius-md); border: 1px solid var(--tk-border-strong); box-shadow: var(--tk-shadow-elevated); display: flex; flex-direction: column; overflow: hidden; text-align: left; }
 #tk-settings-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--tk-border); flex-shrink: 0; background: var(--tk-bg-base); text-align: left; }
 #tk-settings-header h2 { margin: 0; font-family: var(--tk-font-mono); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--tk-accent); text-align: left; }
 #tk-settings-close { display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid var(--tk-border-strong); color: var(--tk-text-muted); border-radius: var(--tk-radius-sm); width: 22px; height: 22px; cursor: pointer; }
@@ -2369,6 +2537,38 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
 .tk-route-add-btn:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
 .tk-route-error { font-size: 9.5px; color: var(--tk-red); margin-top: 3px; line-height: 1.3; min-height: 0; }
 
+/* RegEx & Route Tester Panes */
+.tk-tester-pane { display: flex; flex-direction: column; gap: 10px; width: 100%; text-align: left; }
+.tk-tester-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tk-tester-row-input { flex: 1 1 auto; min-width: 0; }
+.tk-tester-input { width: 100%; box-sizing: border-box; padding: 6px 8px; background: var(--tk-bg-base); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); font-family: var(--tk-font-mono); font-size: 11px; }
+.tk-tester-input:focus-visible, .tk-tester-textarea:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
+.tk-tester-textarea { width: 100%; box-sizing: border-box; min-height: 70px; padding: 6px 8px; background: var(--tk-bg-base); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); font-family: var(--tk-font-mono); font-size: 11px; resize: vertical; line-height: 1.4; }
+.tk-regex-flags { display: flex; gap: 6px; align-items: center; user-select: none; }
+.tk-regex-flag-label { display: inline-flex; align-items: center; gap: 3px; font-family: var(--tk-font-mono); font-size: 10.5px; cursor: pointer; color: var(--tk-text-muted); }
+.tk-regex-flag-label input { accent-color: var(--tk-accent); margin: 0; }
+.tk-preset-chips { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.tk-preset-chip { font-family: var(--tk-font-mono); font-size: 9.5px; background: var(--tk-bg-base); color: var(--tk-text-muted); border: 1px solid var(--tk-border-strong); border-radius: 12px; padding: 2px 8px; cursor: pointer; user-select: none; }
+.tk-preset-chip:hover { border-color: var(--tk-accent); color: var(--tk-accent); background: var(--tk-bg-hover); }
+.tk-tester-status-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: var(--tk-radius-sm); font-family: var(--tk-font-mono); font-size: 11px; font-weight: 700; background: var(--tk-bg-base); border: 1px solid var(--tk-border-strong); }
+.tk-status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--tk-radius-sm); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.tk-status-badge.matched { background: rgba(5, 150, 105, 0.2); color: var(--tk-green); border: 1px solid var(--tk-green); }
+.tk-status-badge.unmatched { background: rgba(220, 38, 38, 0.15); color: var(--tk-red); border: 1px solid var(--tk-red); }
+.tk-status-badge.error { background: rgba(220, 38, 38, 0.25); color: var(--tk-red); border: 1px solid var(--tk-red); }
+.tk-status-badge.disabled { background: rgba(151, 157, 172, 0.2); color: var(--tk-text-muted); border: 1px solid var(--tk-border-strong); }
+.tk-regex-highlight-box { background: var(--tk-bg-base); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 8px 10px; font-family: var(--tk-font-mono); font-size: 11px; line-height: 1.5; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+.tk-regex-match-hl { background: rgba(4, 102, 200, 0.35); color: var(--tk-text); border-bottom: 2px solid var(--tk-accent); border-radius: 2px; padding: 0 1px; font-weight: 700; }
+.tk-regex-groups-table { width: 100%; border-collapse: collapse; font-family: var(--tk-font-mono); font-size: 10.5px; margin-top: 4px; }
+.tk-regex-groups-table th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--tk-border-strong); color: var(--tk-text-muted); font-size: 9.5px; text-transform: uppercase; }
+.tk-regex-groups-table td { padding: 4px 6px; border-bottom: 1px solid var(--tk-border); color: var(--tk-text); word-break: break-all; }
+.tk-route-card { border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 8px 10px; background: var(--tk-bg-base); display: flex; flex-direction: column; gap: 4px; }
+.tk-route-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tk-route-card-title { font-weight: 700; font-size: 11.5px; color: var(--tk-text); }
+.tk-route-rules-list { font-family: var(--tk-font-mono); font-size: 10px; margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+.tk-route-rule-item { display: flex; align-items: center; gap: 6px; color: var(--tk-text-muted); }
+.tk-route-rule-item.pass { color: var(--tk-green); }
+.tk-route-rule-item.fail { color: var(--tk-red); }
+
 @media (max-width: 480px) {
     .tk-route-row { flex-wrap: wrap; }
     .tk-route-row input[type="text"] { flex-basis: 100%; }
@@ -2433,6 +2633,8 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       include: TOOLBAR_BADGES,
       onExport: (e) => {
         e.preventDefault();
+        const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${sid}/`);
+        Log(`[CLIENT] Toolbar CSV Export button clicked for set ID ${sid} (${label}) — ${fullUrl}`, "info", "client");
         exportSetCSV(sid, label);
       },
       displayMode,
@@ -2679,7 +2881,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   };
 
   // src/modules/setListEnhancer.js
-  var CHUNK_SIZE = 25;
+  var CHUNK_SIZE = Config.global?.setListEnhancerChunkSize ?? 25;
   var SET_LINK_SELECTOR = SELECTOR_REGISTRY.setLinks.join(", ");
   var onIdle = typeof requestIdleCallback === "function" ? (fn) => requestIdleCallback(fn, { timeout: 500 }) : (fn) => setTimeout(fn, 16);
   function findSetLinks(root = document) {
@@ -2736,6 +2938,8 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       },
       onExport: (e) => {
         e.preventDefault();
+        const fullUrl = Utils.toFullUrl(link.getAttribute("href") || `/Checklist.cfm/sid/${setId}/`);
+        Log(`[CLIENT] Set list badge CSV Export requested for set ID ${setId} (${setName}) — ${fullUrl}`, "info", "client");
         exportSetCSV(setId, setName);
       },
       displayMode: Config.global?.setButtonDisplay || "both"
@@ -2771,9 +2975,10 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   }) {
     let cursor = 0;
     let total = 0;
+    const chunkSize = Config.global?.setListEnhancerChunkSize ?? CHUNK_SIZE;
     const step = () => {
-      const slice = links.slice(cursor, cursor + CHUNK_SIZE);
-      cursor += CHUNK_SIZE;
+      const slice = links.slice(cursor, cursor + chunkSize);
+      cursor += chunkSize;
       total += injectSetActions(slice);
       if (cursor < links.length) {
         onIdle(step);
@@ -2892,7 +3097,8 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     })();
     if (!target) return;
     let cancelled = false;
-    const deadline = Date.now() + FOCUS_DEADLINE_MS;
+    const focusDeadlineMs = Config.global?.addMultiplesFocusDeadlineMs ?? FOCUS_DEADLINE_MS;
+    const deadline = Date.now() + focusDeadlineMs;
     const stop = () => {
       if (cancelled) return;
       cancelled = true;
@@ -2933,23 +3139,749 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     focusFirstQuantityField();
   }
 
+  // src/data/collectionBrowseParser.js
+  var COLLECTION_BROWSE_HEADER = [
+    "Sport",
+    "Year",
+    "Set Name",
+    "Child Set",
+    "Card No",
+    "Player Name",
+    "Tags",
+    "Print Run",
+    "Qty"
+  ];
+  function parseSetAndChildSet(setDetails) {
+    const clean = String(setDetails || "").trim();
+    if (!clean) return { setName: "Unknown", childSet: "" };
+    const setParts = clean.split(" - ");
+    const setName = setParts[0].trim();
+    const childSet = setParts.length > 1 ? setParts.slice(1).join(" - ").trim() : "";
+    return { setName, childSet };
+  }
+  function parseQuantity(cell) {
+    if (!cell) return "1";
+    const badge = cell.querySelector(".badge, span.badge");
+    if (badge && badge.textContent.trim()) {
+      const bMatch = badge.textContent.trim().match(/^(\d+)/);
+      if (bMatch) return bMatch[1];
+    }
+    const raw = (cell.innerText || cell.textContent || "").replace(/(\r\n|\n|\r|,|\[|\])/gm, " ").trim();
+    const match = raw.match(/^(\d+)/);
+    return match ? match[1] : raw || "1";
+  }
+  function detectPageSport(root) {
+    const text = root.body ? root.body.textContent || "" : root.textContent || "";
+    if (text.includes("Baseball")) return "Baseball";
+    if (text.includes("Basketball")) return "Basketball";
+    if (text.includes("Football")) return "Football";
+    if (text.includes("Hockey")) return "Hockey";
+    return "Unknown";
+  }
+  function normalizeListType(root = document) {
+    let rawText = "";
+    const filterSelect = root.querySelector ? root.querySelector('select[name="Filter"]') : null;
+    if (filterSelect && filterSelect.options && filterSelect.options.length > 0) {
+      const selected = filterSelect.options[filterSelect.selectedIndex];
+      if (selected) {
+        rawText = (selected.text || selected.value || "").trim();
+      }
+    }
+    let href = "";
+    if (root.defaultView && root.defaultView.location) {
+      href = root.defaultView.location.href || "";
+    } else if (typeof window !== "undefined" && window.location) {
+      href = window.location.href || "";
+    }
+    if (root.childNodes) {
+      Array.from(root.childNodes).forEach((node) => {
+        if (node.nodeType === 8) {
+          href += ` ${node.nodeValue || ""}`;
+        }
+      });
+    }
+    const strongHeaders = Array.from(root.querySelectorAll ? root.querySelectorAll("td strong, h3, h4") : []);
+    const headerTexts = strongHeaders.map((el) => el.textContent.trim()).join(" ");
+    const scriptsText = Array.from(root.querySelectorAll ? root.querySelectorAll("script") : []).map((s) => s.textContent).join(" ");
+    const combined = `${rawText} ${href} ${headerTexts} ${scriptsText}`.toLowerCase();
+    if (combined.includes("/col/wantlist") || combined.includes("wantlist6") || combined.includes("status=w") || combined.includes("wantlist") || combined.includes("wants") || combined.includes("filter=w")) {
+      return "Wantlist";
+    }
+    if (combined.includes("/col/forsale") || combined.includes("forsale-trade") || combined.includes("status=s") || combined.includes("status=f") || combined.includes("forsale") || combined.includes("for sale") || combined.includes("trade") || combined.includes("filter=fs") || combined.includes("filter=s") || combined.includes("filter=f") || combined.includes("filter=t")) {
+      return "ForSale";
+    }
+    return "Collection";
+  }
+  function parseCollectionBrowseSet(root) {
+    let year = "Unknown";
+    let sport = "Unknown";
+    let setName = "Unknown";
+    let childSet = "";
+    const listType = normalizeListType(root);
+    const docTitle = root.title || "";
+    try {
+      const titleData = docTitle.split("|")[0].trim();
+      const prefixMatch = titleData.match(/^Collection\s+-\s+.*?\s+-\s+(\d{4}.*)$/);
+      if (prefixMatch) {
+        let details = prefixMatch[1];
+        const sportMatch = details.match(/(.*)\s+([a-zA-Z\-]+)$/);
+        if (sportMatch) {
+          sport = sportMatch[2];
+          details = sportMatch[1];
+        }
+        const yearMatch = details.match(/^(\d{4}(?:-\d{2})?)\s+(.*)$/);
+        if (yearMatch) {
+          year = yearMatch[1];
+          details = yearMatch[2];
+        }
+        const setInfo = parseSetAndChildSet(details);
+        setName = setInfo.setName;
+        childSet = setInfo.childSet;
+      }
+    } catch (e) {
+      Log(`Title parsing failed for CollectionBrowse: ${e.message}`, "error");
+    }
+    Log(
+      `[CLIENT] Parsed CollectionBrowse set context: Sport='${sport}', Year='${year}', SetName='${setName}', ChildSet='${childSet}', ListType='${listType}'`,
+      "debug",
+      "client"
+    );
+    const rowEls = Array.from(
+      root.querySelectorAll('tr.collection_row, tr[class*="collection_row"], tr.collection.row')
+    );
+    const dataRows = [];
+    rowEls.forEach((tr) => {
+      const cells = Array.from(tr.querySelectorAll("td"));
+      if (cells.length >= 5) {
+        const qty = parseQuantity(cells[0]);
+        const cardNo = (cells[2] ? cells[2].innerText || cells[2].textContent : "").replace(/(\r\n|\n|\r|,)/gm, " ").trim();
+        const rawPlayerText = (cells[4] ? cells[4].innerText || cells[4].textContent : "").replace(/(\r\n|\n|\r|,)/gm, " ").trim();
+        const { subject: playerName, tags, printRun } = parseSubjectCell(rawPlayerText);
+        dataRows.push([sport, year, setName, childSet, cardNo, playerName, tags, printRun, qty]);
+      }
+    });
+    const listSuffix = listType === "Collection" ? "" : `_${listType}`;
+    const filename = `${compactSegment(sport)}_${compactSegment(year)}${compactSegment(setName)}${compactSegment(childSet)}${listSuffix}.csv`;
+    Log(`[CLIENT] Extracted ${dataRows.length} data rows for CollectionBrowse set export: ${filename}`, "debug", "client");
+    return {
+      type: "set",
+      sport,
+      year,
+      setName,
+      childSet,
+      listType,
+      rows: dataRows,
+      filename
+    };
+  }
+  function parseCollectionBrowsePlayer(root) {
+    let globalPlayer = "Unknown";
+    let globalSport = detectPageSport(root);
+    const listType = normalizeListType(root);
+    const docTitle = root.title || "";
+    try {
+      const titleData = docTitle.split("|")[0].replace("Trading Card Database", "").trim();
+      const titleMatch = titleData.match(/^Collection\s+-\s+.*?\s+-\s+(.*)$/);
+      if (titleMatch) {
+        globalPlayer = titleMatch[1].trim();
+      }
+    } catch (e) {
+      Log(`Title parsing failed for CollectionBrowseP: ${e.message}`, "error");
+    }
+    Log(
+      `[CLIENT] Parsed CollectionBrowseP player context: Player='${globalPlayer}', Sport='${globalSport}', ListType='${listType}'`,
+      "debug",
+      "client"
+    );
+    const rowEls = Array.from(
+      root.querySelectorAll('tr.collection.row, tr[class*="collection row"], tr.collection_row')
+    );
+    const dataRows = [];
+    rowEls.forEach((tr) => {
+      const cells = Array.from(tr.querySelectorAll("td"));
+      if (cells.length >= 2) {
+        const qtyRaw = (cells[0] ? cells[0].innerText || cells[0].textContent : "").replace(/(\r\n|\n|\r|,|\[|\])/gm, " ").trim();
+        const qtyMatch = qtyRaw.match(/^(\d+)/);
+        if (!qtyMatch) return;
+        const qty = qtyMatch[1];
+        const cardCell = cells[1] && (cells[1].innerText || cells[1].textContent || "").includes("#") ? cells[1] : cells[2] || cells[1];
+        if (!cardCell) return;
+        const cardText = (cardCell.innerText || cardCell.textContent || "").replace(/(\r\n|\n|\r|,)/gm, " ").trim();
+        const cardMatch = cardText.match(/^(\d{4}(?:-\d{2})?)\s+(.*?)\s+#([^\s]+)\s+(.*)$/);
+        let year = "Unknown";
+        let setName = "Unknown";
+        let childSet = "";
+        let cardNo = "Unknown";
+        let playerName = globalPlayer;
+        let tags = "";
+        let printRun = "";
+        if (cardMatch) {
+          year = cardMatch[1];
+          const setDetails = cardMatch[2];
+          cardNo = cardMatch[3];
+          const setInfo = parseSetAndChildSet(setDetails);
+          setName = setInfo.setName;
+          childSet = setInfo.childSet;
+          const parsedSubject = parseSubjectCell(cardMatch[4].trim());
+          playerName = parsedSubject.subject || globalPlayer;
+          tags = parsedSubject.tags;
+          printRun = parsedSubject.printRun;
+        } else {
+          setName = cardText;
+          const parsedSubject = parseSubjectCell(globalPlayer);
+          playerName = parsedSubject.subject || globalPlayer;
+          tags = parsedSubject.tags;
+          printRun = parsedSubject.printRun;
+        }
+        dataRows.push([globalSport, year, setName, childSet, cardNo, playerName, tags, printRun, qty]);
+      }
+    });
+    const filename = `${compactSegment(globalPlayer)}_${compactSegment(listType)}.csv`;
+    Log(`[CLIENT] Extracted ${dataRows.length} data rows for CollectionBrowseP player export: ${filename}`, "debug", "client");
+    return {
+      type: "player",
+      globalPlayer,
+      globalSport,
+      listType,
+      rows: dataRows,
+      filename
+    };
+  }
+  function parseCollectionBrowseTeam(root) {
+    let globalTeam = "Unknown";
+    const globalSport = detectPageSport(root);
+    const listType = normalizeListType(root);
+    const docTitle = root.title || "";
+    try {
+      const titleData = docTitle.split("|")[0].replace("Trading Card Database", "").trim();
+      const titleMatch = titleData.match(/^Collection\s+-\s+.*?\s+-\s+(.*)$/);
+      if (titleMatch) {
+        globalTeam = titleMatch[1].trim();
+      }
+    } catch (e) {
+      Log(`Title parsing failed for CollectionBrowseT: ${e.message}`, "error");
+    }
+    Log(
+      `[CLIENT] Parsed CollectionBrowseT team context: Team='${globalTeam}', Sport='${globalSport}', ListType='${listType}'`,
+      "debug",
+      "client"
+    );
+    const playerResult = parseCollectionBrowsePlayer(root);
+    const filename = `${compactSegment(globalTeam)}_${compactSegment(listType)}.csv`;
+    Log(`[CLIENT] Extracted ${playerResult.rows.length} data rows for CollectionBrowseT team export: ${filename}`, "debug", "client");
+    return {
+      type: "team",
+      globalTeam,
+      globalSport,
+      listType,
+      rows: playerResult.rows,
+      filename
+    };
+  }
+  function parseCollectionBrowseDocument(root = document) {
+    let isTeamBrowse = false;
+    let isPlayerBrowse = false;
+    let href = "";
+    if (root.defaultView && root.defaultView.location) {
+      href = root.defaultView.location.href || "";
+    } else if (typeof window !== "undefined" && window.location) {
+      href = window.location.href || "";
+    }
+    if (root.childNodes) {
+      Array.from(root.childNodes).forEach((node) => {
+        if (node.nodeType === 8) {
+          href += ` ${node.nodeValue || ""}`;
+        }
+      });
+    }
+    const hrefLower = href.toLowerCase();
+    if (hrefLower.includes("collectionbrowset.cfm")) {
+      isTeamBrowse = true;
+    } else if (hrefLower.includes("collectionbrowsep.cfm")) {
+      isPlayerBrowse = true;
+    } else {
+      const docTitle = root.title || "";
+      const titleData = docTitle.split("|")[0].trim();
+      if (/^Collection\s+-\s+.*?\s+-\s+[^\d]/i.test(titleData)) {
+        isPlayerBrowse = true;
+      }
+    }
+    const result = isTeamBrowse ? parseCollectionBrowseTeam(root) : isPlayerBrowse ? parseCollectionBrowsePlayer(root) : parseCollectionBrowseSet(root);
+    return {
+      header: COLLECTION_BROWSE_HEADER,
+      rows: [COLLECTION_BROWSE_HEADER, ...result.rows],
+      filename: result.filename,
+      type: result.type,
+      meta: result
+    };
+  }
+
+  // src/data/printCollectionParser.js
+  var PRINT_COLLECTION_HEADER = [
+    "Sport",
+    "Year",
+    "Set Name",
+    "Child Set",
+    "Card No",
+    "Player Name",
+    "Tags",
+    "Print Run",
+    "Qty"
+  ];
+  function checkIncludePrice(doc = document) {
+    let search = "";
+    if (doc.defaultView && doc.defaultView.location) {
+      search = doc.defaultView.location.search || "";
+    } else if (typeof window !== "undefined" && window.location) {
+      search = window.location.search || "";
+    }
+    const partLink = doc.querySelector?.('a[href*="PrintYourCollectionPDF"], a[href*="PrintCenter.cfm"], a[href*="prices="]');
+    if (partLink && partLink.href) {
+      search += (search ? "&" : "?") + (partLink.href.split("?")[1] || "");
+    }
+    const params = new URLSearchParams(search);
+    return params.get("prices") === "Y" || params.get("prices") === "y";
+  }
+  function getSportFromDoc(doc = document) {
+    let search = "";
+    if (doc.defaultView && doc.defaultView.location) {
+      search = doc.defaultView.location.search || "";
+    } else if (typeof window !== "undefined" && window.location) {
+      search = window.location.search || "";
+    }
+    const partLink = doc.querySelector?.('a[href*="PrintYourCollectionPDF"], a[href*="PrintCenter.cfm"], a[href*="Type="]');
+    if (partLink && partLink.href) {
+      search += (search ? "&" : "?") + (partLink.href.split("?")[1] || "");
+    }
+    const params = new URLSearchParams(search);
+    const type = params.get("Type");
+    if (type) return type;
+    const headerTitle = doc.querySelector?.(".yourcol-title h4");
+    if (headerTitle) {
+      const text = headerTitle.textContent.trim();
+      const parts = text.split("-");
+      if (parts.length > 1) {
+        return parts[parts.length - 1].trim();
+      }
+    }
+    return "Unknown";
+  }
+  function buildPrintCollectionUrlFromDoc(doc = document, part = 1) {
+    const currentUrl = typeof window !== "undefined" && window.location ? window.location.href : "";
+    const searchParams = new URLSearchParams(typeof window !== "undefined" && window.location ? window.location.search : "");
+    const existingLink = doc.querySelector?.('a[href*="PrintYourCollectionPDF"], a[href*="PrintCenter.cfm"], a[href*="Part="]');
+    let linkParams = new URLSearchParams();
+    if (existingLink && existingLink.href) {
+      try {
+        const q = existingLink.href.split("?")[1];
+        if (q) linkParams = new URLSearchParams(q);
+      } catch {
+      }
+    }
+    const memberMatch = currentUrl.match(/\/member\/([^/?]+)/i);
+    const member = memberMatch ? memberMatch[1] : linkParams.get("Member") || searchParams.get("Member") || "";
+    const collectionMatch = currentUrl.match(/\/collection\/(\d+)/i);
+    const collectionId = collectionMatch ? collectionMatch[1] : linkParams.get("CollectionID") || searchParams.get("CollectionID") || "";
+    let sport = searchParams.get("Type") || linkParams.get("Type") || "";
+    if (!sport && doc.querySelector) {
+      const strongEl = doc.querySelector("#content div.col-md-8 p strong, .block1 p strong, p strong");
+      if (strongEl) {
+        sport = strongEl.textContent.trim();
+      }
+    }
+    if (!sport) sport = "Baseball";
+    let filter = searchParams.get("Filter") || linkParams.get("Filter") || "";
+    if (!filter && doc.querySelector) {
+      const h3El = doc.querySelector("#content div.col-md-8 h3, .block1 h3, h3");
+      const h3Text = h3El ? h3El.textContent.trim().toLowerCase() : "";
+      if (h3Text.includes("wantlist")) {
+        filter = "W";
+      } else if (h3Text.includes("for sale") || h3Text.includes("trade")) {
+        filter = "FS";
+      } else {
+        filter = "S";
+      }
+    }
+    if (!filter) filter = "S";
+    const prices = searchParams.get("prices") === "Y" || linkParams.get("prices") === "Y" ? "Y" : "N";
+    return `PrintYourCollectionPDF.cfm?Type=${encodeURIComponent(sport)}&CollectionID=${encodeURIComponent(collectionId)}&Part=${part}&columns=2&fontsize=1&prices=${prices}&SetID=&Member=${encodeURIComponent(member)}&Filter=${encodeURIComponent(filter)}&sTeamID=`;
+  }
+  function parsePrintItem(item, options = {}) {
+    const sport = options.sport || "Unknown";
+    const includePrice = !!options.includePrice;
+    const textSpan = item.querySelector(".yourcol-text");
+    if (!textSpan) return null;
+    let qty = 1;
+    const qtySpan = item.querySelector(".yourcol-qty");
+    if (qtySpan) {
+      const qtyMatch = qtySpan.textContent.match(/\d+/);
+      if (qtyMatch) {
+        qty = parseInt(qtyMatch[0], 10);
+      }
+    }
+    let entry = textSpan.textContent.replace(/\s+/g, " ").trim();
+    let price = "";
+    if (includePrice) {
+      const dollarParts = entry.split("$");
+      if (dollarParts.length > 1) {
+        let lastPart = dollarParts.pop().trim();
+        lastPart = lastPart.replace(/\$/g, "").trim();
+        if (lastPart.length > 0) {
+          const num = parseFloat(lastPart.replace(/,/g, ""));
+          if (!isNaN(num)) {
+            price = num.toFixed(2);
+          } else {
+            price = lastPart;
+          }
+        }
+        entry = dollarParts.join("$").trim();
+      }
+    }
+    entry = entry.replace(/(?:\s*\$)+$/, "").trim();
+    if (!entry) return null;
+    let year = "";
+    const yearMatch = entry.match(/^(\d{4})\s+/);
+    if (yearMatch) {
+      year = yearMatch[1];
+      entry = entry.substring(yearMatch[0].length).trim();
+    }
+    const childSet = "";
+    const tokens = entry.split(" ");
+    let cardIdx = -1;
+    for (let i = tokens.length - 2; i >= 0; i--) {
+      const part = tokens[i];
+      if (/\d/.test(part) || /^[A-Z0-9-]+$/.test(part) && (part.length >= 3 || /-/.test(part))) {
+        cardIdx = i;
+        break;
+      }
+    }
+    let setName = "";
+    let cardNo = "";
+    let remainingSubject = "";
+    if (cardIdx !== -1) {
+      setName = tokens.slice(0, cardIdx).join(" ");
+      cardNo = tokens[cardIdx];
+      remainingSubject = tokens.slice(cardIdx + 1).join(" ");
+    } else {
+      setName = entry;
+    }
+    const subTokens = remainingSubject.split(" ");
+    const playerParts = [];
+    const tagParts = [];
+    let printRun = "";
+    let foundNonTag = false;
+    for (let i = subTokens.length - 1; i >= 0; i--) {
+      const token = subTokens[i].trim();
+      if (!token) continue;
+      const cleanToken = token.replace(/,/g, "").trim();
+      if (!foundNonTag && PRINT_RUN.test(cleanToken)) {
+        printRun = cleanToken.replace(/^SN/i, "");
+      } else if (!foundNonTag && NAME_SUFFIX.test(cleanToken)) {
+        foundNonTag = true;
+        playerParts.unshift(token);
+      } else if (!foundNonTag && isTagToken(cleanToken)) {
+        tagParts.unshift(cleanToken);
+      } else {
+        foundNonTag = true;
+        playerParts.unshift(token);
+      }
+    }
+    const playerName = playerParts.join(" ").replace(/,\s*$/, "").trim();
+    const tags = tagParts.join(", ");
+    const row = [
+      sport,
+      year,
+      setName,
+      childSet,
+      cardNo,
+      playerName,
+      tags,
+      printRun,
+      qty
+    ];
+    if (includePrice) {
+      row.push(price);
+    }
+    return { row, qty };
+  }
+  function parsePrintCollectionDocument(doc = document, options = {}) {
+    const includePrice = options.includePrice !== void 0 ? options.includePrice : checkIncludePrice(doc);
+    const sport = options.sport || getSportFromDoc(doc);
+    const items = Array.from(doc.querySelectorAll(".yourcol-item"));
+    const header = [...PRINT_COLLECTION_HEADER];
+    if (includePrice) {
+      header.push("Price");
+    }
+    const rows = options.includeHeader !== false ? [header] : [];
+    let count = 0;
+    let quantity = 0;
+    let skipped = 0;
+    items.forEach((item) => {
+      try {
+        const parsed = parsePrintItem(item, { sport, includePrice });
+        if (parsed) {
+          rows.push(parsed.row);
+          count++;
+          quantity += parsed.qty;
+        } else {
+          skipped++;
+        }
+      } catch {
+        skipped++;
+      }
+    });
+    return { rows, count, quantity, skipped, header };
+  }
+
+  // src/net/printCollectionExport.js
+  var assessmentCache = null;
+  var CurrentPrintRun = {
+    /** @type {AbortController|null} */
+    controller: null
+  };
+  async function assessPrintCollectionPageCount(doc = document, callbacks = {}) {
+    const remainingMin = cooldownRemainingMinutes();
+    if (remainingMin > 0) {
+      setStatus("Export blocked (cooldown)");
+      showToast({
+        message: `Assessment paused — an anti-scraping block was detected recently. Try again in ~${remainingMin} min.`,
+        variant: "error"
+      });
+      return null;
+    }
+    const includePrice = checkIncludePrice(doc);
+    const sport = getSportFromDoc(doc);
+    const initialUrlStr = buildPrintCollectionUrlFromDoc(doc, 1);
+    const baseUrl = new URL(initialUrlStr, typeof window !== "undefined" && window.location ? window.location.href : "https://www.tcdb.com");
+    let part = 1;
+    let hasData = true;
+    const maxParts = EXPORT_CONFIG.maxPages || 20;
+    const aggregatedRows = [];
+    let totalCards = 0;
+    let totalQuantity = 0;
+    setStatus("Calculating page count...");
+    Log("[CLIENT] Starting Print Collection page count assessment...", "info", "client");
+    while (hasData) {
+      if (part > maxParts) {
+        Log(`[CLIENT] Assessment safeguard: hit max limit of ${maxParts} parts.`, "warn", "client");
+        break;
+      }
+      if (part > 1) {
+        callbacks.onProgress?.(`Waiting anti-scraping delay...`);
+        await jitteredDelay();
+      }
+      baseUrl.searchParams.set("Part", part);
+      const fetchUrl = baseUrl.pathname + baseUrl.search;
+      const fullFetchUrl = Utils.toFullUrl(fetchUrl);
+      callbacks.onProgress?.(`Probing Part ${part}...`);
+      setStatus(`Assessing Part ${part}...`);
+      Log(`Assessment fetching Part ${part}: ${Utils.formatLogUrl(fullFetchUrl)}`, "info", "server");
+      try {
+        let pageDoc = doc;
+        if (part > 1 || !doc.querySelector(".yourcol-item")) {
+          const response = await fetchPageWithRetry(fetchUrl, part, { onStatus: setStatus });
+          const html = await response.text();
+          const blockMarker = detectBlock(html);
+          if (blockMarker) {
+            throw new BlockedError(`Challenge page received instead of content (matched '${blockMarker}').`);
+          }
+          pageDoc = new DOMParser().parseFromString(html, "text/html");
+        }
+        const parsed = parsePrintCollectionDocument(pageDoc, {
+          includeHeader: part === 1,
+          includePrice,
+          sport
+        });
+        if (parsed.count === 0) {
+          Log(`[CLIENT] Page Part ${part} contains 0 items. Stopping assessment.`, "info", "client");
+          hasData = false;
+        } else {
+          const dataRows = part === 1 ? parsed.rows : parsed.rows;
+          aggregatedRows.push(...dataRows);
+          totalCards += parsed.count;
+          totalQuantity += parsed.quantity;
+          part++;
+        }
+      } catch (err) {
+        Log(`[CLIENT] Assessment halted at Part ${part}: ${err.message}`, "error", "client");
+        if (part === 1) throw err;
+        break;
+      }
+    }
+    const totalPages = part - 1;
+    assessmentCache = {
+      totalPages,
+      totalCards,
+      totalQuantity,
+      rows: aggregatedRows,
+      includePrice,
+      sport
+    };
+    Log(
+      `[CLIENT] Page count assessment complete: ${totalPages} page(s), ${totalCards.toLocaleString()} card(s), ${totalQuantity.toLocaleString()} total qty.`,
+      "info",
+      "client"
+    );
+    setStatus(`Calculated ${totalPages} Page(s) (${totalCards.toLocaleString()} Cards)`);
+    return assessmentCache;
+  }
+  function exportPrintCollectionCSV(doc = document) {
+    const sport = getSportFromDoc(doc);
+    const label = `Print Collection (${sport})`;
+    Log(`[CLIENT] Enqueuing Print Collection CSV Export for ${label}`, "info", "client");
+    ExportQueue.enqueue(label, () => runExportPrintCollectionCSV(doc));
+  }
+  async function runExportPrintCollectionCSV(doc = document) {
+    const remainingMin = cooldownRemainingMinutes();
+    if (remainingMin > 0) {
+      setStatus("Export blocked (cooldown)");
+      showToast({
+        message: `Export paused — anti-scraping cooldown active (~${remainingMin} min left).`,
+        variant: "error"
+      });
+      return;
+    }
+    const controller = new AbortController();
+    CurrentPrintRun.controller = controller;
+    const progress = showProgressToast({
+      title: "Exporting Print Collection",
+      onCancel: () => {
+        controller.abort();
+        Log("[CLIENT] Print Collection Export cancelled by user.", "info", "client");
+      }
+    });
+    try {
+      let data = assessmentCache;
+      if (!data || !data.rows || data.rows.length === 0) {
+        progress.update("Calculating page count...");
+        data = await assessPrintCollectionPageCount(doc, {
+          onProgress: (msg) => progress.update(msg)
+        });
+      }
+      if (!data || !data.rows || data.rows.length === 0) {
+        throw new Error("No printable card data found across pages.");
+      }
+      progress.update(`Compiling ${data.totalCards.toLocaleString()} cards...`);
+      const filename = buildPrintCollectionFilename({
+        includePrice: data.includePrice
+      });
+      const csvContent = CSV.toCSV(data.rows);
+      CSV.download(csvContent, filename);
+      setStatus("Export Complete");
+      progress.finish(`Exported ${data.totalCards.toLocaleString()} cards (${data.totalQuantity.toLocaleString()} total qty) to ${filename}`, "success");
+      Log(`[CLIENT] Exported Print Collection CSV successfully: ${filename}`, "info", "client");
+    } catch (error) {
+      if (error instanceof BlockedError) {
+        progress.finish("Stopped — anti-scraping challenge page received.", "error");
+        setStatus("Export blocked");
+      } else if (error instanceof AbortedError || controller.signal.aborted) {
+        progress.finish("Cancelled.", "muted");
+        setStatus("Export cancelled");
+      } else {
+        progress.finish(`Export failed: ${error.message}`, "error");
+        setStatus("Export Failed");
+        Log(`[CLIENT] Print Collection CSV Export failed: ${error.message}`, "error", "client");
+      }
+    } finally {
+      CurrentPrintRun.controller = null;
+    }
+  }
+
   // src/modules/csvExportEngine.js
   var PRINT_ITEM_SELECTOR = ".yourcol-item";
   function collectRows(root = document) {
-    const tableRows = Array.from(root.querySelectorAll("table tr")).map(
-      (row) => Array.from(row.querySelectorAll("td, th")).map((c) => c.textContent.trim())
-    ).filter((cells) => cells.length > 0);
-    if (tableRows.length > 0) return tableRows;
-    const items = Array.from(root.querySelectorAll(PRINT_ITEM_SELECTOR)).map((item) => [item.textContent.replace(/\s+/g, " ").trim()]).filter(([text]) => text.length > 0);
-    return items.length > 0 ? [["Item"], ...items] : [];
+    let href = "";
+    if (root.defaultView && root.defaultView.location) {
+      href = root.defaultView.location.href || "";
+    } else if (typeof window !== "undefined" && window.location) {
+      href = window.location.href || "";
+    }
+    const docTitle = root.title || "";
+    const titleData = docTitle.split("|")[0].trim();
+    const isCollBrowse = href.toLowerCase().includes("collectionbrowse.cfm") || href.toLowerCase().includes("collectionbrowsep.cfm") || /^Collection\s+-\s+/i.test(titleData);
+    if (isCollBrowse) {
+      const parsed = parseCollectionBrowseDocument(root);
+      return parsed.rows;
+    }
+    const collectionRows = Array.from(root.querySelectorAll("tr.collection_row"));
+    if (collectionRows.length > 0) {
+      const rows = [["Qty", "Status", "Card Description", "Notes"]];
+      collectionRows.forEach((tr) => {
+        let qty = "1";
+        const badge = tr.querySelector(".badge, span.badge");
+        if (badge) {
+          const text = badge.textContent.trim();
+          if (text) qty = text;
+        }
+        let status = "";
+        const statusIcon = tr.querySelector("i[title], img[title]");
+        if (statusIcon) {
+          status = statusIcon.getAttribute("title") || "";
+        }
+        let cardText = "";
+        const cardLink = tr.querySelector('a[href*="ViewCard.cfm"], a[href*="CollectionEdit.cfm"]');
+        if (cardLink) {
+          cardText = cardLink.textContent.trim();
+        }
+        const cells = Array.from(tr.children);
+        const notes = [];
+        cells.forEach((td, idx) => {
+          if (td.querySelector(".dropdown-menu, .btn-group, button")) return;
+          if (idx === 0) return;
+          const text = td.textContent.replace(/\s+/g, " ").trim();
+          if (text && text !== cardText && !text.includes(cardText)) {
+            notes.push(text);
+          }
+        });
+        rows.push([qty, status, cardText, notes.join(" ")]);
+      });
+      return rows;
+    }
+    const rawTables = Array.from(
+      root.querySelectorAll("#main-content-area table tr, #content table tr, table tr")
+    ).filter((tr) => {
+      if (tr.closest("#sctk-toolbar") || tr.closest("#topnav") || tr.closest("#cse-search-box") || tr.closest(".col-md-3") || tr.closest(".col-md-4") || tr.closest("#offcanvas") || tr.closest(".sidebar") || tr.closest(".dropdown-menu")) {
+        return false;
+      }
+      return tr.querySelector('a[href*="ViewCard.cfm"], a[href*="CollectionEdit.cfm"], a[href*="Checklist.cfm"]') !== null;
+    });
+    if (rawTables.length > 0) {
+      const tableRows = rawTables.map((tr) => {
+        const cloned = tr.cloneNode(true);
+        cloned.querySelectorAll(".dropdown-menu, .btn-group, button, select, form, script, style").forEach((el) => el.remove());
+        const cells = Array.from(cloned.querySelectorAll("td, th")).map((c) => c.textContent.replace(/\s+/g, " ").trim()).filter((text) => text.length > 0);
+        return cells;
+      }).filter((cells) => cells.length > 0);
+      if (tableRows.length > 0) return tableRows;
+    }
+    if (root.querySelector(PRINT_ITEM_SELECTOR)) {
+      const parsed = parsePrintCollectionDocument(root);
+      return parsed.rows;
+    }
+    return [];
   }
   function generateCSV(type) {
     setStatus(`Exporting ${type}...`);
+    Log(`[CLIENT] Exporting ${type} CSV...`, "info", "client");
+    if (Routes.isCollectionBrowse() || Routes.isCollectionBrowseP() || Routes.isCollectionBrowseT()) {
+      const parsed = parseCollectionBrowseDocument();
+      if (parsed.rows.length <= 1) {
+        setStatus("Nothing to export");
+        showToast({ message: "Nothing to export — no rows found on this page.", variant: "error" });
+        Log(`[CLIENT] Export aborted: no rows found for ${type}.`, "warn", "client");
+        return;
+      }
+      CSV.download(CSV.toCSV(parsed.rows), parsed.filename);
+      setStatus("Export Complete");
+      showToast({ message: `Exported ${type} CSV successfully.` });
+      Log(`[CLIENT] Exported ${type} CSV successfully: ${parsed.filename} (${parsed.rows.length - 1} data rows).`, "info", "client");
+      return;
+    }
     const csvRows = collectRows();
     if (csvRows.length === 0) {
       setStatus("Nothing to export");
       showToast({ message: "Nothing to export — no rows found on this page.", variant: "error" });
-      Log(`Export aborted: no rows found for ${type}.`, "warn");
+      Log(`[CLIENT] Export aborted: no rows found for ${type}.`, "warn", "client");
       return;
     }
     let filename = `SCToolkit_${type}_Export_${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.csv`;
@@ -2965,36 +3897,200 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     CSV.download(CSV.toCSV(csvRows), filename);
     setStatus("Export Complete");
     showToast({ message: `Exported ${type} CSV successfully.` });
+    Log(`[CLIENT] Exported ${type} CSV successfully: ${filename} (${csvRows.length - 1} data rows).`, "info", "client");
   }
   function initCsvExportEngine() {
     recordContract("csvExportEngine", `${collectRows().length} exportable row(s)`, collectRows().length > 0);
-    if (Routes.isCollection()) {
+    if (Routes.isPrintPDF()) {
+      Toolbar.addAction("btn-calc-pages", "Calculate Page Count", async () => {
+        const btnCalc2 = document.querySelector("#btn-calc-pages");
+        if (btnCalc2) {
+          btnCalc2.disabled = true;
+          btnCalc2.textContent = "Calculating...";
+        }
+        const assessment = await assessPrintCollectionPageCount(document);
+        if (assessment && assessment.totalPages > 0) {
+          if (btnCalc2) btnCalc2.remove();
+          Toolbar.addAction("btn-csv-pdf-all", `Export All Parts (1 - ${assessment.totalPages})`, () => {
+            exportPrintCollectionCSV(document);
+          }, false);
+        } else if (btnCalc2) {
+          btnCalc2.disabled = false;
+          btnCalc2.textContent = "Calculate Page Count";
+        }
+      }, false);
+      const btnCalc = document.querySelector("#btn-calc-pages");
+      if (btnCalc) {
+        btnCalc.title = "Calculate total pages prior to exporting";
+      }
+    } else if (Routes.isCollection()) {
       Toolbar.addAction("btn-csv-coll", "Export Collection", () => generateCSV("Collection"), true);
     } else if (Routes.isPlayerCollection()) {
       Toolbar.addAction("btn-csv-player", "Export Player Collection", () => generateCSV("Player_Collection"), true);
-    } else if (Routes.isPrintPDF()) {
-      Toolbar.addAction("btn-csv-pdf", "Export Print View", () => generateCSV("Print_View"), true);
     }
   }
-  var EXPORT_BUTTON_IDS = ["btn-csv-coll", "btn-csv-player", "btn-csv-pdf"];
+  var EXPORT_BUTTON_IDS = ["btn-csv-coll", "btn-csv-player", "btn-calc-pages", "btn-csv-pdf-all"];
 
   // src/modules/paginationLoader.js
+  function normalizePaginationForms(root = document) {
+    if (typeof root.querySelectorAll !== "function") return;
+    const forms = root.querySelectorAll("form");
+    forms.forEach((form) => {
+      const hasPaginationInput = form.querySelector(
+        'input[name*="PageIndex" i], select[name*="Filter" i], input[name="Submit"][validate="submitonce" i]'
+      );
+      if (!hasPaginationInput) return;
+      form.removeAttribute("onsubmit");
+      form.onsubmit = null;
+      const rawAction = form.getAttribute("action") || "";
+      if (rawAction) {
+        try {
+          const baseOrigin = typeof window !== "undefined" ? window.location.href : "http://localhost";
+          const actionUrl = new URL(rawAction, baseOrigin);
+          actionUrl.searchParams.forEach((val, key) => {
+            const existing = form.querySelector(`[name="${key}"]`);
+            if (!existing && form.ownerDocument) {
+              const hidden = form.ownerDocument.createElement("input");
+              hidden.type = "hidden";
+              hidden.name = key;
+              hidden.value = val;
+              form.appendChild(hidden);
+            }
+          });
+          actionUrl.search = "";
+          form.setAttribute("action", actionUrl.toString());
+        } catch {
+        }
+      }
+      form.setAttribute("method", "get");
+      if (form.dataset?.sctkNormalized) return;
+      if (form.dataset) form.dataset.sctkNormalized = "true";
+      form.addEventListener("submit", (e) => {
+        try {
+          const actionAttr = form.getAttribute("action") || (typeof window !== "undefined" ? window.location.href : "");
+          if (!actionAttr) return;
+          const baseOrigin = typeof window !== "undefined" ? window.location.href : "http://localhost";
+          const targetUrl = new URL(actionAttr, baseOrigin);
+          const inputs = form.querySelectorAll("input[name], select[name], textarea[name]");
+          inputs.forEach((el) => {
+            if (el.disabled) return;
+            if ((el.type === "checkbox" || el.type === "radio") && !el.checked) return;
+            if (el.type === "submit" || el.type === "button") return;
+            const val = el.value;
+            if (val !== void 0 && val !== null) {
+              targetUrl.searchParams.set(el.name, String(val).trim());
+            }
+          });
+          e.preventDefault();
+          if (typeof window !== "undefined") {
+            window.location.href = targetUrl.toString();
+          }
+        } catch {
+        }
+      });
+    });
+  }
   function initPaginationLoader(root = document) {
     if (!Routes.hasPagination(root)) return Promise.resolve();
     setStatus("Loading Pagination...");
+    normalizePaginationForms(root);
     const delayMs = Config.global.paginationLoaderDelayMs || 1e3;
     const pollIntervalMs = 50;
     return new Promise((resolve) => {
-      if (root.querySelector(".pagination")) {
-        resolve();
-        return;
-      }
       const startTime = Date.now();
       const timer = setInterval(() => {
         const elapsed = Date.now() - startTime;
         if (root.querySelector(".pagination") || elapsed >= delayMs) {
           clearInterval(timer);
-          resolve();
+          const getMainTable = (context) => {
+            const tables = Array.from(context.querySelectorAll("table"));
+            if (!tables.length) return null;
+            return tables.reduce((largest, current) => current.rows.length > largest.rows.length ? current : largest);
+          };
+          const targetTable = getMainTable(root);
+          if (!targetTable) {
+            Log("[PaginationLoader] No target table found. Resolving immediately.", "debug", "client");
+            return resolve();
+          }
+          const targetBody = targetTable.querySelector("tbody") || targetTable;
+          let maxPage = 1;
+          const currentUrl = new URL(window.location.href);
+          const currentPageIndex = parseInt(currentUrl.searchParams.get("PageIndex") || currentUrl.searchParams.get("page")) || 1;
+          root.querySelectorAll('a[href*="PageIndex=" i], a[href*="page=" i]').forEach((link) => {
+            try {
+              const url = new URL(link.getAttribute("href"), window.location.href);
+              const page = parseInt(url.searchParams.get("PageIndex") || url.searchParams.get("page"));
+              if (page && page > maxPage) maxPage = page;
+            } catch (e) {
+            }
+          });
+          Log(`[PaginationLoader] Detected currentPage: ${currentPageIndex}, maxPage: ${maxPage}`, "info", "client");
+          if (maxPage <= currentPageIndex) {
+            Log("[PaginationLoader] No subsequent pages to load.", "info", "client");
+            return resolve();
+          }
+          const targetMaxPage = Math.min(maxPage, EXPORT_CONFIG.maxPages || 200);
+          if (targetMaxPage < maxPage) {
+            Log(
+              `[PaginationLoader] Discovered maxPage (${maxPage}) exceeds safety ceiling (${targetMaxPage}). Capping auto-fetch to ${targetMaxPage}.`,
+              "warn",
+              "client"
+            );
+          }
+          const urlsToFetch = [];
+          for (let i = currentPageIndex + 1; i <= targetMaxPage; i++) {
+            const nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.set("PageIndex", i);
+            urlsToFetch.push({ pageIndex: i, href: nextUrl.href });
+          }
+          root.querySelectorAll('ul.pagination, .pagination, [class*="pagination"]').forEach((el) => el.remove());
+          root.querySelectorAll("form").forEach((form) => {
+            if (form.querySelector('input[name*="PageIndex" i]')) form.remove();
+          });
+          const throttleThreshold = Config.global.paginationThrottleStartPage ?? 6;
+          (async () => {
+            for (let i = 0; i < urlsToFetch.length; i++) {
+              const item = urlsToFetch[i];
+              const pageNum = item.pageIndex;
+              const nextUrl = item.href;
+              const shortUrl = Utils.formatLogUrl(nextUrl);
+              const throttleThreshold2 = Math.max(1, Config.global.paginationThrottleStartPage || 6);
+              const shouldThrottle = pageNum >= throttleThreshold2;
+              if (shouldThrottle) {
+                const pacedMs = Math.round(EXPORT_CONFIG.baseDelayMs + (Pacing.penaltyMs || 0) + Math.random() * EXPORT_CONFIG.jitterMaxMs);
+                Log(`[PaginationLoader] Page ${pageNum}/${targetMaxPage} reached threshold (${throttleThreshold2}+). Applying pacing delay (~${pacedMs}ms)...`, "debug", "client");
+                await jitteredDelay();
+              }
+              Log(`HTTP GET Request -> ${shortUrl}`, "info", "server");
+              setStatus(`Loading Page ${pageNum} of ${targetMaxPage}...`);
+              try {
+                const response = await fetchPageWithRetry(nextUrl, pageNum, { onStatus: setStatus });
+                const html = await response.text();
+                Log(`HTTP ${response.status} response received for ${shortUrl} (${Math.round(html.length / 1024)} KB)`, "debug", "client");
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, "text/html");
+                const incomingTable = getMainTable(doc);
+                if (incomingTable) {
+                  const incomingRows = incomingTable.querySelectorAll("tr");
+                  let rowsAdded = 0;
+                  incomingRows.forEach((row) => {
+                    const rowText = row.textContent.trim();
+                    if (!row.querySelector("th") && !row.querySelector(".pagination") && rowText.length > 0 && rowText !== "Quantity") {
+                      targetBody.appendChild(row.cloneNode(true));
+                      rowsAdded++;
+                    }
+                  });
+                  Log(`[PaginationLoader] Appended ${rowsAdded} rows from page ${pageNum}/${targetMaxPage}`, "info", "client");
+                } else {
+                  Log(`[PaginationLoader] No main table found on page ${pageNum}/${targetMaxPage}`, "warn", "client");
+                }
+              } catch (err) {
+                Log(`Network error fetching page ${pageNum} (${shortUrl}): ${err.message}`, "error", "server");
+              }
+            }
+            Log("[PaginationLoader] All pages loaded successfully.", "info", "client");
+            resolve();
+          })();
         }
       }, pollIntervalMs);
     });
@@ -3472,8 +4568,11 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   }
 
   // src/core/version.js
-  var APP_VERSION = "3.1.0";
+  var APP_VERSION = "0.1.0-beta";
   function getAppVersion() {
+    if (typeof GM_info !== "undefined" && GM_info?.script?.version) {
+      return GM_info.script.version;
+    }
     return APP_VERSION;
   }
 
@@ -3607,9 +4706,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       }
       const overlay = document.createElement("div");
       overlay.id = SettingsUI.overlayId;
-      overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) SettingsUI.close();
-      });
       const panel = document.createElement("div");
       panel.id = "tk-settings-panel";
       panel.setAttribute("role", "dialog");
@@ -3691,19 +4787,35 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       routesTab.type = "button";
       routesTab.className = "tk-settings-tab";
       routesTab.textContent = "Modules & Routes";
+      const regexTab = document.createElement("button");
+      regexTab.type = "button";
+      regexTab.className = "tk-settings-tab";
+      regexTab.textContent = "RegEx Tester";
+      const routeTesterTab = document.createElement("button");
+      routeTesterTab.type = "button";
+      routeTesterTab.className = "tk-settings-tab";
+      routeTesterTab.textContent = "Route Tester";
       const diagTab = document.createElement("button");
       diagTab.type = "button";
       diagTab.className = "tk-settings-tab";
       diagTab.textContent = "Diagnostics";
-      tabBar.append(globalTab, routesTab, diagTab);
+      tabBar.append(globalTab, routesTab, regexTab, routeTesterTab, diagTab);
       const content = document.createElement("div");
       content.id = "tk-settings-tab-content";
       const panes = {
         global: SettingsUI._buildGlobalPane(),
         routes: SettingsUI._buildModulesPane(),
+        regex: SettingsUI._buildRegexPane(),
+        routetester: SettingsUI._buildRouteTesterPane(),
         diagnostics: SettingsUI._buildDiagnosticsPane()
       };
-      const tabs = { global: globalTab, routes: routesTab, diagnostics: diagTab };
+      const tabs = {
+        global: globalTab,
+        routes: routesTab,
+        regex: regexTab,
+        routetester: routeTesterTab,
+        diagnostics: diagTab
+      };
       Object.values(panes).forEach((pane) => content.appendChild(pane));
       const activate = (name) => {
         Object.entries(tabs).forEach(([key, tab]) => tab.classList.toggle("active", key === name));
@@ -3896,14 +5008,125 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       wrap.appendChild(addBtn);
       return wrap;
     },
+    _buildCollapsibleSection: (title, contentElements, description = "", defaultExpanded = false) => {
+      const section = document.createElement("div");
+      section.className = "tk-settings-collapsible-section";
+      section.style.cssText = "margin-bottom:12px; border:1px solid var(--tk-border); border-radius:var(--tk-radius-md); overflow:hidden; background:var(--tk-bg-surface);";
+      const header = document.createElement("button");
+      header.type = "button";
+      header.className = "tk-settings-section-header";
+      header.style.cssText = "width:100%; display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--tk-bg-subtle); border:none; color:var(--tk-teal); font-weight:700; font-size:12px; letter-spacing:0.5px; text-transform:uppercase; cursor:pointer; text-align:left; user-select:none; transition:background 0.15s ease;";
+      const titleSpan = document.createElement("span");
+      titleSpan.textContent = title;
+      const toggleIconSpan = document.createElement("span");
+      toggleIconSpan.className = "tk-section-toggle-icon";
+      toggleIconSpan.style.cssText = "display:inline-flex; align-items:center; transition:transform 0.2s ease;";
+      toggleIconSpan.innerHTML = icon("chevronDown");
+      header.appendChild(titleSpan);
+      header.appendChild(toggleIconSpan);
+      const body = document.createElement("div");
+      body.className = "tk-settings-section-body";
+      body.style.cssText = "padding:12px 14px; border-top:1px solid var(--tk-border);";
+      if (description) {
+        const desc = document.createElement("div");
+        desc.className = "tk-settings-hint";
+        desc.style.marginBottom = "10px";
+        desc.textContent = description;
+        body.appendChild(desc);
+      }
+      if (Array.isArray(contentElements)) {
+        contentElements.forEach((el) => {
+          if (el) body.appendChild(el);
+        });
+      } else if (contentElements) {
+        body.appendChild(contentElements);
+      }
+      let isExpanded = defaultExpanded;
+      const updateState = () => {
+        body.style.display = isExpanded ? "block" : "none";
+        toggleIconSpan.style.transform = isExpanded ? "rotate(0deg)" : "rotate(-90deg)";
+        header.setAttribute("aria-expanded", String(isExpanded));
+      };
+      header.addEventListener("click", () => {
+        isExpanded = !isExpanded;
+        updateState();
+      });
+      section._setExpanded = (expanded) => {
+        isExpanded = expanded;
+        updateState();
+      };
+      section._isExpanded = () => isExpanded;
+      section._defaultExpanded = defaultExpanded;
+      updateState();
+      section.appendChild(header);
+      section.appendChild(body);
+      return section;
+    },
     _buildGlobalPane: () => {
       const pane = document.createElement("div");
       pane.id = "tk-settings-global";
-      const sectionTitle = document.createElement("div");
-      sectionTitle.className = "tk-settings-section-title";
-      sectionTitle.textContent = "Global Settings";
-      pane.appendChild(sectionTitle);
-      GLOBAL_FIELDS.forEach((field) => pane.appendChild(SettingsUI._buildRangeField(field)));
+      const searchWrap = document.createElement("div");
+      searchWrap.id = "tk-settings-search-wrap";
+      searchWrap.style.cssText = "margin-bottom:12px; display:flex; align-items:center; gap:8px;";
+      const searchInput = document.createElement("input");
+      searchInput.type = "text";
+      searchInput.id = "tk-settings-search-input";
+      searchInput.placeholder = "Search global settings (e.g. pacing, retry, delay, theme, cache)...";
+      searchInput.style.cssText = "flex:1; padding:6px 10px; border-radius:var(--tk-radius-sm); border:1px solid var(--tk-border-strong); background:var(--tk-bg-base); color:var(--tk-text); font-size:12px; outline:none;";
+      const clearSearchBtn = document.createElement("button");
+      clearSearchBtn.type = "button";
+      clearSearchBtn.style.cssText = "background:none; border:none; color:var(--tk-text-muted); cursor:pointer; padding:4px; display:none; align-items:center; justify-content:center;";
+      clearSearchBtn.innerHTML = icon("x");
+      clearSearchBtn.title = "Clear search filter";
+      searchWrap.append(searchInput, clearSearchBtn);
+      pane.appendChild(searchWrap);
+      const filterGlobalSettings = (query) => {
+        const q = query.trim().toLowerCase();
+        clearSearchBtn.style.display = q ? "inline-flex" : "none";
+        const globalSections = pane.querySelectorAll(".tk-settings-collapsible-section");
+        globalSections.forEach((section) => {
+          if (!q) {
+            section.style.display = "";
+            if (typeof section._setExpanded === "function") {
+              section._setExpanded(section._defaultExpanded ?? false);
+            }
+            const fields2 = section.querySelectorAll(".tk-settings-field");
+            fields2.forEach((f) => {
+              f.style.display = "";
+            });
+            return;
+          }
+          const sectionHeaderText = section.querySelector(".tk-settings-section-header")?.textContent?.toLowerCase() || "";
+          const fields = section.querySelectorAll(".tk-settings-field");
+          let matchedCount = 0;
+          fields.forEach((field) => {
+            const text = field.textContent.toLowerCase();
+            const matches = sectionHeaderText.includes(q) || text.includes(q);
+            field.style.display = matches ? "" : "none";
+            if (matches) matchedCount++;
+          });
+          if (sectionHeaderText.includes(q) || matchedCount > 0) {
+            section.style.display = "";
+            if (typeof section._setExpanded === "function") {
+              section._setExpanded(true);
+            }
+          } else {
+            section.style.display = "none";
+          }
+        });
+      };
+      searchInput.addEventListener("input", () => filterGlobalSettings(searchInput.value));
+      clearSearchBtn.addEventListener("click", () => {
+        searchInput.value = "";
+        filterGlobalSettings("");
+        searchInput.focus();
+      });
+      GLOBAL_SECTIONS.forEach((section) => {
+        const fields = section.fields.map((field) => SettingsUI._buildRangeField(field));
+        pane.appendChild(
+          SettingsUI._buildCollapsibleSection(section.title, fields, section.description, false)
+        );
+      });
       const themeField = document.createElement("div");
       themeField.className = "tk-settings-field";
       const themeLabel = document.createElement("label");
@@ -3924,7 +5147,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         SettingsUI._persist();
       });
       themeField.append(themeLabel, themeSelect);
-      pane.appendChild(themeField);
       const logField = document.createElement("div");
       logField.className = "tk-settings-field";
       const logLabel = document.createElement("label");
@@ -3946,7 +5168,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       });
       logField.appendChild(logLabel);
       logField.appendChild(logSelect);
-      pane.appendChild(logField);
       const tzField = document.createElement("div");
       tzField.className = "tk-settings-field";
       const tzLabel = document.createElement("label");
@@ -3974,7 +5195,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         SettingsUI._persist();
       });
       tzField.append(tzLabel, tzSelect);
-      pane.appendChild(tzField);
       const tsFormatField = document.createElement("div");
       tsFormatField.className = "tk-settings-field";
       const tsFormatLabel = document.createElement("label");
@@ -3995,14 +5215,14 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       tsFormatHint.className = "tk-settings-hint";
       tsFormatHint.textContent = "Tokens: YYYY, YY, MM, DD, HH, hh, mm, ss, SSS, A, TZ (e.g. HH:mm:ss.SSS TZ, YYYYmmDDHHMMSS, YYYY-MM-DD HH:mm:ss)";
       tsFormatField.append(tsFormatLabel, tsFormatInput, tsFormatHint);
-      pane.appendChild(tsFormatField);
-      const formatterSectionTitle = document.createElement("div");
-      formatterSectionTitle.className = "tk-settings-section-title";
-      formatterSectionTitle.textContent = "Card Name Formatter Settings";
-      formatterSectionTitle.style.marginTop = "14px";
-      formatterSectionTitle.style.paddingTop = "10px";
-      formatterSectionTitle.style.borderTop = "1px solid var(--tk-border)";
-      pane.appendChild(formatterSectionTitle);
+      pane.appendChild(
+        SettingsUI._buildCollapsibleSection(
+          "Appearance & Diagnostic Logging",
+          [themeField, logField, tzField, tsFormatField],
+          "Control visual dark/light themes and console logger formatting.",
+          false
+        )
+      );
       const templateField = document.createElement("div");
       templateField.className = "tk-settings-field";
       const templateLabel = document.createElement("label");
@@ -4021,7 +5241,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       templateHint.className = "tk-settings-hint";
       templateHint.textContent = "Tokens: {PlayerName}, {Year}, {SetName}, {Tags}, {PR}, {CardNo}";
       templateField.append(templateLabel, templateInput, templateHint);
-      pane.appendChild(templateField);
       const outputModeField = document.createElement("div");
       outputModeField.className = "tk-settings-field";
       const outputModeLabel = document.createElement("label");
@@ -4044,20 +5263,20 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         SettingsUI._persist();
       });
       outputModeField.append(outputModeLabel, outputModeSelect);
-      pane.appendChild(outputModeField);
-      const displaySectionTitle = document.createElement("div");
-      displaySectionTitle.className = "tk-settings-section-title";
-      displaySectionTitle.textContent = "Button Display Settings";
-      displaySectionTitle.style.marginTop = "14px";
-      displaySectionTitle.style.paddingTop = "10px";
-      displaySectionTitle.style.borderTop = "1px solid var(--tk-border)";
-      pane.appendChild(displaySectionTitle);
+      pane.appendChild(
+        SettingsUI._buildCollapsibleSection(
+          "Card Name Formatter Settings",
+          [templateField, outputModeField],
+          "Configure custom copy templates and floating popover output modes.",
+          false
+        )
+      );
       const DISPLAY_MODES = [
         { value: "both", label: "Icon & Text" },
         { value: "icon", label: "Icon Only" },
         { value: "text", label: "Text Only" }
       ];
-      const displayFields = [
+      const displayFieldsConfig = [
         {
           key: "toolbarButtonDisplay",
           label: "Toolbar Button Display",
@@ -4077,7 +5296,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           onUpdate: () => reinjectSetActions()
         }
       ];
-      displayFields.forEach(({ key, label: fieldLabelText, title: fieldTitleText, onUpdate }) => {
+      const displayNodes = displayFieldsConfig.map(({ key, label: fieldLabelText, title: fieldTitleText, onUpdate }) => {
         const field = document.createElement("div");
         field.className = "tk-settings-field";
         const fieldLabel = document.createElement("label");
@@ -4099,7 +5318,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         });
         field.appendChild(fieldLabel);
         field.appendChild(select);
-        pane.appendChild(field);
+        return field;
       });
       const posField = document.createElement("div");
       posField.className = "tk-settings-field";
@@ -4124,29 +5343,27 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         SettingsUI._persist();
       });
       posField.append(posLabel, posSelect);
-      pane.appendChild(posField);
+      pane.appendChild(
+        SettingsUI._buildCollapsibleSection(
+          "Button Display Settings",
+          [...displayNodes, posField],
+          "Choose whether buttons show icons, text, or both across toolbars and page set links.",
+          false
+        )
+      );
       pane.appendChild(SettingsUI._buildXmlPanel());
       const help = document.createElement("div");
       help.id = "tk-settings-help";
+      help.style.marginTop = "16px";
       help.innerHTML = `Module, action, route-pattern, and threshold changes apply on next page load. The log level change above applies immediately to this page’s console output.<br><br>Version: ${SettingsUI._version()}<br>Documentation and issue tracker: <a href="https://github.com/djntechnic/SCToolkit" target="_blank" rel="noopener noreferrer">github.com/djntechnic/SCToolkit</a>`;
       pane.appendChild(help);
       return pane;
     },
     _buildXmlPanel: () => {
-      const field = document.createElement("div");
-      field.className = "tk-settings-field";
-      field.style.marginTop = "14px";
-      field.style.paddingTop = "10px";
-      field.style.borderTop = "1px solid var(--tk-border)";
-      const label = document.createElement("label");
-      label.textContent = "XML Import / Export Settings";
-      const hint = document.createElement("div");
-      hint.className = "tk-settings-hint";
-      hint.textContent = "Backup all SCToolkit settings (globals, module states, sub-actions, route rules) to XML or restore from file.";
       const btnGroup = document.createElement("div");
       btnGroup.style.display = "flex";
       btnGroup.style.gap = "8px";
-      btnGroup.style.marginTop = "6px";
+      btnGroup.style.marginTop = "4px";
       const exportBtn = createBtn("tk-xml-export", "Export XML", () => {
         try {
           const xml = configToXml(Config);
@@ -4155,48 +5372,36 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           const a = document.createElement("a");
           a.href = url;
           a.download = `sctoolkit-settings-v${Config.schemaVersion || 3}.xml`;
-          document.body.appendChild(a);
           a.click();
-          a.remove();
           URL.revokeObjectURL(url);
-          showToast({ message: "Settings exported to XML file.", variant: "success" });
+          showToast({ variant: "success", message: "Settings exported to XML." });
         } catch (err) {
-          showToast({ message: `Export failed: ${err.message}`, variant: "error" });
+          showToast({ variant: "error", message: `XML export failed: ${err.message}` });
         }
       });
       const fileInput = document.createElement("input");
       fileInput.type = "file";
-      fileInput.accept = ".xml,text/xml";
+      fileInput.accept = ".xml,text/xml,application/xml";
       fileInput.style.display = "none";
-      fileInput.addEventListener("change", (e) => {
+      fileInput.addEventListener("change", async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new window.FileReader();
-        reader.onload = (evt) => {
-          try {
-            const xmlText = evt.target.result;
-            const imported = xmlToConfig(xmlText);
-            Config.schemaVersion = imported.schemaVersion;
-            Config.global = imported.global;
-            Config.modules = imported.modules;
-            syncExportConfig();
-            applyTheme();
-            SettingsStore.save(Config);
-            Log("Settings successfully imported from XML file.", "info");
-            showToast({ message: "Settings imported from XML! Reload page for full module updates.", variant: "success" });
-            const body = document.getElementById("tk-settings-body");
-            if (body) {
-              const activeTab = body.querySelector(".tk-settings-tab.active")?.textContent?.toLowerCase() || "global";
-              const newBody = SettingsUI._buildTabbedBody();
-              body.replaceWith(newBody);
-              const targetTabName = activeTab.includes("module") ? "routes" : activeTab.includes("diag") ? "diagnostics" : "global";
-              newBody.querySelector(`.tk-settings-tab:${targetTabName === "routes" ? "nth-child(2)" : targetTabName === "diagnostics" ? "nth-child(3)" : "first-child"}`)?.click();
-            }
-          } catch (err) {
-            showToast({ message: `Import failed: ${err.message}`, variant: "error" });
-          }
-        };
-        reader.readAsText(file);
+        try {
+          const xmlText = await file.text();
+          const imported = xmlToConfig(xmlText);
+          Config.schemaVersion = imported.schemaVersion;
+          Config.global = imported.global;
+          Config.modules = imported.modules;
+          syncExportConfig();
+          applyTheme();
+          SettingsStore.save(Config);
+          Log("Settings successfully imported from XML file.", "info");
+          showToast({ message: "Settings imported from XML! Reloading page...", variant: "success" });
+          setTimeout(() => window.location.reload(), 1e3);
+        } catch (err) {
+          showToast({ message: `Import failed: ${err.message}`, variant: "error" });
+        }
+        fileInput.value = "";
       });
       const importBtn = createBtn("tk-xml-import", "Import XML", () => {
         fileInput.value = "";
@@ -4205,10 +5410,12 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       btnGroup.appendChild(exportBtn);
       btnGroup.appendChild(importBtn);
       btnGroup.appendChild(fileInput);
-      field.appendChild(label);
-      field.appendChild(hint);
-      field.appendChild(btnGroup);
-      return field;
+      return SettingsUI._buildCollapsibleSection(
+        "XML Import / Export Settings",
+        [btnGroup],
+        "Backup all SCToolkit settings (globals, module states, sub-actions, route rules) to XML or restore from file.",
+        true
+      );
     },
     /**
      * What the script currently thinks about this page.
@@ -4389,134 +5596,599 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       }
       return field;
     },
+    _buildRegexPane: () => {
+      const pane = document.createElement("div");
+      pane.id = "tk-settings-regex-tester";
+      pane.className = "tk-tester-pane";
+      const title = document.createElement("div");
+      title.className = "tk-settings-section-title";
+      title.textContent = "RegEx Expression Builder & Tester";
+      pane.appendChild(title);
+      const desc = document.createElement("div");
+      desc.className = "tk-settings-hint";
+      desc.textContent = "Build, test, and evaluate regular expressions in real-time with pattern presets, flag toggles, visual match highlighting, and capture group details.";
+      pane.appendChild(desc);
+      const patternRow = document.createElement("div");
+      patternRow.className = "tk-tester-row";
+      const patternInputWrap = document.createElement("div");
+      patternInputWrap.className = "tk-tester-row-input";
+      const patternLabel = document.createElement("label");
+      patternLabel.style.display = "block";
+      patternLabel.style.fontSize = "10.5px";
+      patternLabel.style.fontWeight = "700";
+      patternLabel.style.marginBottom = "3px";
+      patternLabel.textContent = "RegEx Pattern";
+      const patternInput = document.createElement("input");
+      patternInput.type = "text";
+      patternInput.className = "tk-tester-input";
+      patternInput.placeholder = "e.g. /viewcollection.*\\.cfm or PageIndex=(\\d+)";
+      patternInput.value = "/viewcollectionmode\\.cfm";
+      patternInputWrap.append(patternLabel, patternInput);
+      patternRow.appendChild(patternInputWrap);
+      const flagsWrap = document.createElement("div");
+      flagsWrap.className = "tk-regex-flags";
+      const flagValues = { i: true, g: false, m: false, s: false, u: false };
+      ["i", "g", "m", "s", "u"].forEach((flag) => {
+        const label = document.createElement("label");
+        label.className = "tk-regex-flag-label";
+        label.title = `Flag ${flag}`;
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = flagValues[flag];
+        cb.addEventListener("change", () => {
+          flagValues[flag] = cb.checked;
+          updateRegex();
+        });
+        label.append(cb, document.createTextNode(flag));
+        flagsWrap.appendChild(label);
+      });
+      patternRow.appendChild(flagsWrap);
+      pane.appendChild(patternRow);
+      const presetsWrap = document.createElement("div");
+      presetsWrap.className = "tk-preset-chips";
+      const presets = [
+        { name: "Checklist", pattern: "/checklist\\.cfm" },
+        { name: "View Collection", pattern: "/viewcollectionmode\\.cfm" },
+        { name: "For Sale / Trade", pattern: "/viewcollectionforsaletrade\\.cfm" },
+        { name: "Wantlist", pattern: "/viewcollectionwantlist\\.cfm" },
+        { name: "Add Multiples", pattern: "/collectionaddmultiples" },
+        { name: "Inserts", pattern: "/inserts\\.cfm" },
+        { name: "ViewSet", pattern: "/viewset\\.cfm" },
+        { name: "SID Capture", pattern: "/sid/(\\d+)" }
+      ];
+      presets.forEach((p) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "tk-preset-chip";
+        chip.textContent = p.name;
+        chip.title = `Use pattern: ${p.pattern}`;
+        chip.addEventListener("click", () => {
+          patternInput.value = p.pattern;
+          updateRegex();
+        });
+        presetsWrap.appendChild(chip);
+      });
+      pane.appendChild(presetsWrap);
+      const subjectWrap = document.createElement("div");
+      subjectWrap.className = "tk-settings-field";
+      subjectWrap.style.marginBottom = "6px";
+      const subjectLabel = document.createElement("label");
+      subjectLabel.textContent = "Test Subject / URL";
+      const subjectInput = document.createElement("textarea");
+      subjectInput.className = "tk-tester-textarea";
+      subjectInput.placeholder = "Type or paste test string/URL here...";
+      subjectInput.value = "https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards&CollectionID=6";
+      subjectWrap.append(subjectLabel, subjectInput);
+      pane.appendChild(subjectWrap);
+      const statusBar = document.createElement("div");
+      statusBar.className = "tk-tester-status-bar";
+      const statusText = document.createElement("span");
+      statusText.textContent = "Status";
+      const statusBadge = document.createElement("span");
+      statusBadge.className = "tk-status-badge unmatched";
+      statusBadge.textContent = "NO MATCH";
+      statusBar.append(statusText, statusBadge);
+      pane.appendChild(statusBar);
+      const highlightTitle = document.createElement("div");
+      highlightTitle.className = "tk-route-editor-title";
+      highlightTitle.textContent = "Matched Output Highlight";
+      pane.appendChild(highlightTitle);
+      const highlightBox = document.createElement("div");
+      highlightBox.className = "tk-regex-highlight-box";
+      pane.appendChild(highlightBox);
+      const groupsTitle = document.createElement("div");
+      groupsTitle.className = "tk-route-editor-title";
+      groupsTitle.style.marginTop = "6px";
+      groupsTitle.textContent = "Capture Groups Breakdown";
+      pane.appendChild(groupsTitle);
+      const groupsContainer = document.createElement("div");
+      groupsContainer.style.overflowX = "auto";
+      pane.appendChild(groupsContainer);
+      function updateRegex() {
+        const patStr = patternInput.value.trim();
+        const subjectStr = subjectInput.value;
+        const flagsStr = Object.keys(flagValues).filter((f) => flagValues[f]).join("");
+        highlightBox.innerHTML = "";
+        groupsContainer.innerHTML = "";
+        if (!patStr) {
+          statusBadge.className = "tk-status-badge disabled";
+          statusBadge.textContent = "NO PATTERN";
+          highlightBox.textContent = subjectStr;
+          return;
+        }
+        let re;
+        try {
+          re = new RegExp(patStr, flagsStr);
+        } catch (err) {
+          statusBadge.className = "tk-status-badge error";
+          statusBadge.textContent = `SYNTAX ERROR: ${err.message}`;
+          highlightBox.textContent = subjectStr;
+          return;
+        }
+        const esc = (str) => String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        let matches = [];
+        if (re.global) {
+          let m;
+          while ((m = re.exec(subjectStr)) !== null) {
+            matches.push(m);
+            if (m.index === re.lastIndex) re.lastIndex++;
+          }
+        } else {
+          const m = re.exec(subjectStr);
+          if (m) matches.push(m);
+        }
+        if (matches.length === 0) {
+          statusBadge.className = "tk-status-badge unmatched";
+          statusBadge.textContent = "NO MATCH";
+          highlightBox.textContent = subjectStr;
+          return;
+        }
+        statusBadge.className = "tk-status-badge matched";
+        statusBadge.textContent = `MATCHED (${matches.length} match${matches.length > 1 ? "es" : ""})`;
+        let html = "";
+        let lastIndex = 0;
+        matches.forEach((m) => {
+          const start = m.index;
+          const end = start + m[0].length;
+          html += esc(subjectStr.slice(lastIndex, start));
+          html += `<mark class="tk-regex-match-hl">${esc(m[0])}</mark>`;
+          lastIndex = end;
+        });
+        html += esc(subjectStr.slice(lastIndex));
+        highlightBox.innerHTML = html;
+        const tbl = document.createElement("table");
+        tbl.className = "tk-regex-groups-table";
+        tbl.innerHTML = `
+        <thead>
+          <tr>
+            <th>Match #</th>
+            <th>Group</th>
+            <th>Value</th>
+            <th>Range</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      `;
+        const tbody = tbl.querySelector("tbody");
+        matches.forEach((m, mIdx) => {
+          m.forEach((val, gIdx) => {
+            const tr = document.createElement("tr");
+            const groupName = gIdx === 0 ? "0 (Full)" : `$${gIdx}`;
+            const start = gIdx === 0 ? m.index : "-";
+            const end = gIdx === 0 ? m.index + m[0].length : "-";
+            const rangeStr = start !== "-" ? `[${start}, ${end}]` : "-";
+            tr.innerHTML = `
+            <td>#${mIdx + 1}</td>
+            <td><strong>${groupName}</strong></td>
+            <td><code>${esc(val !== void 0 ? val : "")}</code></td>
+            <td>${rangeStr}</td>
+          `;
+            tbody.appendChild(tr);
+          });
+        });
+        groupsContainer.appendChild(tbl);
+      }
+      patternInput.addEventListener("input", updateRegex);
+      subjectInput.addEventListener("input", updateRegex);
+      updateRegex();
+      return pane;
+    },
+    _buildRouteTesterPane: () => {
+      const pane = document.createElement("div");
+      pane.id = "tk-settings-route-tester";
+      pane.className = "tk-tester-pane";
+      const title = document.createElement("div");
+      title.className = "tk-settings-section-title";
+      title.textContent = "URL Route Match Tester";
+      pane.appendChild(title);
+      const desc = document.createElement("div");
+      desc.className = "tk-settings-hint";
+      desc.textContent = "Test any page URL against all module route matching rules to evaluate which modules will run on that page.";
+      pane.appendChild(desc);
+      const urlWrap = document.createElement("div");
+      urlWrap.className = "tk-settings-field";
+      urlWrap.style.marginBottom = "6px";
+      const urlLabel = document.createElement("label");
+      urlLabel.textContent = "Target Page URL";
+      const urlRow = document.createElement("div");
+      urlRow.className = "tk-tester-row";
+      const urlInput = document.createElement("input");
+      urlInput.type = "text";
+      urlInput.className = "tk-tester-input tk-tester-row-input";
+      urlInput.placeholder = "https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards";
+      urlInput.value = typeof window !== "undefined" ? window.location.href : "https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards";
+      const useCurrentBtn = document.createElement("button");
+      useCurrentBtn.type = "button";
+      useCurrentBtn.className = "tk-route-add-btn";
+      useCurrentBtn.style.marginTop = "0";
+      useCurrentBtn.textContent = "Current Page";
+      useCurrentBtn.addEventListener("click", () => {
+        if (typeof window !== "undefined") {
+          urlInput.value = window.location.href;
+          updateRouteTester();
+        }
+      });
+      urlRow.append(urlInput, useCurrentBtn);
+      urlWrap.append(urlLabel, urlRow);
+      pane.appendChild(urlWrap);
+      const samplesWrap = document.createElement("div");
+      samplesWrap.className = "tk-preset-chips";
+      const samples = [
+        { name: "Checklist", url: "https://www.tcdb.com/Checklist.cfm/sid/11172" },
+        { name: "View Collection", url: "https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards&CollectionID=6" },
+        { name: "For Sale / Trade", url: "https://www.tcdb.com/ViewCollectionForSaleTrade.cfm?Member=djncards" },
+        { name: "Add Multiples", url: "https://www.tcdb.com/CollectionAddMultiplesText.cfm?SetID=11172" },
+        { name: "Inserts", url: "https://www.tcdb.com/Inserts.cfm/sid/11172" }
+      ];
+      samples.forEach((s) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "tk-preset-chip";
+        chip.textContent = s.name;
+        chip.addEventListener("click", () => {
+          urlInput.value = s.url;
+          updateRouteTester();
+        });
+        samplesWrap.appendChild(chip);
+      });
+      pane.appendChild(samplesWrap);
+      const cardsContainer = document.createElement("div");
+      cardsContainer.style.display = "flex";
+      cardsContainer.style.flexDirection = "column";
+      cardsContainer.style.gap = "8px";
+      cardsContainer.style.marginTop = "8px";
+      pane.appendChild(cardsContainer);
+      function updateRouteTester() {
+        const testUrl = urlInput.value.trim();
+        cardsContainer.innerHTML = "";
+        if (!testUrl) {
+          const empty = document.createElement("div");
+          empty.className = "tk-settings-hint";
+          empty.textContent = "Enter a URL above to evaluate module matching.";
+          cardsContainer.appendChild(empty);
+          return;
+        }
+        ModuleRegistry.forEach((mod) => {
+          const cfg = Config.modules[mod.id];
+          if (!cfg) return;
+          const card = document.createElement("div");
+          card.className = "tk-route-card";
+          const header = document.createElement("div");
+          header.className = "tk-route-card-header";
+          const titleEl = document.createElement("div");
+          titleEl.className = "tk-route-card-title";
+          titleEl.textContent = mod.name;
+          let isMatch = false;
+          let throwsError = false;
+          try {
+            isMatch = testUrlMatch(cfg.urlMatch, testUrl);
+          } catch {
+            throwsError = true;
+          }
+          const badge = document.createElement("span");
+          if (isMatch && !throwsError) {
+            badge.className = "tk-status-badge matched";
+            badge.textContent = "MATCH";
+          } else {
+            badge.className = "tk-status-badge unmatched";
+            badge.textContent = "NO MATCH";
+          }
+          header.append(titleEl, badge);
+          card.appendChild(header);
+          const rulesList = document.createElement("div");
+          rulesList.className = "tk-route-rules-list";
+          if (!cfg.urlMatch || cfg.urlMatch.length === 0) {
+            const rItem = document.createElement("div");
+            rItem.className = "tk-route-rule-item pass";
+            rItem.textContent = "✓ No route rules defined — matches all URLs by default";
+            rulesList.appendChild(rItem);
+          } else {
+            cfg.urlMatch.forEach((rule) => {
+              let ruleMatches = false;
+              try {
+                ruleMatches = new RegExp(rule.pattern, "i").test(testUrl);
+              } catch {
+                ruleMatches = false;
+              }
+              const rItem = document.createElement("div");
+              if (rule.exclude) {
+                rItem.className = ruleMatches ? "tk-route-rule-item fail" : "tk-route-rule-item";
+                rItem.textContent = ruleMatches ? `✗ Exclude match: "${rule.pattern}" (EXCLUDED)` : `— Exclude rule: "${rule.pattern}" (Passed)`;
+              } else {
+                rItem.className = ruleMatches ? "tk-route-rule-item pass" : "tk-route-rule-item";
+                rItem.textContent = ruleMatches ? `✓ Include match: "${rule.pattern}" (MATCHED)` : `— Include rule: "${rule.pattern}" (Not matched)`;
+              }
+              rulesList.appendChild(rItem);
+            });
+          }
+          card.appendChild(rulesList);
+          cardsContainer.appendChild(card);
+        });
+      }
+      urlInput.addEventListener("input", updateRouteTester);
+      updateRouteTester();
+      return pane;
+    },
     _version: () => getAppVersion()
   };
-  var GLOBAL_FIELDS = [
+  var GLOBAL_SECTIONS = [
     {
-      label: "Export Base Delay",
-      key: "exportBaseDelayMs",
-      min: 200,
-      max: 2e3,
-      step: 50,
-      unit: "ms",
-      hint: "Minimum wait between paginated checklist-fetch requests."
+      title: "Network Pacing & Rate Limits",
+      description: "Configure request spacing, random jitter, cross-tab serialization, and adaptive server strain thresholds.",
+      fields: [
+        {
+          label: "Export Base Delay",
+          key: "exportBaseDelayMs",
+          min: 500,
+          max: 5e3,
+          step: 50,
+          unit: "ms",
+          hint: "Minimum wait between paginated fetch requests. Configures fundamental request pacing."
+        },
+        {
+          label: "Export Jitter",
+          key: "exportJitterMaxMs",
+          min: 0,
+          max: 2e3,
+          step: 50,
+          unit: "ms",
+          hint: "Random amount added on top of base delay to randomize request cadence and avoid WAF fingerprinting."
+        },
+        {
+          label: "Pagination Throttle Start Page",
+          key: "paginationThrottleStartPage",
+          min: 1,
+          max: 50,
+          step: 1,
+          unit: " pages",
+          hint: "Page threshold at which request pacing and throttling delays activate during auto-pagination."
+        },
+        {
+          label: "Pacing Strain Penalty Step",
+          key: "pacingPenaltyStepMs",
+          min: 100,
+          max: 2e3,
+          step: 50,
+          unit: "ms",
+          hint: "Adaptive penalty step added to pacing delay whenever server strain (slow response or throttle) is detected."
+        },
+        {
+          label: "Pacing Strain Penalty Ceiling",
+          key: "pacingPenaltyCapMs",
+          min: 1e3,
+          max: 3e4,
+          step: 500,
+          unit: "ms",
+          hint: "Upper ceiling on accumulated server strain penalty."
+        },
+        {
+          label: "Pacing Slow Response Latency",
+          key: "pacingSlowResponseMs",
+          min: 1e3,
+          max: 1e4,
+          step: 250,
+          unit: "ms",
+          hint: "Response latency threshold above which a fetch is flagged as server strain."
+        },
+        {
+          label: "Pacing Latency Sample Window",
+          key: "pacingSampleWindow",
+          min: 3,
+          max: 50,
+          step: 1,
+          unit: " samples",
+          hint: "Number of recent response latency samples used to compute rolling median latency."
+        },
+        {
+          label: "Pacing Strain Relief Step",
+          key: "pacingReliefStepMs",
+          min: 10,
+          max: 500,
+          step: 10,
+          unit: "ms",
+          hint: "Amount subtracted from strain penalty per successful, unremarkable response."
+        },
+        {
+          label: "Cross-Tab Throttle Wait Slice",
+          key: "throttleMaxSliceMs",
+          min: 50,
+          max: 1e3,
+          step: 25,
+          unit: "ms",
+          hint: "Slice interval before re-evaluating cross-tab request slot locks."
+        }
+      ]
     },
     {
-      label: "Export Jitter",
-      key: "exportJitterMaxMs",
-      min: 0,
-      max: 2e3,
-      step: 50,
-      unit: "ms",
-      hint: "Random amount added on top of the base delay, so request timing isn’t a fixed, fingerprintable interval."
+      title: "Retry & Safety Safeguards",
+      description: "Manage retry backoffs, request timeouts, pagination limits, and anti-scraping cooldown protection.",
+      fields: [
+        {
+          label: "Max Retries Per Page",
+          key: "exportMaxRetries",
+          min: 0,
+          max: 8,
+          step: 1,
+          unit: "",
+          hint: "Retry attempts for a single page on HTTP 429/503 before the export fails."
+        },
+        {
+          label: "Retry Backoff — Base",
+          key: "exportBackoffBaseMs",
+          min: 250,
+          max: 5e3,
+          step: 250,
+          unit: "ms",
+          hint: "Starting wait before the first retry; doubles on each subsequent attempt up to the cap below."
+        },
+        {
+          label: "Retry Backoff — Cap",
+          key: "exportBackoffCapMs",
+          min: 2e3,
+          max: 6e4,
+          step: 1e3,
+          unit: "ms",
+          hint: "Upper limit on the doubling backoff delay, regardless of retry count."
+        },
+        {
+          label: "Pagination Safety Ceiling",
+          key: "exportMaxPages",
+          min: 20,
+          max: 500,
+          step: 10,
+          unit: " pages",
+          hint: "Hard stop on discovered page count — protects against runaway fetch loops on massive sets."
+        },
+        {
+          label: "Request Timeout",
+          key: "exportRequestTimeoutMs",
+          min: 5e3,
+          max: 12e4,
+          step: 5e3,
+          unit: "ms",
+          hint: "Abandon a single request that never answers. Without this a hung request stalls the whole queue indefinitely."
+        },
+        {
+          label: "Anti-Scraping Cooldown",
+          key: "exportBlockCooldownMinutes",
+          min: 0,
+          max: 30,
+          step: 1,
+          unit: " min",
+          hint: "After a detected block (captcha/verification page), refuse new exports for this long. 0 disables the cooldown."
+        }
+      ]
     },
     {
-      label: "Max Retries Per Page",
-      key: "exportMaxRetries",
-      min: 0,
-      max: 8,
-      step: 1,
-      unit: "",
-      hint: "Retry attempts for a single page on HTTP 429/503 before the export fails."
+      title: "Local Storage & Caching",
+      description: "Configure local browser cache retention, TTL, and storage limits for exported sets.",
+      fields: [
+        {
+          label: "Export Cache Lifetime",
+          key: "exportCacheTtlHours",
+          min: 0,
+          max: 168,
+          step: 1,
+          unit: " h",
+          hint: "Re-exporting a set within this window reuses the stored result and makes no requests at all. 0 disables caching."
+        },
+        {
+          label: "Export Cache Max Entries",
+          key: "exportCacheMaxEntries",
+          min: 5,
+          max: 100,
+          step: 5,
+          unit: " sets",
+          hint: "Maximum number of exported set results retained in local storage cache."
+        },
+        {
+          label: "Export Cache Max Rows",
+          key: "exportCacheMaxRows",
+          min: 1e3,
+          max: 1e5,
+          step: 1e3,
+          unit: " rows",
+          hint: "Maximum rows allowed for a single set before cache storage skips saving it."
+        }
+      ]
     },
     {
-      label: "Retry Backoff — Base",
-      key: "exportBackoffBaseMs",
-      min: 250,
-      max: 5e3,
-      step: 250,
-      unit: "ms",
-      hint: "Starting wait before the first retry; doubles on each subsequent attempt up to the cap below."
-    },
-    {
-      label: "Retry Backoff — Cap",
-      key: "exportBackoffCapMs",
-      min: 2e3,
-      max: 6e4,
-      step: 1e3,
-      unit: "ms",
-      hint: "Upper limit on the doubling backoff delay, regardless of retry count."
-    },
-    {
-      label: "Pagination Safety Ceiling",
-      key: "exportMaxPages",
-      min: 20,
-      max: 500,
-      step: 10,
-      unit: " pages",
-      hint: "Hard stop on discovered page count — protects against a pagination-parsing bug turning into a runaway fetch loop."
-    },
-    {
-      label: "Request Timeout",
-      key: "exportRequestTimeoutMs",
-      min: 5e3,
-      max: 12e4,
-      step: 5e3,
-      unit: "ms",
-      hint: "Abandon a single request that never answers. Without this a hung request stalls the whole export queue indefinitely."
-    },
-    {
-      label: "Anti-Scraping Cooldown",
-      key: "exportBlockCooldownMinutes",
-      min: 0,
-      max: 30,
-      step: 1,
-      unit: " min",
-      hint: "After a detected block (captcha/verification page), refuse new exports for this long. 0 disables the cooldown."
-    },
-    {
-      label: "Export Cache Lifetime",
-      key: "exportCacheTtlHours",
-      min: 0,
-      max: 168,
-      step: 1,
-      unit: " h",
-      hint: "Re-exporting a set within this window reuses the stored result and makes no requests at all. 0 disables caching."
-    },
-    {
-      label: "Toast Display Duration",
-      key: "toastDurationMs",
-      min: 1500,
-      max: 1e4,
-      step: 250,
-      unit: "ms",
-      hint: "How long status/confirmation toasts stay visible before fading out."
-    },
-    {
-      label: "Checklist Filter Debounce",
-      key: "checklistFilterDebounceMs",
-      min: 0,
-      max: 500,
-      step: 25,
-      unit: "ms",
-      hint: "Delay after typing stops before the real-time table filter re-scans rows."
-    },
-    {
-      label: "Pagination Loader Delay",
-      key: "paginationLoaderDelayMs",
-      min: 300,
-      max: 3e3,
-      step: 100,
-      unit: "ms",
-      hint: "Fixed wait before the CSV export button is enabled on paginated pages. Not a real completion signal — still a timing guess, just a configurable one."
-    },
-    {
-      label: "Settings Save Debounce",
-      key: "settingsSaveDebounceMs",
-      min: 100,
-      max: 2e3,
-      step: 100,
-      unit: "ms",
-      hint: "How long to wait after the last settings change before writing to storage."
-    },
-    {
-      label: "Card Formatter Popover Duration",
-      key: "cardFormatterPopoverDurationMs",
-      min: 1e3,
-      max: 1e4,
-      step: 500,
-      unit: "ms",
-      hint: "How long the floating copy popover stays visible before auto-dismissing."
+      title: "UI & Performance Settings",
+      description: "Customize UI toast notifications, page component delays, debounces, and batch rendering chunk sizes.",
+      fields: [
+        {
+          label: "Toast Display Duration",
+          key: "toastDurationMs",
+          min: 1500,
+          max: 1e4,
+          step: 250,
+          unit: "ms",
+          hint: "How long status/confirmation toasts stay visible before fading out."
+        },
+        {
+          label: "Toast Stack Limit",
+          key: "toastStackLimit",
+          min: 1,
+          max: 10,
+          step: 1,
+          unit: " toasts",
+          hint: "Maximum number of toast notifications allowed to stack on screen simultaneously."
+        },
+        {
+          label: "Checklist Filter Debounce",
+          key: "checklistFilterDebounceMs",
+          min: 0,
+          max: 500,
+          step: 25,
+          unit: "ms",
+          hint: "Delay after typing stops before the real-time table filter re-scans rows."
+        },
+        {
+          label: "Pagination Loader Delay",
+          key: "paginationLoaderDelayMs",
+          min: 300,
+          max: 3e3,
+          step: 100,
+          unit: "ms",
+          hint: "Fixed wait before the CSV export button is enabled on paginated pages."
+        },
+        {
+          label: "Add Multiples Focus Deadline",
+          key: "addMultiplesFocusDeadlineMs",
+          min: 300,
+          max: 5e3,
+          step: 100,
+          unit: "ms",
+          hint: "Timeout deadline for auto-focusing quantity input fields on Add Multiples forms."
+        },
+        {
+          label: "Set List Enhancer Chunk Size",
+          key: "setListEnhancerChunkSize",
+          min: 5,
+          max: 100,
+          step: 5,
+          unit: " links",
+          hint: "Batch rendering chunk size for injecting set list link badges."
+        },
+        {
+          label: "Settings Save Debounce",
+          key: "settingsSaveDebounceMs",
+          min: 100,
+          max: 2e3,
+          step: 100,
+          unit: "ms",
+          hint: "How long to wait after the last settings change before writing to storage."
+        },
+        {
+          label: "Card Formatter Popover Duration",
+          key: "cardFormatterPopoverDurationMs",
+          min: 1e3,
+          max: 1e4,
+          step: 500,
+          unit: "ms",
+          hint: "How long the floating copy popover stays visible before auto-dismissing."
+        }
+      ]
     }
   ];
 
@@ -4566,7 +6238,11 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       commands.push({
         label: "This set: Export checklist to CSV",
         hint: "current set",
-        run: () => exportSetCSV(currentSid, document.title || "Set")
+        run: () => {
+          const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${currentSid}/`);
+          Log(`[CLIENT] Command Palette CSV Export requested for current set ID ${currentSid} — ${fullUrl}`, "info", "client");
+          exportSetCSV(currentSid, document.title || "Set");
+        }
       });
     }
     pins.forEach((pin) => {
@@ -4580,7 +6256,11 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       commands.push({
         label: `Pinned: Export ${pin.name}`,
         hint: "CSV",
-        run: () => exportSetCSV(pin.id, pin.name)
+        run: () => {
+          const fullUrl = Utils.toFullUrl(pin.url || `/Checklist.cfm/sid/${pin.id}/`);
+          Log(`[CLIENT] Command Palette CSV Export requested for pinned set '${pin.name}' (ID ${pin.id}) — ${fullUrl}`, "info", "client");
+          exportSetCSV(pin.id, pin.name);
+        }
       });
     });
     return commands;

@@ -47,9 +47,18 @@ test('actionLabels only name toggles that exist in config', () => {
 });
 
 test('the checklist filter resolves on every listing route', () => {
-  [URL_CHECKLIST, URL_WANTLIST, URL_ADD_MULTIPLES, URL_VIEWALL, 'https://example.test/Inserts.cfm/sid/1/'].forEach((url) => {
+  [URL_CHECKLIST, URL_WANTLIST, URL_ADD_MULTIPLES, URL_VIEWALL, 'https://example.test/Inserts.cfm/sid/1/', 'https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards&CollectionID=6'].forEach((url) => {
     assert.ok(ids(url).includes('checklistEnhancer'), url);
   });
+});
+
+test('ViewCollectionMode.cfm resolves collection modules correctly', () => {
+  const collectionUrl = 'https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards&MODE=&Type=Baseball&CollectionID=6';
+  const resolved = ids(collectionUrl);
+  assert.ok(resolved.includes('csvExportEngine'), 'csvExportEngine should resolve on ViewCollectionMode.cfm');
+  assert.ok(resolved.includes('paginationLoader'), 'paginationLoader should resolve on ViewCollectionMode.cfm');
+  assert.ok(resolved.includes('checklistEnhancer'), 'checklistEnhancer should resolve on ViewCollectionMode.cfm');
+  assert.ok(resolved.includes('collectionQuantityCounter'), 'collectionQuantityCounter should resolve on ViewCollectionMode.cfm');
 });
 
 test('the checklist filter does not resolve on unrelated routes', () => {

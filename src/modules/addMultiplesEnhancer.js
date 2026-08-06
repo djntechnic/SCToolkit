@@ -4,6 +4,7 @@
  * on arrival.
  */
 
+import { Config } from '../core/config.js';
 import { recordContract } from '../core/contracts.js';
 import { Log } from '../core/log.js';
 import { InputIndex } from './inputOptimization.js';
@@ -77,7 +78,8 @@ function focusFirstQuantityField() {
   if (!target) return;
 
   let cancelled = false;
-  const deadline = Date.now() + FOCUS_DEADLINE_MS;
+  const focusDeadlineMs = Config.global?.addMultiplesFocusDeadlineMs ?? FOCUS_DEADLINE_MS;
+  const deadline = Date.now() + focusDeadlineMs;
 
   const stop = () => {
     if (cancelled) return;

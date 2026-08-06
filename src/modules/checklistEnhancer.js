@@ -11,7 +11,30 @@ import { Config } from '../core/config.js';
 import { Log } from '../core/log.js';
 import { assertContract, recordContract } from '../core/contracts.js';
 import { debounce } from '../ui/dom.js';
+import { icon } from '../ui/icons.js';
+import { Routes } from '../core/routes.js';
 import { SELECTOR_REGISTRY } from '../core/selectors.js';
+
+/**
+ * Return context-specific placeholder message based on page type.
+ *
+ * @returns {string}
+ */
+export function getFilterPlaceholder() {
+  if (Routes.isViewAll()) {
+    return 'Filter sets by name, year, or category...';
+  }
+  if (Routes.isChecklist() || Routes.isViewSet()) {
+    return 'Filter cards by #, player, team, note, or serial #...';
+  }
+  if (Routes.isCollection() || Routes.isForSaleTrade() || Routes.isWantlist()) {
+    return 'Filter collection by player, set, card #, or status...';
+  }
+  if (Routes.isPlayerPage() || Routes.isPlayerCollection()) {
+    return 'Filter cards by set, year, card #, or attribute...';
+  }
+  return 'Filter items by name, number, or keyword...';
+}
 
 /**
  * Containers that hold a listing table, most specific first.
@@ -138,25 +161,61 @@ function installFilter(mainContent) {
   Log(`Checklist filter indexed ${index.length} data item(s).`, 'info');
   recordContract('checklistEnhancer', `indexed ${index.length} data item(s)`, index.length > 0);
 
+  const placeholderText = getFilterPlaceholder();
+
   const filterWrap = document.createElement('div');
   filterWrap.id = 'tk-checklist-filter-wrap';
   filterWrap.innerHTML = `
     <strong>Filter Items:</strong>
-    <input type="text" id="tk-checklist-filter" placeholder="Filter by Player, Card #, Set Name, Tag, Team..."
-           title="Type to filter active listing items in real time" aria-label="Filter items">
+    <div id="tk-checklist-filter-container">
+      <input type="text" id="tk-checklist-filter" placeholder="${placeholderText}"
+             title="Type to filter active listing items in real time" aria-label="Filter items">
+      <button type="button" id="tk-checklist-filter-clear" title="Clear filter" aria-label="Clear filter" style="display: none;">
+        ${icon('x')}
+      </button>
+    </div>
     <span id="tk-filter-count" aria-live="polite"></span>
   `;
   targetElement.before(filterWrap);
 
   const countEl = filterWrap.querySelector('#tk-filter-count');
   const input = filterWrap.querySelector('#tk-checklist-filter');
+  const clearBtn = filterWrap.querySelector('#tk-checklist-filter-clear');
+
+  const updateClearVisibility = () => {
+    if (clearBtn) {
+      clearBtn.style.display = input.value.trim() !== '' ? 'inline-flex' : 'none';
+    }
+  };
 
   const run = debounce((term) => {
     const visible = applyFilter(index, term);
     countEl.textContent = term === '' ? '' : `${visible} of ${index.length}`;
   }, Config.global.checklistFilterDebounceMs);
 
-  input.addEventListener('input', (e) => run(e.target.value.toLowerCase().trim()));
+  const performFilter = () => {
+    const val = input.value.toLowerCase().trim();
+    updateClearVisibility();
+    run(val);
+  };
+
+  input.addEventListener('input', performFilter);
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && input.value !== '') {
+      e.stopPropagation();
+      input.value = '';
+      performFilter();
+    }
+  });
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      input.value = '';
+      input.focus();
+      performFilter();
+    });
+  }
 }
 
 export function initChecklistEnhancer() {

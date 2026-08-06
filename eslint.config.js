@@ -32,6 +32,7 @@ export default [
         DOMParser: 'readonly',
         Blob: 'readonly',
         URL: 'readonly',
+        URLSearchParams: 'readonly',
         Intl: 'readonly',
         localStorage: 'readonly',
         GM_getValue: 'readonly',

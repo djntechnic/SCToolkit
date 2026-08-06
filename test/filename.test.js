@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildExportFilename,
+  buildPrintCollectionFilename,
   compactSegment,
   sanitizeSegment,
   underscoreSegment
@@ -81,3 +82,24 @@ test('buildExportFilename: an unknown kind falls back to the checklist suffix', 
     /_Checklist\.csv$/
   );
 });
+
+test('buildPrintCollectionFilename: builds filename matching legacy TCDBPrintPDFtoCSV pattern', () => {
+  const d = new Date(2026, 7, 6);
+  assert.equal(
+    buildPrintCollectionFilename({ includePrice: false, date: d }),
+    '20260806_TCDBCollectionFull.csv'
+  );
+  assert.equal(
+    buildPrintCollectionFilename({ includePrice: true, date: d }),
+    '20260806_TCDBCollectionFullWithPrice.csv'
+  );
+  assert.equal(
+    buildPrintCollectionFilename({ includePrice: false, part: 1, date: d }),
+    '20260806_TCDBCollectionPage1.csv'
+  );
+  assert.equal(
+    buildPrintCollectionFilename({ includePrice: true, part: 2, date: d }),
+    '20260806_TCDBCollectionPage2WithPrice.csv'
+  );
+});
+
