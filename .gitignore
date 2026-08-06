@@ -22,6 +22,6 @@ legacy/
 # directories. Run them through scripts/sanitize-fixture.js and commit the
 # output under test/fixtures/real/ instead.
 test/fixtures/*
-!test/fixtures/*.html
-!test/fixtures/real/
-!test/fixtures/submitted/
+test/fixtures/*.html
+test/fixtures/real/
+test/fixtures/submitted/

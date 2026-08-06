@@ -4569,9 +4569,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   // src/core/version.js
   var APP_VERSION = "0.1.0-beta";
   function getAppVersion() {
-    if (typeof GM_info !== "undefined" && GM_info?.script?.version) {
-      return GM_info.script.version;
-    }
     return APP_VERSION;
   }
 
