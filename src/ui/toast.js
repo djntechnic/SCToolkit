@@ -67,7 +67,8 @@ export function showToast({
 
   // Limit only active toast messages, preserving persistent corner widgets
   const toasts = Array.from(container.querySelectorAll('.tk-toast-message'));
-  while (toasts.length >= STACK_LIMIT) {
+  const stackLimit = Config.global?.toastStackLimit ?? STACK_LIMIT;
+  while (toasts.length >= stackLimit) {
     const oldest = toasts.shift();
     oldest.remove();
   }

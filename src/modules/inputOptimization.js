@@ -33,6 +33,8 @@ export function isEligibleInput(el) {
   const type = el.type ? el.type.toLowerCase() : 'text';
   if (type !== 'text' && type !== 'number') return false;
   if (el.readOnly || el.disabled || el.hidden || el.getAttribute('hidden') !== null) return false;
+  if (el.name && el.name.toLowerCase() === 'pageindex') return false;
+  if (el.id && el.id.toLowerCase() === 'pageindex') return false;
   return el.offsetParent !== null || el.value === '0';
 }
 
@@ -77,9 +79,9 @@ export function initInputOptimization() {
     if (e.key !== 'Enter' && e.code !== 'NumpadEnter') return;
 
     const active = document.activeElement;
-    // The filter box is a text input too, but Enter there should do nothing
-    // rather than jump focus into the table.
-    if (!active || active.tagName !== 'INPUT' || active.id === 'tk-checklist-filter') return;
+    // The filter box and pagination PageIndex are text inputs too, but Enter there should do nothing
+    // rather than jump focus into the table or prevent form submission.
+    if (!active || active.tagName !== 'INPUT' || active.id === 'tk-checklist-filter' || active.name?.toLowerCase() === 'pageindex' || active.id?.toLowerCase() === 'pageindex') return;
 
     const inputs = getValidInputs();
     const index = inputs.indexOf(active);

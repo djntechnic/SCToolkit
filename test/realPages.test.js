@@ -26,9 +26,10 @@ import {
 } from '../src/data/checklistParser.js';
 import { toCSV } from '../src/data/csv.js';
 import { buildExportFilename } from '../src/data/filename.js';
-import { findFilterScope, buildRowIndex, applyFilter } from '../src/modules/checklistEnhancer.js';
+import { findFilterScope, buildRowIndex, applyFilter, getFilterPlaceholder } from '../src/modules/checklistEnhancer.js';
 import { collectRows } from '../src/modules/csvExportEngine.js';
 import { findSetLinks } from '../src/modules/setListEnhancer.js';
+import { normalizePaginationForms } from '../src/modules/paginationLoader.js';
 import { detectBlock } from '../src/net/blockDetect.js';
 import { extractSid } from '../src/core/sid.js';
 
@@ -199,6 +200,24 @@ test('real pages: filtering an inserts page narrows to the matching insert sets'
   assert.equal(applyFilter(index, 'zzzznotaninsert'), 0);
 });
 
+test('real pages: getFilterPlaceholder returns context-aware placeholder messages', () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://www.tcdb.com/ViewAll.cfm' });
+  global.window = dom.window;
+
+  assert.equal(getFilterPlaceholder(), 'Filter sets by name, year, or category...');
+
+  dom.reconfigure({ url: 'https://www.tcdb.com/Checklist.cfm/sid/100' });
+  assert.equal(getFilterPlaceholder(), 'Filter cards by #, player, team, note, or serial #...');
+
+  dom.reconfigure({ url: 'https://www.tcdb.com/ViewCollectionMode.cfm?Member=test' });
+  assert.equal(getFilterPlaceholder(), 'Filter collection by player, set, card #, or status...');
+
+  dom.reconfigure({ url: 'https://www.tcdb.com/Person.cfm/pid/1/test?Collection' });
+  assert.equal(getFilterPlaceholder(), 'Filter cards by set, year, card #, or attribute...');
+
+  delete global.window;
+});
+
 test('real pages: findFilterTarget selects the main listing element, avoiding sidebar/dropdown chrome', () => {
   import('../src/modules/checklistEnhancer.js').then(({ findFilterTarget }) => {
     ['checklist', 'inserts', 'inserts-basketball', 'view-all', 'for-sale-trade', 'wantlist', 'add-multiples-text'].forEach((name) => {
@@ -229,14 +248,20 @@ test('real set index: image-only links are excluded', () => {
 
 // --- print view -------------------------------------------------------------
 
-test('real print view: the export is not empty', () => {
-  // The print page is a div grid with no table at all. A table-only dump wrote
-  // a CSV containing nothing — a download that looked like it worked.
+test('real print view: the export is structured with PRINT_COLLECTION_HEADER', () => {
+  // The print page is a div grid with no table at all. Structured print collection
+  // parser extracts Sport, Year, Set Name, Card No, Player Name, Tags, Print Run, Qty.
   const rows = collectRows(doc('print-collection'));
 
   assert.ok(rows.length > 1, `print view yielded ${rows.length} row(s)`);
-  assert.deepEqual(rows[0], ['Item']);
-  assert.ok(rows[1][0].length > 0);
+  assert.equal(rows[0][0], 'Sport');
+  assert.equal(rows[0][1], 'Year');
+  assert.equal(rows[0][2], 'Set Name');
+  assert.equal(rows[0][4], 'Card No');
+  assert.equal(rows[0][5], 'Player Name');
+  assert.equal(rows[0][7], 'Print Run');
+  assert.equal(rows[0][8], 'Qty');
+  assert.ok(rows[1].length >= 9);
 });
 
 test('real listing pages: table rows still take precedence over the grid', () => {
@@ -462,4 +487,27 @@ test('real set: the CSV keeps a stable column count with variation text', () => 
   // Descriptions contain commas and quotes; the CSV must quote them.
   const csv = toCSV(table);
   assert.equal(csv.split('\n').length, parsed.rows.length + 1);
+});
+
+test('normalizePaginationForms: converts POST forms with PageIndex or Filter to GET and preserves action params', () => {
+  const dom = new JSDOM(`
+    <html><body>
+      <form id="f1" action="/ViewCollectionMode.cfm?Member=test&CollectionID=1" method="post">
+        <select name="Filter"><option value="S">Sale</option></select>
+      </form>
+      <form id="f2" action="/ViewCollectionMode.cfm?Member=test&CollectionID=1&Filter=S" method="post">
+        <input name="PageIndex" value="2" />
+        <input name="Submit" type="submit" value="Go" validate="submitonce" />
+      </form>
+    </body></html>
+  `);
+  const document = dom.window.document;
+
+  normalizePaginationForms(document);
+
+  const f2 = document.querySelector('#f2');
+  assert.equal(f2.getAttribute('method'), 'get');
+  assert.equal(f2.querySelector('input[name="Member"]').value, 'test');
+  assert.equal(f2.querySelector('input[name="CollectionID"]').value, '1');
+  assert.equal(f2.querySelector('input[name="Filter"]').value, 'S');
 });

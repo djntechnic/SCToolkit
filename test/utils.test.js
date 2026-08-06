@@ -25,6 +25,15 @@ test('Utils.extractYear: returns null when no year in text or href', () => {
   assert.equal(Utils.extractYear('', ''), null);
 });
 
+// --- Utils.toFullUrl --------------------------------------------------------
+
+test('Utils.toFullUrl: resolves relative paths to absolute URLs', () => {
+  assert.equal(Utils.toFullUrl('/Checklist.cfm/sid/123/'), 'https://www.tcdb.com/Checklist.cfm/sid/123/');
+  assert.equal(Utils.toFullUrl('Checklist.cfm/sid/123/'), 'https://www.tcdb.com/Checklist.cfm/sid/123/');
+  assert.equal(Utils.toFullUrl('https://example.test/foo'), 'https://example.test/foo');
+  assert.equal(Utils.toFullUrl(''), '');
+});
+
 // --- Utils.escape.html ------------------------------------------------------
 
 test('Utils.escape.html: escapes HTML entities', () => {

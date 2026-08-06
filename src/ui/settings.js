@@ -3,7 +3,7 @@
  * route rules on the other.
  */
 
-import { Config, SettingsStore, syncExportConfig, configToXml, xmlToConfig } from '../core/config.js';
+import { Config, SettingsStore, syncExportConfig, configToXml, xmlToConfig, testUrlMatch } from '../core/config.js';
 import { Log, RuntimeSettings } from '../core/log.js';
 import { ModuleRegistry } from '../core/registry.js';
 import * as cache from '../net/cache.js';
@@ -79,9 +79,6 @@ export const SettingsUI = {
 
     const overlay = document.createElement('div');
     overlay.id = SettingsUI.overlayId;
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) SettingsUI.close();
-    });
 
     const panel = document.createElement('div');
     panel.id = 'tk-settings-panel';
@@ -187,12 +184,22 @@ export const SettingsUI = {
     routesTab.className = 'tk-settings-tab';
     routesTab.textContent = 'Modules & Routes';
 
+    const regexTab = document.createElement('button');
+    regexTab.type = 'button';
+    regexTab.className = 'tk-settings-tab';
+    regexTab.textContent = 'RegEx Tester';
+
+    const routeTesterTab = document.createElement('button');
+    routeTesterTab.type = 'button';
+    routeTesterTab.className = 'tk-settings-tab';
+    routeTesterTab.textContent = 'Route Tester';
+
     const diagTab = document.createElement('button');
     diagTab.type = 'button';
     diagTab.className = 'tk-settings-tab';
     diagTab.textContent = 'Diagnostics';
 
-    tabBar.append(globalTab, routesTab, diagTab);
+    tabBar.append(globalTab, routesTab, regexTab, routeTesterTab, diagTab);
 
     const content = document.createElement('div');
     content.id = 'tk-settings-tab-content';
@@ -200,9 +207,17 @@ export const SettingsUI = {
     const panes = {
       global: SettingsUI._buildGlobalPane(),
       routes: SettingsUI._buildModulesPane(),
+      regex: SettingsUI._buildRegexPane(),
+      routetester: SettingsUI._buildRouteTesterPane(),
       diagnostics: SettingsUI._buildDiagnosticsPane()
     };
-    const tabs = { global: globalTab, routes: routesTab, diagnostics: diagTab };
+    const tabs = {
+      global: globalTab,
+      routes: routesTab,
+      regex: regexTab,
+      routetester: routeTesterTab,
+      diagnostics: diagTab
+    };
 
     Object.values(panes).forEach((pane) => content.appendChild(pane));
 
@@ -442,16 +457,149 @@ export const SettingsUI = {
     return wrap;
   },
 
+  _buildCollapsibleSection: (title, contentElements, description = '', defaultExpanded = false) => {
+    const section = document.createElement('div');
+    section.className = 'tk-settings-collapsible-section';
+    section.style.cssText = 'margin-bottom:12px; border:1px solid var(--tk-border); border-radius:var(--tk-radius-md); overflow:hidden; background:var(--tk-bg-surface);';
+
+    const header = document.createElement('button');
+    header.type = 'button';
+    header.className = 'tk-settings-section-header';
+    header.style.cssText = 'width:100%; display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--tk-bg-subtle); border:none; color:var(--tk-teal); font-weight:700; font-size:12px; letter-spacing:0.5px; text-transform:uppercase; cursor:pointer; text-align:left; user-select:none; transition:background 0.15s ease;';
+
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = title;
+
+    const toggleIconSpan = document.createElement('span');
+    toggleIconSpan.className = 'tk-section-toggle-icon';
+    toggleIconSpan.style.cssText = 'display:inline-flex; align-items:center; transition:transform 0.2s ease;';
+    toggleIconSpan.innerHTML = icon('chevronDown');
+
+    header.appendChild(titleSpan);
+    header.appendChild(toggleIconSpan);
+
+    const body = document.createElement('div');
+    body.className = 'tk-settings-section-body';
+    body.style.cssText = 'padding:12px 14px; border-top:1px solid var(--tk-border);';
+
+    if (description) {
+      const desc = document.createElement('div');
+      desc.className = 'tk-settings-hint';
+      desc.style.marginBottom = '10px';
+      desc.textContent = description;
+      body.appendChild(desc);
+    }
+
+    if (Array.isArray(contentElements)) {
+      contentElements.forEach((el) => {
+        if (el) body.appendChild(el);
+      });
+    } else if (contentElements) {
+      body.appendChild(contentElements);
+    }
+
+    let isExpanded = defaultExpanded;
+    const updateState = () => {
+      body.style.display = isExpanded ? 'block' : 'none';
+      toggleIconSpan.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)';
+      header.setAttribute('aria-expanded', String(isExpanded));
+    };
+
+    header.addEventListener('click', () => {
+      isExpanded = !isExpanded;
+      updateState();
+    });
+
+    section._setExpanded = (expanded) => {
+      isExpanded = expanded;
+      updateState();
+    };
+
+    section._isExpanded = () => isExpanded;
+    section._defaultExpanded = defaultExpanded;
+
+    updateState();
+
+    section.appendChild(header);
+    section.appendChild(body);
+    return section;
+  },
+
   _buildGlobalPane: () => {
     const pane = document.createElement('div');
     pane.id = 'tk-settings-global';
 
-    const sectionTitle = document.createElement('div');
-    sectionTitle.className = 'tk-settings-section-title';
-    sectionTitle.textContent = 'Global Settings';
-    pane.appendChild(sectionTitle);
+    // Search Bar Component (Global Pane Only)
+    const searchWrap = document.createElement('div');
+    searchWrap.id = 'tk-settings-search-wrap';
+    searchWrap.style.cssText = 'margin-bottom:12px; display:flex; align-items:center; gap:8px;';
 
-    GLOBAL_FIELDS.forEach((field) => pane.appendChild(SettingsUI._buildRangeField(field)));
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.id = 'tk-settings-search-input';
+    searchInput.placeholder = 'Search global settings (e.g. pacing, retry, delay, theme, cache)...';
+    searchInput.style.cssText = 'flex:1; padding:6px 10px; border-radius:var(--tk-radius-sm); border:1px solid var(--tk-border-strong); background:var(--tk-bg-base); color:var(--tk-text); font-size:12px; outline:none;';
+
+    const clearSearchBtn = document.createElement('button');
+    clearSearchBtn.type = 'button';
+    clearSearchBtn.style.cssText = 'background:none; border:none; color:var(--tk-text-muted); cursor:pointer; padding:4px; display:none; align-items:center; justify-content:center;';
+    clearSearchBtn.innerHTML = icon('x');
+    clearSearchBtn.title = 'Clear search filter';
+
+    searchWrap.append(searchInput, clearSearchBtn);
+    pane.appendChild(searchWrap);
+
+    const filterGlobalSettings = (query) => {
+      const q = query.trim().toLowerCase();
+      clearSearchBtn.style.display = q ? 'inline-flex' : 'none';
+
+      const globalSections = pane.querySelectorAll('.tk-settings-collapsible-section');
+      globalSections.forEach((section) => {
+        if (!q) {
+          section.style.display = '';
+          if (typeof section._setExpanded === 'function') {
+            section._setExpanded(section._defaultExpanded ?? false);
+          }
+          const fields = section.querySelectorAll('.tk-settings-field');
+          fields.forEach((f) => { f.style.display = ''; });
+          return;
+        }
+
+        const sectionHeaderText = section.querySelector('.tk-settings-section-header')?.textContent?.toLowerCase() || '';
+        const fields = section.querySelectorAll('.tk-settings-field');
+        let matchedCount = 0;
+
+        fields.forEach((field) => {
+          const text = field.textContent.toLowerCase();
+          const matches = sectionHeaderText.includes(q) || text.includes(q);
+          field.style.display = matches ? '' : 'none';
+          if (matches) matchedCount++;
+        });
+
+        if (sectionHeaderText.includes(q) || matchedCount > 0) {
+          section.style.display = '';
+          if (typeof section._setExpanded === 'function') {
+            section._setExpanded(true);
+          }
+        } else {
+          section.style.display = 'none';
+        }
+      });
+    };
+
+    searchInput.addEventListener('input', () => filterGlobalSettings(searchInput.value));
+    clearSearchBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      filterGlobalSettings('');
+      searchInput.focus();
+    });
+
+    GLOBAL_SECTIONS.forEach((section) => {
+      const fields = section.fields.map((field) => SettingsUI._buildRangeField(field));
+      pane.appendChild(
+        SettingsUI._buildCollapsibleSection(section.title, fields, section.description, false)
+      );
+    });
 
     const themeField = document.createElement('div');
     themeField.className = 'tk-settings-field';
@@ -468,14 +616,11 @@ export const SettingsUI = {
     });
     themeSelect.addEventListener('change', () => {
       Config.global.theme = themeSelect.value;
-      // Applies immediately: a theme you have to reload to see is a theme you
-      // cannot evaluate while choosing it.
       applyTheme();
       Log(`Config change: global.theme = ${themeSelect.value}`, 'info');
       SettingsUI._persist();
     });
     themeField.append(themeLabel, themeSelect);
-    pane.appendChild(themeField);
 
     const logField = document.createElement('div');
     logField.className = 'tk-settings-field';
@@ -498,7 +643,6 @@ export const SettingsUI = {
     });
     logField.appendChild(logLabel);
     logField.appendChild(logSelect);
-    pane.appendChild(logField);
 
     const tzField = document.createElement('div');
     tzField.className = 'tk-settings-field';
@@ -527,7 +671,6 @@ export const SettingsUI = {
       SettingsUI._persist();
     });
     tzField.append(tzLabel, tzSelect);
-    pane.appendChild(tzField);
 
     const tsFormatField = document.createElement('div');
     tsFormatField.className = 'tk-settings-field';
@@ -549,15 +692,15 @@ export const SettingsUI = {
     tsFormatHint.className = 'tk-settings-hint';
     tsFormatHint.textContent = 'Tokens: YYYY, YY, MM, DD, HH, hh, mm, ss, SSS, A, TZ (e.g. HH:mm:ss.SSS TZ, YYYYmmDDHHMMSS, YYYY-MM-DD HH:mm:ss)';
     tsFormatField.append(tsFormatLabel, tsFormatInput, tsFormatHint);
-    pane.appendChild(tsFormatField);
 
-    const formatterSectionTitle = document.createElement('div');
-    formatterSectionTitle.className = 'tk-settings-section-title';
-    formatterSectionTitle.textContent = 'Card Name Formatter Settings';
-    formatterSectionTitle.style.marginTop = '14px';
-    formatterSectionTitle.style.paddingTop = '10px';
-    formatterSectionTitle.style.borderTop = '1px solid var(--tk-border)';
-    pane.appendChild(formatterSectionTitle);
+    pane.appendChild(
+      SettingsUI._buildCollapsibleSection(
+        'Appearance & Diagnostic Logging',
+        [themeField, logField, tzField, tsFormatField],
+        'Control visual dark/light themes and console logger formatting.',
+        false
+      )
+    );
 
     const templateField = document.createElement('div');
     templateField.className = 'tk-settings-field';
@@ -577,7 +720,6 @@ export const SettingsUI = {
     templateHint.className = 'tk-settings-hint';
     templateHint.textContent = 'Tokens: {PlayerName}, {Year}, {SetName}, {Tags}, {PR}, {CardNo}';
     templateField.append(templateLabel, templateInput, templateHint);
-    pane.appendChild(templateField);
 
     const outputModeField = document.createElement('div');
     outputModeField.className = 'tk-settings-field';
@@ -601,15 +743,15 @@ export const SettingsUI = {
       SettingsUI._persist();
     });
     outputModeField.append(outputModeLabel, outputModeSelect);
-    pane.appendChild(outputModeField);
 
-    const displaySectionTitle = document.createElement('div');
-    displaySectionTitle.className = 'tk-settings-section-title';
-    displaySectionTitle.textContent = 'Button Display Settings';
-    displaySectionTitle.style.marginTop = '14px';
-    displaySectionTitle.style.paddingTop = '10px';
-    displaySectionTitle.style.borderTop = '1px solid var(--tk-border)';
-    pane.appendChild(displaySectionTitle);
+    pane.appendChild(
+      SettingsUI._buildCollapsibleSection(
+        'Card Name Formatter Settings',
+        [templateField, outputModeField],
+        'Configure custom copy templates and floating popover output modes.',
+        false
+      )
+    );
 
     const DISPLAY_MODES = [
       { value: 'both', label: 'Icon & Text' },
@@ -617,7 +759,7 @@ export const SettingsUI = {
       { value: 'text', label: 'Text Only' }
     ];
 
-    const displayFields = [
+    const displayFieldsConfig = [
       {
         key: 'toolbarButtonDisplay',
         label: 'Toolbar Button Display',
@@ -638,7 +780,7 @@ export const SettingsUI = {
       }
     ];
 
-    displayFields.forEach(({ key, label: fieldLabelText, title: fieldTitleText, onUpdate }) => {
+    const displayNodes = displayFieldsConfig.map(({ key, label: fieldLabelText, title: fieldTitleText, onUpdate }) => {
       const field = document.createElement('div');
       field.className = 'tk-settings-field';
 
@@ -665,7 +807,7 @@ export const SettingsUI = {
 
       field.appendChild(fieldLabel);
       field.appendChild(select);
-      pane.appendChild(field);
+      return field;
     });
 
     const posField = document.createElement('div');
@@ -691,12 +833,21 @@ export const SettingsUI = {
       SettingsUI._persist();
     });
     posField.append(posLabel, posSelect);
-    pane.appendChild(posField);
+
+    pane.appendChild(
+      SettingsUI._buildCollapsibleSection(
+        'Button Display Settings',
+        [...displayNodes, posField],
+        'Choose whether buttons show icons, text, or both across toolbars and page set links.',
+        false
+      )
+    );
 
     pane.appendChild(SettingsUI._buildXmlPanel());
 
     const help = document.createElement('div');
     help.id = 'tk-settings-help';
+    help.style.marginTop = '16px';
     help.innerHTML =
       'Module, action, route-pattern, and threshold changes apply on next page load. ' +
       'The log level change above applies immediately to this page’s console output.<br><br>' +
@@ -709,23 +860,10 @@ export const SettingsUI = {
   },
 
   _buildXmlPanel: () => {
-    const field = document.createElement('div');
-    field.className = 'tk-settings-field';
-    field.style.marginTop = '14px';
-    field.style.paddingTop = '10px';
-    field.style.borderTop = '1px solid var(--tk-border)';
-
-    const label = document.createElement('label');
-    label.textContent = 'XML Import / Export Settings';
-
-    const hint = document.createElement('div');
-    hint.className = 'tk-settings-hint';
-    hint.textContent = 'Backup all SCToolkit settings (globals, module states, sub-actions, route rules) to XML or restore from file.';
-
     const btnGroup = document.createElement('div');
     btnGroup.style.display = 'flex';
     btnGroup.style.gap = '8px';
-    btnGroup.style.marginTop = '6px';
+    btnGroup.style.marginTop = '4px';
 
     const exportBtn = createBtn('tk-xml-export', 'Export XML', () => {
       try {
@@ -735,51 +873,39 @@ export const SettingsUI = {
         const a = document.createElement('a');
         a.href = url;
         a.download = `sctoolkit-settings-v${Config.schemaVersion || 3}.xml`;
-        document.body.appendChild(a);
         a.click();
-        a.remove();
         URL.revokeObjectURL(url);
-        showToast({ message: 'Settings exported to XML file.', variant: 'success' });
+        showToast({ variant: 'success', message: 'Settings exported to XML.' });
       } catch (err) {
-        showToast({ message: `Export failed: ${err.message}`, variant: 'error' });
+        showToast({ variant: 'error', message: `XML export failed: ${err.message}` });
       }
     });
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = '.xml,text/xml';
+    fileInput.accept = '.xml,text/xml,application/xml';
     fileInput.style.display = 'none';
-    fileInput.addEventListener('change', (e) => {
+    fileInput.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      const reader = new window.FileReader();
-      reader.onload = (evt) => {
-        try {
-          const xmlText = evt.target.result;
-          const imported = xmlToConfig(xmlText);
-          Config.schemaVersion = imported.schemaVersion;
-          Config.global = imported.global;
-          Config.modules = imported.modules;
+      try {
+        const xmlText = await file.text();
+        const imported = xmlToConfig(xmlText);
+        Config.schemaVersion = imported.schemaVersion;
+        Config.global = imported.global;
+        Config.modules = imported.modules;
 
-          syncExportConfig();
-          applyTheme();
-          SettingsStore.save(Config);
-          Log('Settings successfully imported from XML file.', 'info');
-          showToast({ message: 'Settings imported from XML! Reload page for full module updates.', variant: 'success' });
+        syncExportConfig();
+        applyTheme();
+        SettingsStore.save(Config);
+        Log('Settings successfully imported from XML file.', 'info');
+        showToast({ message: 'Settings imported from XML! Reloading page...', variant: 'success' });
 
-          const body = document.getElementById('tk-settings-body');
-          if (body) {
-            const activeTab = body.querySelector('.tk-settings-tab.active')?.textContent?.toLowerCase() || 'global';
-            const newBody = SettingsUI._buildTabbedBody();
-            body.replaceWith(newBody);
-            const targetTabName = activeTab.includes('module') ? 'routes' : activeTab.includes('diag') ? 'diagnostics' : 'global';
-            newBody.querySelector(`.tk-settings-tab:${targetTabName === 'routes' ? 'nth-child(2)' : targetTabName === 'diagnostics' ? 'nth-child(3)' : 'first-child'}`)?.click();
-          }
-        } catch (err) {
-          showToast({ message: `Import failed: ${err.message}`, variant: 'error' });
-        }
-      };
-      reader.readAsText(file);
+        setTimeout(() => window.location.reload(), 1000);
+      } catch (err) {
+        showToast({ message: `Import failed: ${err.message}`, variant: 'error' });
+      }
+      fileInput.value = '';
     });
 
     const importBtn = createBtn('tk-xml-import', 'Import XML', () => {
@@ -791,10 +917,12 @@ export const SettingsUI = {
     btnGroup.appendChild(importBtn);
     btnGroup.appendChild(fileInput);
 
-    field.appendChild(label);
-    field.appendChild(hint);
-    field.appendChild(btnGroup);
-    return field;
+    return SettingsUI._buildCollapsibleSection(
+      'XML Import / Export Settings',
+      [btnGroup],
+      'Backup all SCToolkit settings (globals, module states, sub-actions, route rules) to XML or restore from file.',
+      true
+    );
   },
 
   /**
@@ -1004,65 +1132,543 @@ export const SettingsUI = {
     return field;
   },
 
+  _buildRegexPane: () => {
+    const pane = document.createElement('div');
+    pane.id = 'tk-settings-regex-tester';
+    pane.className = 'tk-tester-pane';
+
+    const title = document.createElement('div');
+    title.className = 'tk-settings-section-title';
+    title.textContent = 'RegEx Expression Builder & Tester';
+    pane.appendChild(title);
+
+    const desc = document.createElement('div');
+    desc.className = 'tk-settings-hint';
+    desc.textContent = 'Build, test, and evaluate regular expressions in real-time with pattern presets, flag toggles, visual match highlighting, and capture group details.';
+    pane.appendChild(desc);
+
+    const patternRow = document.createElement('div');
+    patternRow.className = 'tk-tester-row';
+
+    const patternInputWrap = document.createElement('div');
+    patternInputWrap.className = 'tk-tester-row-input';
+
+    const patternLabel = document.createElement('label');
+    patternLabel.style.display = 'block';
+    patternLabel.style.fontSize = '10.5px';
+    patternLabel.style.fontWeight = '700';
+    patternLabel.style.marginBottom = '3px';
+    patternLabel.textContent = 'RegEx Pattern';
+
+    const patternInput = document.createElement('input');
+    patternInput.type = 'text';
+    patternInput.className = 'tk-tester-input';
+    patternInput.placeholder = 'e.g. /viewcollection.*\\.cfm or PageIndex=(\\d+)';
+    patternInput.value = '/viewcollectionmode\\.cfm';
+
+    patternInputWrap.append(patternLabel, patternInput);
+    patternRow.appendChild(patternInputWrap);
+
+    const flagsWrap = document.createElement('div');
+    flagsWrap.className = 'tk-regex-flags';
+    const flagValues = { i: true, g: false, m: false, s: false, u: false };
+
+    ['i', 'g', 'm', 's', 'u'].forEach((flag) => {
+      const label = document.createElement('label');
+      label.className = 'tk-regex-flag-label';
+      label.title = `Flag ${flag}`;
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = flagValues[flag];
+      cb.addEventListener('change', () => {
+        flagValues[flag] = cb.checked;
+        updateRegex();
+      });
+      label.append(cb, document.createTextNode(flag));
+      flagsWrap.appendChild(label);
+    });
+
+    patternRow.appendChild(flagsWrap);
+    pane.appendChild(patternRow);
+
+    const presetsWrap = document.createElement('div');
+    presetsWrap.className = 'tk-preset-chips';
+    const presets = [
+      { name: 'Checklist', pattern: '/checklist\\.cfm' },
+      { name: 'View Collection', pattern: '/viewcollectionmode\\.cfm' },
+      { name: 'For Sale / Trade', pattern: '/viewcollectionforsaletrade\\.cfm' },
+      { name: 'Wantlist', pattern: '/viewcollectionwantlist\\.cfm' },
+      { name: 'Add Multiples', pattern: '/collectionaddmultiples' },
+      { name: 'Inserts', pattern: '/inserts\\.cfm' },
+      { name: 'ViewSet', pattern: '/viewset\\.cfm' },
+      { name: 'SID Capture', pattern: '/sid/(\\d+)' }
+    ];
+
+    presets.forEach((p) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'tk-preset-chip';
+      chip.textContent = p.name;
+      chip.title = `Use pattern: ${p.pattern}`;
+      chip.addEventListener('click', () => {
+        patternInput.value = p.pattern;
+        updateRegex();
+      });
+      presetsWrap.appendChild(chip);
+    });
+    pane.appendChild(presetsWrap);
+
+    const subjectWrap = document.createElement('div');
+    subjectWrap.className = 'tk-settings-field';
+    subjectWrap.style.marginBottom = '6px';
+
+    const subjectLabel = document.createElement('label');
+    subjectLabel.textContent = 'Test Subject / URL';
+
+    const subjectInput = document.createElement('textarea');
+    subjectInput.className = 'tk-tester-textarea';
+    subjectInput.placeholder = 'Type or paste test string/URL here...';
+    subjectInput.value = 'https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards&CollectionID=6';
+
+    subjectWrap.append(subjectLabel, subjectInput);
+    pane.appendChild(subjectWrap);
+
+    const statusBar = document.createElement('div');
+    statusBar.className = 'tk-tester-status-bar';
+
+    const statusText = document.createElement('span');
+    statusText.textContent = 'Status';
+
+    const statusBadge = document.createElement('span');
+    statusBadge.className = 'tk-status-badge unmatched';
+    statusBadge.textContent = 'NO MATCH';
+
+    statusBar.append(statusText, statusBadge);
+    pane.appendChild(statusBar);
+
+    const highlightTitle = document.createElement('div');
+    highlightTitle.className = 'tk-route-editor-title';
+    highlightTitle.textContent = 'Matched Output Highlight';
+    pane.appendChild(highlightTitle);
+
+    const highlightBox = document.createElement('div');
+    highlightBox.className = 'tk-regex-highlight-box';
+    pane.appendChild(highlightBox);
+
+    const groupsTitle = document.createElement('div');
+    groupsTitle.className = 'tk-route-editor-title';
+    groupsTitle.style.marginTop = '6px';
+    groupsTitle.textContent = 'Capture Groups Breakdown';
+    pane.appendChild(groupsTitle);
+
+    const groupsContainer = document.createElement('div');
+    groupsContainer.style.overflowX = 'auto';
+    pane.appendChild(groupsContainer);
+
+    function updateRegex() {
+      const patStr = patternInput.value.trim();
+      const subjectStr = subjectInput.value;
+      const flagsStr = Object.keys(flagValues).filter((f) => flagValues[f]).join('');
+
+      highlightBox.innerHTML = '';
+      groupsContainer.innerHTML = '';
+
+      if (!patStr) {
+        statusBadge.className = 'tk-status-badge disabled';
+        statusBadge.textContent = 'NO PATTERN';
+        highlightBox.textContent = subjectStr;
+        return;
+      }
+
+      let re;
+      try {
+        re = new RegExp(patStr, flagsStr);
+      } catch (err) {
+        statusBadge.className = 'tk-status-badge error';
+        statusBadge.textContent = `SYNTAX ERROR: ${err.message}`;
+        highlightBox.textContent = subjectStr;
+        return;
+      }
+
+      const esc = (str) => String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+      const matches = [];
+      if (re.global) {
+        let m;
+        while ((m = re.exec(subjectStr)) !== null) {
+          matches.push(m);
+          if (m.index === re.lastIndex) re.lastIndex++;
+        }
+      } else {
+        const m = re.exec(subjectStr);
+        if (m) matches.push(m);
+      }
+
+      if (matches.length === 0) {
+        statusBadge.className = 'tk-status-badge unmatched';
+        statusBadge.textContent = 'NO MATCH';
+        highlightBox.textContent = subjectStr;
+        return;
+      }
+
+      statusBadge.className = 'tk-status-badge matched';
+      statusBadge.textContent = `MATCHED (${matches.length} match${matches.length > 1 ? 'es' : ''})`;
+
+      let html = '';
+      let lastIndex = 0;
+      matches.forEach((m) => {
+        const start = m.index;
+        const end = start + m[0].length;
+        html += esc(subjectStr.slice(lastIndex, start));
+        html += `<mark class="tk-regex-match-hl">${esc(m[0])}</mark>`;
+        lastIndex = end;
+      });
+      html += esc(subjectStr.slice(lastIndex));
+      highlightBox.innerHTML = html;
+
+      const tbl = document.createElement('table');
+      tbl.className = 'tk-regex-groups-table';
+      tbl.innerHTML = `
+        <thead>
+          <tr>
+            <th>Match #</th>
+            <th>Group</th>
+            <th>Value</th>
+            <th>Range</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      `;
+      const tbody = tbl.querySelector('tbody');
+
+      matches.forEach((m, mIdx) => {
+        m.forEach((val, gIdx) => {
+          const tr = document.createElement('tr');
+          const groupName = gIdx === 0 ? '0 (Full)' : `$${gIdx}`;
+          const start = gIdx === 0 ? m.index : '-';
+          const end = gIdx === 0 ? m.index + m[0].length : '-';
+          const rangeStr = start !== '-' ? `[${start}, ${end}]` : '-';
+
+          tr.innerHTML = `
+            <td>#${mIdx + 1}</td>
+            <td><strong>${groupName}</strong></td>
+            <td><code>${esc(val !== undefined ? val : '')}</code></td>
+            <td>${rangeStr}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      });
+      groupsContainer.appendChild(tbl);
+    }
+
+    patternInput.addEventListener('input', updateRegex);
+    subjectInput.addEventListener('input', updateRegex);
+
+    updateRegex();
+    return pane;
+  },
+
+  _buildRouteTesterPane: () => {
+    const pane = document.createElement('div');
+    pane.id = 'tk-settings-route-tester';
+    pane.className = 'tk-tester-pane';
+
+    const title = document.createElement('div');
+    title.className = 'tk-settings-section-title';
+    title.textContent = 'URL Route Match Tester';
+    pane.appendChild(title);
+
+    const desc = document.createElement('div');
+    desc.className = 'tk-settings-hint';
+    desc.textContent = 'Test any page URL against all module route matching rules to evaluate which modules will run on that page.';
+    pane.appendChild(desc);
+
+    const urlWrap = document.createElement('div');
+    urlWrap.className = 'tk-settings-field';
+    urlWrap.style.marginBottom = '6px';
+
+    const urlLabel = document.createElement('label');
+    urlLabel.textContent = 'Target Page URL';
+
+    const urlRow = document.createElement('div');
+    urlRow.className = 'tk-tester-row';
+
+    const urlInput = document.createElement('input');
+    urlInput.type = 'text';
+    urlInput.className = 'tk-tester-input tk-tester-row-input';
+    urlInput.placeholder = 'https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards';
+    urlInput.value = typeof window !== 'undefined' ? window.location.href : 'https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards';
+
+    const useCurrentBtn = document.createElement('button');
+    useCurrentBtn.type = 'button';
+    useCurrentBtn.className = 'tk-route-add-btn';
+    useCurrentBtn.style.marginTop = '0';
+    useCurrentBtn.textContent = 'Current Page';
+    useCurrentBtn.addEventListener('click', () => {
+      if (typeof window !== 'undefined') {
+        urlInput.value = window.location.href;
+        updateRouteTester();
+      }
+    });
+
+    urlRow.append(urlInput, useCurrentBtn);
+    urlWrap.append(urlLabel, urlRow);
+    pane.appendChild(urlWrap);
+
+    const samplesWrap = document.createElement('div');
+    samplesWrap.className = 'tk-preset-chips';
+    const samples = [
+      { name: 'Checklist', url: 'https://www.tcdb.com/Checklist.cfm/sid/11172' },
+      { name: 'View Collection', url: 'https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards&CollectionID=6' },
+      { name: 'For Sale / Trade', url: 'https://www.tcdb.com/ViewCollectionForSaleTrade.cfm?Member=djncards' },
+      { name: 'Add Multiples', url: 'https://www.tcdb.com/CollectionAddMultiplesText.cfm?SetID=11172' },
+      { name: 'Inserts', url: 'https://www.tcdb.com/Inserts.cfm/sid/11172' }
+    ];
+    samples.forEach((s) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'tk-preset-chip';
+      chip.textContent = s.name;
+      chip.addEventListener('click', () => {
+        urlInput.value = s.url;
+        updateRouteTester();
+      });
+      samplesWrap.appendChild(chip);
+    });
+    pane.appendChild(samplesWrap);
+
+    const cardsContainer = document.createElement('div');
+    cardsContainer.style.display = 'flex';
+    cardsContainer.style.flexDirection = 'column';
+    cardsContainer.style.gap = '8px';
+    cardsContainer.style.marginTop = '8px';
+    pane.appendChild(cardsContainer);
+
+    function updateRouteTester() {
+      const testUrl = urlInput.value.trim();
+      cardsContainer.innerHTML = '';
+
+      if (!testUrl) {
+        const empty = document.createElement('div');
+        empty.className = 'tk-settings-hint';
+        empty.textContent = 'Enter a URL above to evaluate module matching.';
+        cardsContainer.appendChild(empty);
+        return;
+      }
+
+      ModuleRegistry.forEach((mod) => {
+        const cfg = Config.modules[mod.id];
+        if (!cfg) return;
+
+        const card = document.createElement('div');
+        card.className = 'tk-route-card';
+
+        const header = document.createElement('div');
+        header.className = 'tk-route-card-header';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'tk-route-card-title';
+        titleEl.textContent = mod.name;
+
+        let isMatch = false;
+        let throwsError = false;
+        try {
+          isMatch = testUrlMatch(cfg.urlMatch, testUrl);
+        } catch {
+          throwsError = true;
+        }
+
+        const badge = document.createElement('span');
+        if (isMatch && !throwsError) {
+          badge.className = 'tk-status-badge matched';
+          badge.textContent = 'MATCH';
+        } else {
+          badge.className = 'tk-status-badge unmatched';
+          badge.textContent = 'NO MATCH';
+        }
+
+        header.append(titleEl, badge);
+        card.appendChild(header);
+
+        const rulesList = document.createElement('div');
+        rulesList.className = 'tk-route-rules-list';
+
+        if (!cfg.urlMatch || cfg.urlMatch.length === 0) {
+          const rItem = document.createElement('div');
+          rItem.className = 'tk-route-rule-item pass';
+          rItem.textContent = '✓ No route rules defined — matches all URLs by default';
+          rulesList.appendChild(rItem);
+        } else {
+          cfg.urlMatch.forEach((rule) => {
+            let ruleMatches = false;
+            try {
+              ruleMatches = new RegExp(rule.pattern, 'i').test(testUrl);
+            } catch {
+              ruleMatches = false;
+            }
+
+            const rItem = document.createElement('div');
+            if (rule.exclude) {
+              rItem.className = ruleMatches ? 'tk-route-rule-item fail' : 'tk-route-rule-item';
+              rItem.textContent = ruleMatches
+                ? `✗ Exclude match: "${rule.pattern}" (EXCLUDED)`
+                : `— Exclude rule: "${rule.pattern}" (Passed)`;
+            } else {
+              rItem.className = ruleMatches ? 'tk-route-rule-item pass' : 'tk-route-rule-item';
+              rItem.textContent = ruleMatches
+                ? `✓ Include match: "${rule.pattern}" (MATCHED)`
+                : `— Include rule: "${rule.pattern}" (Not matched)`;
+            }
+            rulesList.appendChild(rItem);
+          });
+        }
+
+        card.appendChild(rulesList);
+        cardsContainer.appendChild(card);
+      });
+    }
+
+    urlInput.addEventListener('input', updateRouteTester);
+    updateRouteTester();
+
+    return pane;
+  },
+
   _version: () => getAppVersion()
 };
 
-/** Declarative spec for every numeric global setting. */
-export const GLOBAL_FIELDS = [
+/** Declarative specs for global settings, organized into logical sections. */
+export const GLOBAL_SECTIONS = [
   {
-    label: 'Export Base Delay', key: 'exportBaseDelayMs', min: 200, max: 2000, step: 50, unit: 'ms',
-    hint: 'Minimum wait between paginated checklist-fetch requests.'
+    title: 'Network Pacing & Rate Limits',
+    description: 'Configure request spacing, random jitter, cross-tab serialization, and adaptive server strain thresholds.',
+    fields: [
+      {
+        label: 'Export Base Delay', key: 'exportBaseDelayMs', min: 500, max: 5000, step: 50, unit: 'ms',
+        hint: 'Minimum wait between paginated fetch requests. Configures fundamental request pacing.'
+      },
+      {
+        label: 'Export Jitter', key: 'exportJitterMaxMs', min: 0, max: 2000, step: 50, unit: 'ms',
+        hint: 'Random amount added on top of base delay to randomize request cadence and avoid WAF fingerprinting.'
+      },
+      {
+        label: 'Pagination Throttle Start Page', key: 'paginationThrottleStartPage', min: 1, max: 50, step: 1, unit: ' pages',
+        hint: 'Page threshold at which request pacing and throttling delays activate during auto-pagination.'
+      },
+      {
+        label: 'Pacing Strain Penalty Step', key: 'pacingPenaltyStepMs', min: 100, max: 2000, step: 50, unit: 'ms',
+        hint: 'Adaptive penalty step added to pacing delay whenever server strain (slow response or throttle) is detected.'
+      },
+      {
+        label: 'Pacing Strain Penalty Ceiling', key: 'pacingPenaltyCapMs', min: 1000, max: 30000, step: 500, unit: 'ms',
+        hint: 'Upper ceiling on accumulated server strain penalty.'
+      },
+      {
+        label: 'Pacing Slow Response Latency', key: 'pacingSlowResponseMs', min: 1000, max: 10000, step: 250, unit: 'ms',
+        hint: 'Response latency threshold above which a fetch is flagged as server strain.'
+      },
+      {
+        label: 'Pacing Latency Sample Window', key: 'pacingSampleWindow', min: 3, max: 50, step: 1, unit: ' samples',
+        hint: 'Number of recent response latency samples used to compute rolling median latency.'
+      },
+      {
+        label: 'Pacing Strain Relief Step', key: 'pacingReliefStepMs', min: 10, max: 500, step: 10, unit: 'ms',
+        hint: 'Amount subtracted from strain penalty per successful, unremarkable response.'
+      },
+      {
+        label: 'Cross-Tab Throttle Wait Slice', key: 'throttleMaxSliceMs', min: 50, max: 1000, step: 25, unit: 'ms',
+        hint: 'Slice interval before re-evaluating cross-tab request slot locks.'
+      }
+    ]
   },
   {
-    label: 'Export Jitter', key: 'exportJitterMaxMs', min: 0, max: 2000, step: 50, unit: 'ms',
-    hint: 'Random amount added on top of the base delay, so request timing isn’t a fixed, fingerprintable interval.'
+    title: 'Retry & Safety Safeguards',
+    description: 'Manage retry backoffs, request timeouts, pagination limits, and anti-scraping cooldown protection.',
+    fields: [
+      {
+        label: 'Max Retries Per Page', key: 'exportMaxRetries', min: 0, max: 8, step: 1, unit: '',
+        hint: 'Retry attempts for a single page on HTTP 429/503 before the export fails.'
+      },
+      {
+        label: 'Retry Backoff — Base', key: 'exportBackoffBaseMs', min: 250, max: 5000, step: 250, unit: 'ms',
+        hint: 'Starting wait before the first retry; doubles on each subsequent attempt up to the cap below.'
+      },
+      {
+        label: 'Retry Backoff — Cap', key: 'exportBackoffCapMs', min: 2000, max: 60000, step: 1000, unit: 'ms',
+        hint: 'Upper limit on the doubling backoff delay, regardless of retry count.'
+      },
+      {
+        label: 'Pagination Safety Ceiling', key: 'exportMaxPages', min: 20, max: 500, step: 10, unit: ' pages',
+        hint: 'Hard stop on discovered page count — protects against runaway fetch loops on massive sets.'
+      },
+      {
+        label: 'Request Timeout', key: 'exportRequestTimeoutMs', min: 5000, max: 120000, step: 5000, unit: 'ms',
+        hint: 'Abandon a single request that never answers. Without this a hung request stalls the whole queue indefinitely.'
+      },
+      {
+        label: 'Anti-Scraping Cooldown', key: 'exportBlockCooldownMinutes', min: 0, max: 30, step: 1, unit: ' min',
+        hint: 'After a detected block (captcha/verification page), refuse new exports for this long. 0 disables the cooldown.'
+      }
+    ]
   },
   {
-    label: 'Max Retries Per Page', key: 'exportMaxRetries', min: 0, max: 8, step: 1, unit: '',
-    hint: 'Retry attempts for a single page on HTTP 429/503 before the export fails.'
+    title: 'Local Storage & Caching',
+    description: 'Configure local browser cache retention, TTL, and storage limits for exported sets.',
+    fields: [
+      {
+        label: 'Export Cache Lifetime', key: 'exportCacheTtlHours', min: 0, max: 168, step: 1, unit: ' h',
+        hint: 'Re-exporting a set within this window reuses the stored result and makes no requests at all. 0 disables caching.'
+      },
+      {
+        label: 'Export Cache Max Entries', key: 'exportCacheMaxEntries', min: 5, max: 100, step: 5, unit: ' sets',
+        hint: 'Maximum number of exported set results retained in local storage cache.'
+      },
+      {
+        label: 'Export Cache Max Rows', key: 'exportCacheMaxRows', min: 1000, max: 100000, step: 1000, unit: ' rows',
+        hint: 'Maximum rows allowed for a single set before cache storage skips saving it.'
+      }
+    ]
   },
   {
-    label: 'Retry Backoff — Base', key: 'exportBackoffBaseMs', min: 250, max: 5000, step: 250, unit: 'ms',
-    hint: 'Starting wait before the first retry; doubles on each subsequent attempt up to the cap below.'
-  },
-  {
-    label: 'Retry Backoff — Cap', key: 'exportBackoffCapMs', min: 2000, max: 60000, step: 1000, unit: 'ms',
-    hint: 'Upper limit on the doubling backoff delay, regardless of retry count.'
-  },
-  {
-    label: 'Pagination Safety Ceiling', key: 'exportMaxPages', min: 20, max: 500, step: 10, unit: ' pages',
-    hint: 'Hard stop on discovered page count — protects against a pagination-parsing bug turning into a runaway fetch loop.'
-  },
-  {
-    label: 'Request Timeout', key: 'exportRequestTimeoutMs', min: 5000, max: 120000, step: 5000, unit: 'ms',
-    hint: 'Abandon a single request that never answers. Without this a hung request stalls the whole export queue indefinitely.'
-  },
-  {
-    label: 'Anti-Scraping Cooldown', key: 'exportBlockCooldownMinutes', min: 0, max: 30, step: 1, unit: ' min',
-    hint: 'After a detected block (captcha/verification page), refuse new exports for this long. 0 disables the cooldown.'
-  },
-  {
-    label: 'Export Cache Lifetime', key: 'exportCacheTtlHours', min: 0, max: 168, step: 1, unit: ' h',
-    hint: 'Re-exporting a set within this window reuses the stored result and makes no requests at all. 0 disables caching.'
-  },
-  {
-    label: 'Toast Display Duration', key: 'toastDurationMs', min: 1500, max: 10000, step: 250, unit: 'ms',
-    hint: 'How long status/confirmation toasts stay visible before fading out.'
-  },
-  {
-    label: 'Checklist Filter Debounce', key: 'checklistFilterDebounceMs', min: 0, max: 500, step: 25, unit: 'ms',
-    hint: 'Delay after typing stops before the real-time table filter re-scans rows.'
-  },
-  {
-    label: 'Pagination Loader Delay', key: 'paginationLoaderDelayMs', min: 300, max: 3000, step: 100, unit: 'ms',
-    hint: 'Fixed wait before the CSV export button is enabled on paginated pages. Not a real completion signal — still a timing guess, just a configurable one.'
-  },
-  {
-    label: 'Settings Save Debounce', key: 'settingsSaveDebounceMs', min: 100, max: 2000, step: 100, unit: 'ms',
-    hint: 'How long to wait after the last settings change before writing to storage.'
-  },
-  {
-    label: 'Card Formatter Popover Duration', key: 'cardFormatterPopoverDurationMs', min: 1000, max: 10000, step: 500, unit: 'ms',
-    hint: 'How long the floating copy popover stays visible before auto-dismissing.'
+    title: 'UI & Performance Settings',
+    description: 'Customize UI toast notifications, page component delays, debounces, and batch rendering chunk sizes.',
+    fields: [
+      {
+        label: 'Toast Display Duration', key: 'toastDurationMs', min: 1500, max: 10000, step: 250, unit: 'ms',
+        hint: 'How long status/confirmation toasts stay visible before fading out.'
+      },
+      {
+        label: 'Toast Stack Limit', key: 'toastStackLimit', min: 1, max: 10, step: 1, unit: ' toasts',
+        hint: 'Maximum number of toast notifications allowed to stack on screen simultaneously.'
+      },
+      {
+        label: 'Checklist Filter Debounce', key: 'checklistFilterDebounceMs', min: 0, max: 500, step: 25, unit: 'ms',
+        hint: 'Delay after typing stops before the real-time table filter re-scans rows.'
+      },
+      {
+        label: 'Pagination Loader Delay', key: 'paginationLoaderDelayMs', min: 300, max: 3000, step: 100, unit: 'ms',
+        hint: 'Fixed wait before the CSV export button is enabled on paginated pages.'
+      },
+      {
+        label: 'Add Multiples Focus Deadline', key: 'addMultiplesFocusDeadlineMs', min: 300, max: 5000, step: 100, unit: 'ms',
+        hint: 'Timeout deadline for auto-focusing quantity input fields on Add Multiples forms.'
+      },
+      {
+        label: 'Set List Enhancer Chunk Size', key: 'setListEnhancerChunkSize', min: 5, max: 100, step: 5, unit: ' links',
+        hint: 'Batch rendering chunk size for injecting set list link badges.'
+      },
+      {
+        label: 'Settings Save Debounce', key: 'settingsSaveDebounceMs', min: 100, max: 2000, step: 100, unit: 'ms',
+        hint: 'How long to wait after the last settings change before writing to storage.'
+      },
+      {
+        label: 'Card Formatter Popover Duration', key: 'cardFormatterPopoverDurationMs', min: 1000, max: 10000, step: 500, unit: 'ms',
+        hint: 'How long the floating copy popover stays visible before auto-dismissing.'
+      }
+    ]
   }
 ];

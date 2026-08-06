@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0-beta] — 2026-08-06
+
+### Added
+- **Print Collection CSV Export**: Full CSV exporter for `PrintYourCollectionPDF.cfm` and `Collection.cfm?MODE=PRINT*` with page count assessment, rate-limited multi-part parsing, and thousands separator number formatting.
+- **Initial Public Beta Release**: Reset project release version to `v0.1 Beta` (`0.1.0-beta`).
+
 ## [3.1.0] — 2026-08-03
 
 ### Added

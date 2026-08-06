@@ -36,6 +36,8 @@ export function appendShortcutBadges(
     include: TOOLBAR_BADGES,
     onExport: (e) => {
       e.preventDefault();
+      const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${sid}/`);
+      Log(`[CLIENT] Toolbar CSV Export button clicked for set ID ${sid} (${label}) — ${fullUrl}`, 'info', 'client');
       exportSetCSV(sid, label);
     },
     displayMode,

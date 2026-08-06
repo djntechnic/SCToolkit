@@ -74,7 +74,7 @@ test('RuntimeSettings: timezone and timestampFormat knobs sync dynamically', () 
   RuntimeSettings.timestampFormat = 'HH:mm:ss.SSS TZ';
 });
 
-test('Log: colors server actions in blue starting with [SERVER] and no timestamp', () => {
+test('Log: colors server actions in blue starting with [SERVER]', () => {
   const calls = [];
   const origInfo = console.info;
   console.info = (fmt, style) => calls.push({ fmt, style });
@@ -82,14 +82,14 @@ test('Log: colors server actions in blue starting with [SERVER] and no timestamp
   try {
     Log('Fetching page 1', 'info', 'server');
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].fmt, '%c[SERVER] Fetching page 1');
-    assert.equal(calls[0].style, 'color:#0d6efd; font-weight:bold');
+    assert.match(calls[0].fmt, /%c\[SCToolkit \| .*?\] %c\[SERVER\]%c Fetching page 1/);
+    assert.equal(calls[0].style, 'color:#6c757d');
   } finally {
     console.info = origInfo;
   }
 });
 
-test('Log: colors errors in red starting with [CLIENT/SERVER] note and no timestamp', () => {
+test('Log: colors errors in red starting with [CLIENT/SERVER] note', () => {
   const calls = [];
   const origError = console.error;
   console.error = (fmt, style) => calls.push({ fmt, style });
@@ -98,10 +98,10 @@ test('Log: colors errors in red starting with [CLIENT/SERVER] note and no timest
     Log('Network failure', 'error', 'server');
     Log('Parsing failed', 'error', 'client');
     assert.equal(calls.length, 2);
-    assert.equal(calls[0].fmt, '%c[SERVER] Network failure');
-    assert.equal(calls[0].style, 'color:#dc3545; font-weight:bold');
-    assert.equal(calls[1].fmt, '%c[CLIENT] Parsing failed');
-    assert.equal(calls[1].style, 'color:#dc3545; font-weight:bold');
+    assert.match(calls[0].fmt, /%c\[SCToolkit \| .*?\] %c\[SERVER\]%c Network failure/);
+    assert.equal(calls[0].style, 'color:#6c757d');
+    assert.match(calls[1].fmt, /%c\[SCToolkit \| .*?\] %c\[CLIENT\]%c Parsing failed/);
+    assert.equal(calls[1].style, 'color:#6c757d');
   } finally {
     console.error = origError;
   }

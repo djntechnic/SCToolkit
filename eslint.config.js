@@ -32,6 +32,7 @@ export default [
         DOMParser: 'readonly',
         Blob: 'readonly',
         URL: 'readonly',
+        URLSearchParams: 'readonly',
         Intl: 'readonly',
         localStorage: 'readonly',
         GM_getValue: 'readonly',
@@ -58,7 +59,10 @@ export default [
         URL: 'readonly',
         Buffer: 'readonly',
         setTimeout: 'readonly',
-        clearTimeout: 'readonly'
+        clearTimeout: 'readonly',
+        global: 'readonly',
+        document: 'readonly',
+        window: 'readonly'
       }
     }
   },

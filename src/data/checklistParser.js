@@ -23,10 +23,10 @@ export const CHECKLIST_HEADER = [
 ];
 
 /** Generational suffixes that look like all-caps tags but belong to the name. */
-const NAME_SUFFIX = /^(Jr\.?|Sr\.?|II|III|IV|V)$/i;
+export const NAME_SUFFIX = /^(Jr\.?|Sr\.?|II|III|IV|V)$/i;
 
 /** Serial-numbering token, e.g. `SN250` for a print run of 250. */
-const PRINT_RUN = /^SN\d+$/i;
+export const PRINT_RUN = /^SN\d+$/i;
 
 /** Known card classification tags. */
 export const KNOWN_TAGS = new Set([

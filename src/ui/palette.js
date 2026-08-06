@@ -11,6 +11,7 @@ import { Pins } from '../core/storage.js';
 import { extractSid } from '../core/sid.js';
 import { exportSetCSV } from '../net/setExport.js';
 import { Utils } from '../core/utils.js';
+import { Log } from '../core/log.js';
 
 const OVERLAY_ID = 'tk-palette-overlay';
 
@@ -99,7 +100,11 @@ export function buildCommands({ href = window.location.href, pins = Pins.all() }
     commands.push({
       label: 'This set: Export checklist to CSV',
       hint: 'current set',
-      run: () => exportSetCSV(currentSid, document.title || 'Set')
+      run: () => {
+        const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${currentSid}/`);
+        Log(`[CLIENT] Command Palette CSV Export requested for current set ID ${currentSid} — ${fullUrl}`, 'info', 'client');
+        exportSetCSV(currentSid, document.title || 'Set');
+      }
     });
   }
 
@@ -112,7 +117,11 @@ export function buildCommands({ href = window.location.href, pins = Pins.all() }
     commands.push({
       label: `Pinned: Export ${pin.name}`,
       hint: 'CSV',
-      run: () => exportSetCSV(pin.id, pin.name)
+      run: () => {
+        const fullUrl = Utils.toFullUrl(pin.url || `/Checklist.cfm/sid/${pin.id}/`);
+        Log(`[CLIENT] Command Palette CSV Export requested for pinned set '${pin.name}' (ID ${pin.id}) — ${fullUrl}`, 'info', 'client');
+        exportSetCSV(pin.id, pin.name);
+      }
     });
   });
 

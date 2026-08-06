@@ -216,25 +216,36 @@ export function formatCentralTimestamp() {
 export function Log(msg, level = 'info', source = 'client') {
   if (LOG_LEVELS.indexOf(level) < LOG_LEVELS.indexOf(RuntimeSettings.logLevel)) return;
   const consoleMethod = level === 'debug' ? 'log' : level;
-  const sourceLabel = source === 'server' ? '[SERVER]' : '[CLIENT]';
-
-  // 1. Color any ERROR in Red starting with the [CLIENT/SERVER] note (no timestamp)
-  if (level === 'error') {
-    console.error(`%c${sourceLabel} ${msg}`, 'color:#dc3545; font-weight:bold');
-    return;
-  }
-
-  // 2. Color any Server actions as BLUE starting with [SERVER] Message (no timestamp)
-  if (source === 'server') {
-    console[consoleMethod](`%c[SERVER] ${msg}`, 'color:#0d6efd; font-weight:bold');
-    return;
-  }
-
-  // 3. Standard CLIENT actions include the timestamp prefix
   const timestamp = formatLogTimestamp();
+  const cleanMsg = String(msg || '').replace(/^\[(CLIENT|SERVER)\]\s*/i, '');
+
+  if (level === 'error') {
+    const sourceTag = source === 'server' ? '[SERVER]' : '[CLIENT]';
+    const sourceStyle = source === 'server' ? LOG_STYLES.source.server : LOG_STYLES.source.client;
+    console.error(
+      `%c[SCToolkit | ${timestamp}] %c${sourceTag}%c ${cleanMsg}`,
+      LOG_STYLES.prefix,
+      sourceStyle,
+      'color:#dc3545; font-weight:bold'
+    );
+    return;
+  }
+
+  // 2. Server actions include timestamp and bold blue [SERVER] badge
+  if (source === 'server') {
+    console[consoleMethod](
+      `%c[SCToolkit | ${timestamp}] %c[SERVER]%c ${cleanMsg}`,
+      LOG_STYLES.prefix,
+      LOG_STYLES.source.server,
+      'color:#0d6efd; font-weight:bold'
+    );
+    return;
+  }
+
+  // 3. Standard CLIENT actions include timestamp and grey [CLIENT] badge
   const levelStyle = LOG_STYLES.level[level] || LOG_STYLES.level.info;
   console[consoleMethod](
-    `%c[SCToolkit | ${timestamp}] %c[CLIENT]%c ${msg}`,
+    `%c[SCToolkit | ${timestamp}] %c[CLIENT]%c ${cleanMsg}`,
     LOG_STYLES.prefix,
     LOG_STYLES.source.client,
     levelStyle

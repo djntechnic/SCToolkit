@@ -1,6 +1,6 @@
 {
   "name": "sctoolkit",
-  "version": "3.1.0",
+  "version": "0.1.0-beta",
   "description": "Userscript toolkit for sports card database browsing: filtering, shortcuts, and polite CSV export.",
   "type": "module",
   "private": false,

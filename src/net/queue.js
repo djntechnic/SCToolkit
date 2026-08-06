@@ -23,9 +23,7 @@ export const ExportQueue = {
     const position = ExportQueue.queue.length;
 
     if (ExportQueue.active) {
-      // Local bookkeeping only — no request has been made yet, so this is a
-      // client-side line.
-      Log(`Export queued behind ${position - 1} pending job(s): ${label}`, 'info');
+      Log(`[CLIENT] Export job queued behind ${position - 1} pending job(s): '${label}' (Queue position: #${position})`, 'info', 'client');
       showToast({
         message: `Queued: <b>${Utils.escape.html(label)}</b> (position ${position})`,
         variant: 'muted'
@@ -43,11 +41,12 @@ export const ExportQueue = {
     }
     ExportQueue.active = true;
     const { label, task } = ExportQueue.queue.shift();
-    Log(`Export job starting: ${label}`, 'info');
+    const remaining = ExportQueue.queue.length;
+    Log(`[CLIENT] Export job starting: '${label}' (${remaining} job(s) remaining in queue)`, 'info', 'client');
     try {
       await task();
     } catch (error) {
-      Log(`Export job threw uncaught error: ${error.message}`, 'error');
+      Log(`[CLIENT] Export job threw uncaught error for '${label}': ${error.message}`, 'error', 'client');
     }
     ExportQueue.processNext();
   }

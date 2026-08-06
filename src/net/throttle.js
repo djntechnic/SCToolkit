@@ -10,6 +10,7 @@
  * "when did anyone last make a request" timestamp is enough to interleave them.
  */
 
+import { Config } from '../core/config.js';
 import { getValue, setValue } from '../core/storage.js';
 
 /** Shared across all tabs: epoch ms of the last request any tab issued. */
@@ -21,7 +22,7 @@ export const LAST_REQUEST_KEY = 'tk_last_request_ts';
  * Sleeping the whole remaining interval in one go would miss another tab
  * claiming the slot while we wait, so the wait is sliced and re-evaluated.
  */
-const MAX_SLICE_MS = 250;
+export const MAX_SLICE_MS = 250;
 
 /**
  * How long to wait before a request may be issued.
@@ -85,7 +86,8 @@ export async function waitForSlot(intervalMs, deps = {}) {
       return waited;
     }
 
-    const slice = Math.min(wait, MAX_SLICE_MS);
+    const maxSlice = Config.global?.throttleMaxSliceMs ?? MAX_SLICE_MS;
+    const slice = Math.min(wait, maxSlice);
     await sleep(slice);
     waited += slice;
   }
