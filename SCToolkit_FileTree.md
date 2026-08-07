@@ -46,7 +46,8 @@ SCToolkit
 │   │   ├── 📜 collectionBrowseParser.js
 │   │   ├── 📜 csv.js
 │   │   ├── 📜 filename.js
-│   │   └── 📜 printCollectionParser.js
+│   │   ├── 📜 printCollectionParser.js
+│   │   └── 📜 setHierarchyParser.js
 │   ├── 📁 modules
 │   │   ├── 📜 addMultiplesEnhancer.js
 │   │   ├── 📜 cardNameFormatter.js
@@ -55,6 +56,7 @@ SCToolkit
 │   │   ├── 📜 csvExportEngine.js
 │   │   ├── 📜 inputOptimization.js
 │   │   ├── 📜 paginationLoader.js
+│   │   ├── 📜 setHierarchyExport.js
 │   │   └── 📜 setListEnhancer.js
 │   ├── 📁 net
 │   │   ├── 📜 blockDetect.js
@@ -64,6 +66,7 @@ SCToolkit
 │   │   ├── 📜 printCollectionExport.js
 │   │   ├── 📜 queue.js
 │   │   ├── 📜 setExport.js
+│   │   ├── 📜 setHierarchyExport.js
 │   │   └── 📜 throttle.js
 │   ├── 📁 ui
 │   │   ├── 📜 badges.js
@@ -2308,6 +2311,19 @@ SCToolkit
 │   │   │   │   ├── 📄 LogoYT40.gif
 │   │   │   │   ├── 📄 search-autocomplete.js.download
 │   │   │   │   └── 📄 TCDbLogo.gif
+│   │   │   ├── 📁 ViewAll-Sets_files
+│   │   │   │   ├── 📄 ajax-navigation-v2.js.download
+│   │   │   │   ├── 🎨 all.min.css
+│   │   │   │   ├── 📄 arrow.gif
+│   │   │   │   ├── 📄 bootstrap.bundle.min.js.download
+│   │   │   │   ├── 🎨 bootstrap.min.css
+│   │   │   │   ├── 🎨 default6.css
+│   │   │   │   ├── 📄 LogoFB40.gif
+│   │   │   │   ├── 📄 LogoX40.gif
+│   │   │   │   ├── 📄 LogoYT40.gif
+│   │   │   │   ├── 📄 search-autocomplete.js.download
+│   │   │   │   ├── 📄 TCDbLogo.gif
+│   │   │   │   └── 🖼️ Topps-1967-01010482417-Red-Flat.jpg
 │   │   │   ├── 📁 ViewAllC_files
 │   │   │   │   ├── 📄 ajax-navigation-v2.js.download
 │   │   │   │   ├── 🎨 all.min.css
@@ -3136,8 +3152,12 @@ SCToolkit
 │   │   │   ├── 🌐 Inserts.html
 │   │   │   ├── 🌐 Non-Sport Checklist.html
 │   │   │   ├── 🌐 PrintYourCollectionPDF.html
+│   │   │   ├── 🌐 ViewAll-Sets.html
+│   │   │   ├── 📄 ViewAll-Sets.txt
 │   │   │   ├── 🌐 ViewAll.html
 │   │   │   ├── 🌐 ViewAllC.html
+│   │   │   ├── 📄 ViewAllExpC-WithoutSets.htm
+│   │   │   ├── 📄 ViewAllExpC-WithSets.htm
 │   │   │   ├── 🌐 ViewCard.html
 │   │   │   ├── 🌐 ViewCollection.html
 │   │   │   ├── 🌐 ViewCollectionForSaleTrade.html
@@ -3178,6 +3198,7 @@ SCToolkit
 │   ├── 📜 regexTester.test.js
 │   ├── 📜 registry.test.js
 │   ├── 📜 selectors.test.js
+│   ├── 📜 setHierarchyParser.test.js
 │   ├── 📜 setListEnhancer.test.js
 │   ├── 📜 storage.test.js
 │   ├── 📜 ui.test.js

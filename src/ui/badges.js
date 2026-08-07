@@ -68,6 +68,12 @@ export const BADGES = {
     text: '',
     cssClass: 'tk-pin-remove',
     title: 'Remove Pin'
+  },
+  HIERARCHY: {
+    icon: 'downloadHierarchy',
+    text: 'HIERARCHY',
+    cssClass: 'tk-badge-action-h',
+    title: 'Export Set Hierarchy'
   }
 };
 
@@ -75,10 +81,10 @@ export const BADGES = {
 export const SHORTCUT_KEYS = ['CHECKLIST', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
 
 /** Toolbar order: navigation shortcuts, then the export action. */
-export const TOOLBAR_BADGES = ['CHECKLIST', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST', 'CSV'];
+export const TOOLBAR_BADGES = ['CHECKLIST', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST', 'CSV', 'HIERARCHY'];
 
 /** Set-link order: checklist leads, followed by actions and set shortcuts. */
-export const SET_LINK_BADGES = ['CHECKLIST', 'PIN', 'CSV', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
+export const SET_LINK_BADGES = ['CHECKLIST', 'PIN', 'CSV', 'HIERARCHY', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
 
 /**
  * @param {keyof BADGES} badgeKey
@@ -155,11 +161,12 @@ export function createBadge(badgeKey, sid = null, onClickOverride = null, displa
 export function renderBadgeSet(container, sid, {
   include = TOOLBAR_BADGES,
   onExport = null,
+  onExportHierarchy = null,
   onPin = null,
   displayMode = 'both',
   parentSid = null
 } = {}) {
-  const handlers = { CSV: onExport, PIN: onPin };
+  const handlers = { CSV: onExport, PIN: onPin, HIERARCHY: onExportHierarchy };
 
   include.forEach((key) => {
     const isAction = key in handlers;

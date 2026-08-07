@@ -31,6 +31,6 @@ export function fixtureDocument(name, url) {
  * @param {string} html
  * @returns {Document}
  */
-export function documentFrom(html) {
-  return new JSDOM(html).window.document;
+export function documentFrom(html, url) {
+  return new JSDOM(html, url ? { url } : undefined).window.document;
 }

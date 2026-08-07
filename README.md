@@ -2,7 +2,7 @@
 
 A userscript toolkit for sports card database browsing: instant table & set list filtering, keyboard-first data entry, set shortcut badges, checklist links, customizable button display modes, and polite, rate-limited CSV export.
 
-> **Status:** v0.1 Beta is available. Featuring Print Collection CSV export, Collection Quantity Counter live overlay widget, Parent Set ID resolution for sub-sets, alphabetized accordion Settings modal, unified toast stacking container, and universal real-time filtering.
+> **Status:** v0.1 Beta is available. Featuring Set Hierarchy CSV export, Print Collection CSV export, Collection Quantity Counter live overlay widget, Parent Set ID resolution for sub-sets, alphabetized accordion Settings modal, unified toast stacking container, and universal real-time filtering.
 
 ---
 
@@ -23,7 +23,7 @@ A userscript toolkit for sports card database browsing: instant table & set list
 | **Checklist & Listing Filter Bar** | Checklist, Collection Browse, Inserts, ViewAll | Real-time search filter bar for card tables. Filters by player, card number, parallel tags, or variations. |
 | **Collection Quantity Counter Widget** | ViewCollectionForSaleTrade, ViewCollectionWantlist | Floating overlay widget tracking distinct collected cards vs total item quantity (`Qty >= 1`). |
 | **Card Name Formatter Engine** | ViewCard, Checklist, Collections | Compiles structured card metadata into customizable tokenized text strings with floating popover or auto-copy. |
-| **Set List Shortcut Badges** | ViewAll, Inserts, Set Lists | Injects inline badges (Checklist, Inserts, Parallels, For Sale, Wantlist, Add Multiples, Pin, CSV) next to set links. |
+| **Set List Shortcut Badges** | ViewAll, Inserts, Set Lists | Injects inline badges (Checklist, Inserts, Parallels, For Sale, Wantlist, Add Multiples, Pin, CSV, Hierarchy) next to set links. |
 | **Keyboard-First Data Entry** | Add Multiples & Form Inputs | Converts `Enter` to `Tab` navigation across inputs and auto-scrolls focused fields into the middle 80% viewport zone. |
 | **Paced Multi-Page Export Engine** | Set Checklists, Collections, Print Views | Multi-page checklist CSV exporter with rate limiting, exponential backoff, anti-scraping protection, and 24h caching. |
 | **Interactive Settings Modal** | Toolbar Gear Icon / `Ctrl+K` | Comprehensive settings UI featuring module toggles, regex route editing, global thresholds, log timezone/format, and diagnostics. |
@@ -37,7 +37,7 @@ SCToolkit is built as a modular framework. Each feature is encapsulated in a ded
 ### 1. CSV Export Engine
 - **Source File**: [`src/modules/csvExportEngine.js`](file:///c:/Dev/SCToolkit/src/modules/csvExportEngine.js)
 - **Functions & Capabilities**:
-  - **Set Checklist Export**: Multi-page checklist scraper. Automatically discovers total page count, fetches pages sequentially with pacing delays, parses card metadata, extracts variation text/print runs, and generates structured CSVs.
+  - **Set Checklist & Hierarchy Export**: Multi-page checklist scraper and parent set hierarchy exporter. Automatically discovers child sets, extracts notes, pacing scales dynamically for large sets, and exports structured CSVs.
   - **Collection & Browse Export**: Exports user collection tables, player collections, and team collections to CSV.
   - **Print Collection Export**: Operates on `PrintYourCollectionPDF.cfm` and `Collection.cfm?MODE=PRINT*` pages.
     1. Displays an initial **Calculate Page Count** button with an explanatory tooltip.
@@ -91,7 +91,7 @@ SCToolkit is built as a modular framework. Each feature is encapsulated in a ded
 - **Source File**: [`src/modules/setListEnhancer.js`](file:///c:/Dev/SCToolkit/src/modules/setListEnhancer.js)
 - **Functions & Capabilities**:
   - Injects inline shortcut badge groups next to set links on index and listing pages (`ViewAll.cfm`, `Inserts.cfm`).
-  - Badges include: Checklist (`C`), Inserts (`I`), Parallels (`P`), For Sale (`FS`), Wantlist (`W`), Add Multiples (`+M`), Pin (`PIN`), and CSV Export (`CSV`).
+  - Badges include: Checklist (C), Inserts (I), Parallels (P), For Sale (FS), Wantlist (W), Add Multiples (+M), Pin (PIN), CSV Export (CSV), and Hierarchy Export (HIERARCHY).
   - Uses DOM mutation observers to enhance dynamically loaded set links automatically.
 - **Configurable Settings**:
   - `setListEnhancer.enabled`: Toggle module ON/OFF.

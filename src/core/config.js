@@ -23,6 +23,8 @@ export const EXPORT_CONFIG = {
   backoffCapMs: 15000,
   maxPages: 200,
   requestTimeoutMs: 30000,
+  hierarchyMinDelayMs: 10000,
+  hierarchyMaxDelayMs: 15000,
 };
 
 export const DEFAULT_CONFIG = {
@@ -96,6 +98,14 @@ export const DEFAULT_CONFIG = {
       ],
       actions: {},
     },
+    setHierarchyExport: {
+      enabled: true,
+      urlMatch: [
+        { pattern: "/viewall\\.cfm", exclude: false },
+        { pattern: "/viewallc\\.cfm", exclude: false }
+      ],
+      actions: {}
+    },
   },
   global: {
     exportBaseDelayMs: EXPORT_CONFIG.baseDelayMs,
@@ -105,6 +115,8 @@ export const DEFAULT_CONFIG = {
     exportBackoffCapMs: EXPORT_CONFIG.backoffCapMs,
     exportMaxPages: EXPORT_CONFIG.maxPages,
     exportRequestTimeoutMs: EXPORT_CONFIG.requestTimeoutMs,
+    exportHierarchyMinDelayMs: EXPORT_CONFIG.hierarchyMinDelayMs,
+    exportHierarchyMaxDelayMs: EXPORT_CONFIG.hierarchyMaxDelayMs,
     exportBlockCooldownMinutes: 5,
     exportCacheTtlHours: 24,
     toastDurationMs: 4000,
@@ -262,6 +274,8 @@ export function syncExportConfig() {
   EXPORT_CONFIG.backoffCapMs = Config.global.exportBackoffCapMs ?? 15000;
   EXPORT_CONFIG.maxPages = Config.global.exportMaxPages ?? 200;
   EXPORT_CONFIG.requestTimeoutMs = Config.global.exportRequestTimeoutMs ?? 30000;
+  EXPORT_CONFIG.hierarchyMinDelayMs = Config.global.exportHierarchyMinDelayMs ?? 10000;
+  EXPORT_CONFIG.hierarchyMaxDelayMs = Config.global.exportHierarchyMaxDelayMs ?? 15000;
 }
 
 /**

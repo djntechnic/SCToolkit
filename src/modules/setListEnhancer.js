@@ -19,6 +19,7 @@ import { showToast } from '../ui/toast.js';
 import { Toolbar } from '../ui/toolbar.js';
 import { SELECTOR_REGISTRY } from '../core/selectors.js';
 import { Utils } from '../core/utils.js';
+import { exportSingleParentSetHierarchy, resolveSportFromDocument, resolveYearFromDocument } from '../net/setHierarchyExport.js';
 
 /** Links processed per idle slice. */
 export const CHUNK_SIZE = Config.global?.setListEnhancerChunkSize ?? 25;
@@ -129,6 +130,28 @@ function buildBadgeGroup(link, setId, currentPageSid) {
       const fullUrl = Utils.toFullUrl(link.getAttribute('href') || `/Checklist.cfm/sid/${setId}/`);
       Log(`[CLIENT] Set list badge CSV Export requested for set ID ${setId} (${setName}) — ${fullUrl}`, 'info', 'client');
       exportSetCSV(setId, setName);
+    },
+    onExportHierarchy: (e) => {
+      e.preventDefault();
+      const parentLi = link.closest('li');
+      let category = 'Major Releases';
+      if (parentLi) {
+        let prev = parentLi.previousElementSibling;
+        while (prev) {
+          if (prev.tagName === 'H3' && prev.classList.contains('site')) {
+            category = prev.textContent.trim().replace(/\s*\(\d+\)$/, '');
+            break;
+          }
+          prev = prev.previousElementSibling;
+        }
+      }
+      const nextEl = parentLi ? parentLi.nextElementSibling : null;
+      const hasHideDiv = !!(nextEl && nextEl.tagName === 'DIV' && nextEl.id.startsWith('hideDiv'));
+
+      const sport = resolveSportFromDocument();
+      const year = resolveYearFromDocument(setName);
+
+      exportSingleParentSetHierarchy(setId, setName, { sport, year, category, hasHideDiv });
     },
     displayMode: Config.global?.setButtonDisplay || 'both'
   });

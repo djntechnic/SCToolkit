@@ -91,6 +91,11 @@ export const ICONS = {
     strokeWidth: 2,
     body: '<path d="M20 6 9 17l-5-5"/>',
   },
+  downloadHierarchy: {
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M12 12V3"/><path d="m8 8 4 4 4-4"/><path d="M4 16h16"/><path d="M4 16v4"/><path d="M12 16v4"/><path d="M20 16v4"/>',
+  },
 };
 
 /** DOM id of the injected sprite, so a second injection can be skipped. */

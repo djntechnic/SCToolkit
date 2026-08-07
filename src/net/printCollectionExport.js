@@ -55,7 +55,7 @@ export function getPrintAssessmentCache() {
  * @param {(statusText: string) => void} [callbacks.onProgress]
  * @returns {Promise<{totalPages: number, totalCards: number, totalQuantity: number, rows: Array<Array<string|number>>}|null>}
  */
-export async function assessPrintCollectionPageCount(doc = document, callbacks = {}) {
+export async function assessPrintCollectionPageCount(doc = document, callbacks = {}, signal = null) {
   const remainingMin = cooldownRemainingMinutes();
   if (remainingMin > 0) {
     setStatus('Export blocked (cooldown)');
@@ -88,6 +88,7 @@ export async function assessPrintCollectionPageCount(doc = document, callbacks =
       break;
     }
 
+    if (signal?.aborted) throw new AbortedError('Export cancelled.', true);
     if (part > 1) {
       callbacks.onProgress?.(`Waiting anti-scraping delay...`);
       await jitteredDelay();
@@ -104,7 +105,7 @@ export async function assessPrintCollectionPageCount(doc = document, callbacks =
     try {
       let pageDoc = doc;
       if (part > 1 || !doc.querySelector('.yourcol-item')) {
-        const response = await fetchPageWithRetry(fetchUrl, part, { onStatus: setStatus });
+        const response = await fetchPageWithRetry(fetchUrl, part, { onStatus: setStatus, signal });
         const html = await response.text();
 
         const blockMarker = detectBlock(html);
@@ -132,6 +133,18 @@ export async function assessPrintCollectionPageCount(doc = document, callbacks =
         part++;
       }
     } catch (err) {
+      if (err instanceof AbortedError && aggregatedRows.length > 0) {
+        assessmentCache = {
+          totalPages: part - 1,
+          totalCards,
+          totalQuantity,
+          rows: aggregatedRows,
+          includePrice,
+          sport,
+          isPartial: true
+        };
+        return assessmentCache;
+      }
       Log(`[CLIENT] Assessment halted at Part ${part}: ${err.message}`, 'error', 'client');
       if (part === 1) throw err;
       break;
@@ -204,11 +217,22 @@ export async function runExportPrintCollectionCSV(doc = document) {
       progress.update('Calculating page count...');
       data = await assessPrintCollectionPageCount(doc, {
         onProgress: (msg) => progress.update(msg)
-      });
+      }, controller.signal);
     }
 
     if (!data || !data.rows || data.rows.length === 0) {
       throw new Error('No printable card data found across pages.');
+    }
+
+    if (data.isPartial || controller.signal.aborted) {
+      const filename = buildPrintCollectionFilename({
+        includePrice: data.includePrice
+      });
+      const csvContent = CSV.toCSV(data.rows);
+      CSV.download(csvContent, filename);
+      setStatus('Export cancelled (partial delivered)');
+      progress.finish(`Cancelled — ${data.totalCards.toLocaleString()} cards downloaded.`, 'warning');
+      return;
     }
 
     progress.update(`Compiling ${data.totalCards.toLocaleString()} cards...`);

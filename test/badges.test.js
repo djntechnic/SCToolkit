@@ -37,17 +37,18 @@ test('createBadge: an unknown key yields null rather than throwing', () => {
 });
 
 test('renderBadgeSet: toolbar order, with the export action last', () => {
-  const el = renderBadgeSet(container(), '4001', { onExport: () => {} });
-  assert.deepEqual(labels(el), ['CHK', 'INS', 'PAR', 'FS', 'MULTI', 'WANT', 'CSV']);
+  const el = renderBadgeSet(container(), '4001', { onExport: () => {}, onExportHierarchy: () => {} });
+  assert.deepEqual(labels(el), ['CHK', 'INS', 'PAR', 'FS', 'MULTI', 'WANT', 'CSV', 'HIERARCHY']);
 });
 
 test('renderBadgeSet: set-link order leads with checklist', () => {
   const el = renderBadgeSet(container(), '4001', {
     include: SET_LINK_BADGES,
     onPin: () => {},
-    onExport: () => {}
+    onExport: () => {},
+    onExportHierarchy: () => {}
   });
-  assert.deepEqual(labels(el), ['CHK', 'PIN', 'CSV', 'INS', 'PAR', 'FS', 'MULTI', 'WANT']);
+  assert.deepEqual(labels(el), ['CHK', 'PIN', 'CSV', 'HIERARCHY', 'INS', 'PAR', 'FS', 'MULTI', 'WANT']);
 });
 
 test('renderBadgeSet: an action with no handler is skipped, not rendered dead', () => {

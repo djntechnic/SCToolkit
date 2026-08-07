@@ -1,7 +1,7 @@
 /**
  * Single source of truth for the application version.
  */
-export const APP_VERSION = '0.1.0-beta';
+export const APP_VERSION = '0.1-beta';
 
 /**
  * Get the current application version string.

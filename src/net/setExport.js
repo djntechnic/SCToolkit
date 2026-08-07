@@ -77,7 +77,7 @@ export function cooldownRemainingMinutes(now = Date.now()) {
  * @param {string} detail
  * @param {string} [targetUrl]
  */
-function recordBlock(detail, targetUrl = '') {
+export function recordBlock(detail, targetUrl = '') {
   setValue(BLOCK_TS_KEY, Date.now());
   const fullUrl = targetUrl ? Utils.toFullUrl(targetUrl) : '';
   const urlLabel = fullUrl ? ` for ${fullUrl}` : '';
@@ -135,68 +135,76 @@ async function fetchAllPages(setId, signal, progress) {
   let identity = { year: '', baseSet: '', setName: '' };
   const rows = [];
 
-  do {
-    if (signal.aborted) throw new AbortedError('Export cancelled.', true);
-    if (pageIndex > 1) await jitteredDelay();
+  try {
+    do {
+      if (signal.aborted) throw new AbortedError('Export cancelled.', true);
+      if (pageIndex > 1) await jitteredDelay();
 
-    const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
-    const fullFetchUrl = Utils.toFullUrl(fetchUrl);
-    fetchAllPages.lastRequestedUrl = fullFetchUrl;
+      const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
+      const fullFetchUrl = Utils.toFullUrl(fetchUrl);
+      fetchAllPages.lastRequestedUrl = fullFetchUrl;
 
-    const label = `Page ${pageIndex}${totalPages > 1 ? ' of ' + totalPages : ''}${Pacing.describe()}`;
-    setStatus(`Fetching ${label}...`);
-    progress?.update(label);
+      const label = `Page ${pageIndex}${totalPages > 1 ? ' of ' + totalPages : ''}${Pacing.describe()}`;
+      setStatus(`Fetching ${label}...`);
+      progress?.update(label);
 
-    Log(`HTTP GET Request -> ${fullFetchUrl}`, 'info', 'server');
+      Log(`HTTP GET Request -> ${fullFetchUrl}`, 'info', 'server');
 
-    const response = await fetchPageWithRetry(fetchUrl, pageIndex, { onStatus: setStatus, signal });
-    const html = await response.text();
+      const response = await fetchPageWithRetry(fetchUrl, pageIndex, { onStatus: setStatus, signal });
+      const html = await response.text();
 
-    Log(
-      `[CLIENT] HTTP ${response.status} response received for ${fullFetchUrl} (${Math.round(html.length / 1024)} KB, latency ${Pacing.lastLatencyMs || 0}ms)`,
-      'debug',
-      'client'
-    );
+      Log(
+        `[CLIENT] HTTP ${response.status} response received for ${fullFetchUrl} (${Math.round(html.length / 1024)} KB, latency ${Pacing.lastLatencyMs || 0}ms)`,
+        'debug',
+        'client'
+      );
 
-    const blockMarker = detectBlock(html);
-    if (blockMarker) {
-      throw new BlockedError(`Challenge page received instead of content (matched '${blockMarker}').`);
-    }
-
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    const parsed = parseChecklistDocument(doc);
-
-    if (pageIndex === 1) {
-      identity = { year: parsed.year, baseSet: parsed.baseSet, setName: parsed.setName };
-      totalDiscoveredPages = parsed.totalPages;
-
-      // If discovered pages exceed safety ceiling, cap to maxPages and warn user via toast instead of throwing a fatal error
-      if (totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
-        totalPages = EXPORT_CONFIG.maxPages;
-        const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${totalDiscoveredPages})`;
-        setStatus(cappedStatus);
-        Log(
-          `[CLIENT] Discovered page count (${totalDiscoveredPages}) for ${fullFetchUrl} exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
-          'warn',
-          'client'
-        );
-        showToast({
-          message:
-            `Set has <b>${totalDiscoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). ` +
-            `Exporting first ${EXPORT_CONFIG.maxPages} pages only.`,
-          variant: 'warn'
-        });
-      } else {
-        totalPages = totalDiscoveredPages;
-        Log(`[CLIENT] Discovered ${totalPages} total page(s) for set ID ${setId} (${fullFetchUrl})`, 'info', 'client');
+      const blockMarker = detectBlock(html);
+      if (blockMarker) {
+        throw new BlockedError(`Challenge page received instead of content (matched '${blockMarker}').`);
       }
+
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const parsed = parseChecklistDocument(doc);
+
+      if (pageIndex === 1) {
+        identity = { year: parsed.year, baseSet: parsed.baseSet, setName: parsed.setName };
+        totalDiscoveredPages = parsed.totalPages;
+
+        // If discovered pages exceed safety ceiling, cap to maxPages and warn user via toast instead of throwing a fatal error
+        if (totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
+          totalPages = EXPORT_CONFIG.maxPages;
+          const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${totalDiscoveredPages})`;
+          setStatus(cappedStatus);
+          Log(
+            `[CLIENT] Discovered page count (${totalDiscoveredPages}) for ${fullFetchUrl} exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
+            'warn',
+            'client'
+          );
+          showToast({
+            message:
+              `Set has <b>${totalDiscoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). ` +
+              `Exporting first ${EXPORT_CONFIG.maxPages} pages only.`,
+            variant: 'warn'
+          });
+        } else {
+          totalPages = totalDiscoveredPages;
+          Log(`[CLIENT] Discovered ${totalPages} total page(s) for set ID ${setId} (${fullFetchUrl})`, 'info', 'client');
+        }
+      }
+
+      rows.push(...parsed.rows);
+      Log(`[CLIENT] Page ${pageIndex}/${totalPages} parsed successfully for ${fullFetchUrl}. ${parsed.rows.length} rows retrieved (Total accumulated: ${rows.length}).`, 'info', 'client');
+
+      pageIndex++;
+    } while (pageIndex <= totalPages);
+  } catch (error) {
+    if (error instanceof AbortedError && rows.length > 0) {
+      Log(`[CLIENT] Fetch loop aborted. Delivering ${rows.length} partially extracted rows.`, 'warn', 'client');
+      return { identity, rows, totalPages, totalDiscoveredPages, isPartial: true, originalError: error };
     }
-
-    rows.push(...parsed.rows);
-    Log(`[CLIENT] Page ${pageIndex}/${totalPages} parsed successfully for ${fullFetchUrl}. ${parsed.rows.length} rows retrieved (Total accumulated: ${rows.length}).`, 'info', 'client');
-
-    pageIndex++;
-  } while (pageIndex <= totalPages);
+    throw error;
+  }
 
   return { identity, rows, totalPages, totalDiscoveredPages };
 }
@@ -269,6 +277,12 @@ export async function runExportSetCSV(setId, setName) {
     cache.write(setId, result, ttlHours);
     const filename = downloadResult(result, setName);
     Log(`[CLIENT] CSV file generated and download triggered: ${filename} (${result.rows.length} rows).`, 'info', 'client');
+
+    if (result.isPartial) {
+      setStatus('Export cancelled (partial delivered)');
+      progress.finish(`Cancelled — ${result.rows.length} cards downloaded.`, 'warning');
+      return;
+    }
 
     if (result.totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
       const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${result.totalDiscoveredPages})`;

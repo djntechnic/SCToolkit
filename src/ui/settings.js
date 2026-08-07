@@ -1582,6 +1582,14 @@ export const GLOBAL_SECTIONS = [
       {
         label: 'Cross-Tab Throttle Wait Slice', key: 'throttleMaxSliceMs', min: 50, max: 1000, step: 25, unit: 'ms',
         hint: 'Slice interval before re-evaluating cross-tab request slot locks.'
+      },
+      {
+        label: 'Hierarchy Export Min Delay', key: 'exportHierarchyMinDelayMs', min: 1000, max: 30000, step: 500, unit: 'ms',
+        hint: 'Minimum delay before fetching each parent set in hierarchy export.'
+      },
+      {
+        label: 'Hierarchy Export Max Delay', key: 'exportHierarchyMaxDelayMs', min: 1000, max: 60000, step: 500, unit: 'ms',
+        hint: 'Maximum delay before fetching each parent set in hierarchy export.'
       }
     ]
   },
