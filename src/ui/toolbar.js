@@ -10,6 +10,7 @@ import { Log } from '../core/log.js';
 import { Pins, SET_YEAR_REGEX } from '../core/storage.js';
 import { Utils } from '../core/utils.js';
 import { CurrentRun, cancelCurrentExport, exportSetCSV } from '../net/setExport.js';
+import { exportSingleParentSetHierarchy } from '../net/setHierarchyExport.js';
 import { TOOLBAR_BADGES, createBadge, renderBadgeSet } from './badges.js';
 import { createBtn, injectStyle } from './dom.js';
 import { icon, installIconSprite } from './icons.js';
@@ -39,6 +40,11 @@ export function appendShortcutBadges(
       const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${sid}/`);
       Log(`[CLIENT] Toolbar CSV Export button clicked for set ID ${sid} (${label}) — ${fullUrl}`, 'info', 'client');
       exportSetCSV(sid, label);
+    },
+    onExportHierarchy: (e) => {
+      e.preventDefault();
+      Log(`[CLIENT] Toolbar Hierarchy CSV Export button clicked for set ID ${sid} (${label})`, 'info', 'client');
+      exportSingleParentSetHierarchy(sid, label);
     },
     displayMode,
     parentSid
@@ -146,9 +152,13 @@ export const Toolbar = {
     CurrentRun.onStart = () => {
       btn.hidden = false;
       btn.disabled = false;
+      const hierarchyBtn = document.getElementById('btn-export-hierarchy');
+      if (hierarchyBtn) hierarchyBtn.hidden = true;
     };
     CurrentRun.onEnd = () => {
       btn.hidden = true;
+      const hierarchyBtn = document.getElementById('btn-export-hierarchy');
+      if (hierarchyBtn) hierarchyBtn.hidden = false;
     };
   },
 

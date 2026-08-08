@@ -17,6 +17,7 @@ import { initCsvExportEngine } from '../modules/csvExportEngine.js';
 import { initPaginationLoader } from '../modules/paginationLoader.js';
 import { initCardNameFormatter } from '../modules/cardNameFormatter.js';
 import { initCollectionQuantityCounter } from '../modules/collectionQuantityCounter.js';
+import { initSetHierarchyExport } from '../modules/setHierarchyExport.js';
 
 /**
  * @typedef {object} ModuleDefinition
@@ -89,6 +90,13 @@ export const ModuleRegistry = [
     name: 'Collection Quantity Counter',
     description: 'Counts distinct cards with Qty >= 1, total cards, and total item quantity on For Sale/Trade and Wantlist pages.',
     init: initCollectionQuantityCounter,
+    isAsync: false
+  },
+  {
+    id: 'setHierarchyExport',
+    name: 'Set Hierarchy Export',
+    description: 'Extract set hierarchies from ViewAll pages and output a CSV.',
+    init: initSetHierarchyExport,
     isAsync: false
   }
 ];

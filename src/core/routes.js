@@ -45,6 +45,10 @@ export const Routes = {
     path().includes('printyourcollection') ||
     (path().includes('collection') && window.location.search.toLowerCase().includes('mode=print')),
   isViewAll: () => path().includes('/viewall.cfm') || path().includes('/inserts.cfm'),
+  isViewAllSets: () =>
+    (path().includes('/viewall.cfm') || path().includes('/viewallc.cfm')) &&
+    path().includes('/sp/') &&
+    path().includes('/year/'),
   isForSaleTrade: () => path().includes('/viewcollectionforsaletrade.cfm'),
   isWantlist: () => path().includes('/viewcollectionwantlist.cfm'),
   isAddMultiples: () => path().includes('/collectionaddmultiples'),

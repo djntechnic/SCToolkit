@@ -227,5 +227,5 @@ export function initCsvExportEngine() {
 }
 
 /** Button ids the bootstrap enables once async module init settles. */
-export const EXPORT_BUTTON_IDS = ['btn-csv-coll', 'btn-csv-player', 'btn-calc-pages', 'btn-csv-pdf-all'];
+export const EXPORT_BUTTON_IDS = ['btn-csv-coll', 'btn-csv-player', 'btn-calc-pages', 'btn-csv-pdf-all', 'btn-export-hierarchy'];
 

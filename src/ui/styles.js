@@ -167,6 +167,9 @@ export const TOOLBAR_CSS = `
 .tk-badge-action, .tk-badge-action:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
 .tk-badge-action:hover, .tk-badge-action:hover:visited { background: var(--tk-blue); color: #ffffff; }
 
+.tk-badge-action-h, .tk-badge-action-h:visited { background: var(--tk-bg-elevated); border-color: var(--tk-teal); color: var(--tk-teal); }
+.tk-badge-action-h:hover, .tk-badge-action-h:hover:visited { background: var(--tk-teal); color: #ffffff; }
+
 .tk-badge-link-c, .tk-badge-link-c:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
 .tk-badge-link-c:hover, .tk-badge-link-c:hover:visited { background: var(--tk-blue); color: #ffffff; }
 

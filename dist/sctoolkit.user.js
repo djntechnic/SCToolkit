@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SCToolkit
 // @namespace    https://github.com/djntechnic/SCToolkit
-// @version      0.1.0-beta
+// @version      0.1-beta
 // @description  Userscript toolkit for sports card database browsing: filtering, shortcuts, and polite CSV export.
 // @author       djntechnic
 // @license      MIT
@@ -319,7 +319,9 @@
     backoffBaseMs: 1e3,
     backoffCapMs: 15e3,
     maxPages: 200,
-    requestTimeoutMs: 3e4
+    requestTimeoutMs: 3e4,
+    hierarchyMinDelayMs: 1e4,
+    hierarchyMaxDelayMs: 15e3
   };
   var DEFAULT_CONFIG = {
     schemaVersion: 3,
@@ -391,6 +393,14 @@
           { pattern: "/viewcollectionwantlist\\.cfm", exclude: false }
         ],
         actions: {}
+      },
+      setHierarchyExport: {
+        enabled: true,
+        urlMatch: [
+          { pattern: "/viewall\\.cfm", exclude: false },
+          { pattern: "/viewallc\\.cfm", exclude: false }
+        ],
+        actions: {}
       }
     },
     global: {
@@ -401,6 +411,8 @@
       exportBackoffCapMs: EXPORT_CONFIG.backoffCapMs,
       exportMaxPages: EXPORT_CONFIG.maxPages,
       exportRequestTimeoutMs: EXPORT_CONFIG.requestTimeoutMs,
+      exportHierarchyMinDelayMs: EXPORT_CONFIG.hierarchyMinDelayMs,
+      exportHierarchyMaxDelayMs: EXPORT_CONFIG.hierarchyMaxDelayMs,
       exportBlockCooldownMinutes: 5,
       exportCacheTtlHours: 24,
       toastDurationMs: 4e3,
@@ -532,6 +544,8 @@
     EXPORT_CONFIG.backoffCapMs = Config.global.exportBackoffCapMs ?? 15e3;
     EXPORT_CONFIG.maxPages = Config.global.exportMaxPages ?? 200;
     EXPORT_CONFIG.requestTimeoutMs = Config.global.exportRequestTimeoutMs ?? 3e4;
+    EXPORT_CONFIG.hierarchyMinDelayMs = Config.global.exportHierarchyMinDelayMs ?? 1e4;
+    EXPORT_CONFIG.hierarchyMaxDelayMs = Config.global.exportHierarchyMaxDelayMs ?? 15e3;
   }
   function initConfig() {
     const loaded = SettingsStore.load();
@@ -844,6 +858,11 @@
       size: 12,
       strokeWidth: 2,
       body: '<path d="M20 6 9 17l-5-5"/>'
+    },
+    downloadHierarchy: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M12 12V3"/><path d="m8 8 4 4 4-4"/><path d="M4 16h16"/><path d="M4 16v4"/><path d="M12 16v4"/><path d="M20 16v4"/>'
     }
   };
   var SPRITE_ID = "sctk-icon-sprite";
@@ -891,6 +910,7 @@
     isInserts: () => path().includes("/inserts.cfm"),
     isPrintPDF: () => path().includes("/print.cfm") || path().includes("printyourcollectionpdf.cfm") || path().includes("printyourcollection") || path().includes("collection") && window.location.search.toLowerCase().includes("mode=print"),
     isViewAll: () => path().includes("/viewall.cfm") || path().includes("/inserts.cfm"),
+    isViewAllSets: () => (path().includes("/viewall.cfm") || path().includes("/viewallc.cfm")) && path().includes("/sp/") && path().includes("/year/"),
     isForSaleTrade: () => path().includes("/viewcollectionforsaletrade.cfm"),
     isWantlist: () => path().includes("/viewcollectionwantlist.cfm"),
     isAddMultiples: () => path().includes("/collectionaddmultiples"),
@@ -1962,54 +1982,62 @@
     let totalDiscoveredPages = 1;
     let identity = { year: "", baseSet: "", setName: "" };
     const rows = [];
-    do {
-      if (signal.aborted) throw new AbortedError("Export cancelled.", true);
-      if (pageIndex > 1) await jitteredDelay();
-      const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
-      const fullFetchUrl = Utils.toFullUrl(fetchUrl);
-      fetchAllPages.lastRequestedUrl = fullFetchUrl;
-      const label = `Page ${pageIndex}${totalPages > 1 ? " of " + totalPages : ""}${Pacing.describe()}`;
-      setStatus(`Fetching ${label}...`);
-      progress?.update(label);
-      Log(`HTTP GET Request -> ${fullFetchUrl}`, "info", "server");
-      const response = await fetchPageWithRetry(fetchUrl, pageIndex, { onStatus: setStatus, signal });
-      const html = await response.text();
-      Log(
-        `[CLIENT] HTTP ${response.status} response received for ${fullFetchUrl} (${Math.round(html.length / 1024)} KB, latency ${Pacing.lastLatencyMs || 0}ms)`,
-        "debug",
-        "client"
-      );
-      const blockMarker = detectBlock(html);
-      if (blockMarker) {
-        throw new BlockedError(`Challenge page received instead of content (matched '${blockMarker}').`);
-      }
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      const parsed = parseChecklistDocument(doc);
-      if (pageIndex === 1) {
-        identity = { year: parsed.year, baseSet: parsed.baseSet, setName: parsed.setName };
-        totalDiscoveredPages = parsed.totalPages;
-        if (totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
-          totalPages = EXPORT_CONFIG.maxPages;
-          const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${totalDiscoveredPages})`;
-          setStatus(cappedStatus);
-          Log(
-            `[CLIENT] Discovered page count (${totalDiscoveredPages}) for ${fullFetchUrl} exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
-            "warn",
-            "client"
-          );
-          showToast({
-            message: `Set has <b>${totalDiscoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). Exporting first ${EXPORT_CONFIG.maxPages} pages only.`,
-            variant: "warn"
-          });
-        } else {
-          totalPages = totalDiscoveredPages;
-          Log(`[CLIENT] Discovered ${totalPages} total page(s) for set ID ${setId} (${fullFetchUrl})`, "info", "client");
+    try {
+      do {
+        if (signal.aborted) throw new AbortedError("Export cancelled.", true);
+        if (pageIndex > 1) await jitteredDelay();
+        const fetchUrl = `/Checklist.cfm/sid/${setId}/?PageIndex=${pageIndex}`;
+        const fullFetchUrl = Utils.toFullUrl(fetchUrl);
+        fetchAllPages.lastRequestedUrl = fullFetchUrl;
+        const label = `Page ${pageIndex}${totalPages > 1 ? " of " + totalPages : ""}${Pacing.describe()}`;
+        setStatus(`Fetching ${label}...`);
+        progress?.update(label);
+        Log(`HTTP GET Request -> ${fullFetchUrl}`, "info", "server");
+        const response = await fetchPageWithRetry(fetchUrl, pageIndex, { onStatus: setStatus, signal });
+        const html = await response.text();
+        Log(
+          `[CLIENT] HTTP ${response.status} response received for ${fullFetchUrl} (${Math.round(html.length / 1024)} KB, latency ${Pacing.lastLatencyMs || 0}ms)`,
+          "debug",
+          "client"
+        );
+        const blockMarker = detectBlock(html);
+        if (blockMarker) {
+          throw new BlockedError(`Challenge page received instead of content (matched '${blockMarker}').`);
         }
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const parsed = parseChecklistDocument(doc);
+        if (pageIndex === 1) {
+          identity = { year: parsed.year, baseSet: parsed.baseSet, setName: parsed.setName };
+          totalDiscoveredPages = parsed.totalPages;
+          if (totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
+            totalPages = EXPORT_CONFIG.maxPages;
+            const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${totalDiscoveredPages})`;
+            setStatus(cappedStatus);
+            Log(
+              `[CLIENT] Discovered page count (${totalDiscoveredPages}) for ${fullFetchUrl} exceeds safety ceiling (${EXPORT_CONFIG.maxPages}). Capping fetch to ${EXPORT_CONFIG.maxPages} pages.`,
+              "warn",
+              "client"
+            );
+            showToast({
+              message: `Set has <b>${totalDiscoveredPages}</b> pages, exceeding max limit (${EXPORT_CONFIG.maxPages}). Exporting first ${EXPORT_CONFIG.maxPages} pages only.`,
+              variant: "warn"
+            });
+          } else {
+            totalPages = totalDiscoveredPages;
+            Log(`[CLIENT] Discovered ${totalPages} total page(s) for set ID ${setId} (${fullFetchUrl})`, "info", "client");
+          }
+        }
+        rows.push(...parsed.rows);
+        Log(`[CLIENT] Page ${pageIndex}/${totalPages} parsed successfully for ${fullFetchUrl}. ${parsed.rows.length} rows retrieved (Total accumulated: ${rows.length}).`, "info", "client");
+        pageIndex++;
+      } while (pageIndex <= totalPages);
+    } catch (error) {
+      if (error instanceof AbortedError && rows.length > 0) {
+        Log(`[CLIENT] Fetch loop aborted. Delivering ${rows.length} partially extracted rows.`, "warn", "client");
+        return { identity, rows, totalPages, totalDiscoveredPages, isPartial: true, originalError: error };
       }
-      rows.push(...parsed.rows);
-      Log(`[CLIENT] Page ${pageIndex}/${totalPages} parsed successfully for ${fullFetchUrl}. ${parsed.rows.length} rows retrieved (Total accumulated: ${rows.length}).`, "info", "client");
-      pageIndex++;
-    } while (pageIndex <= totalPages);
+      throw error;
+    }
     return { identity, rows, totalPages, totalDiscoveredPages };
   }
   async function runExportSetCSV(setId, setName) {
@@ -2062,6 +2090,11 @@
       write(setId, result, ttlHours);
       const filename = downloadResult(result, setName);
       Log(`[CLIENT] CSV file generated and download triggered: ${filename} (${result.rows.length} rows).`, "info", "client");
+      if (result.isPartial) {
+        setStatus("Export cancelled (partial delivered)");
+        progress.finish(`Cancelled — ${result.rows.length} cards downloaded.`, "warning");
+        return;
+      }
       if (result.totalDiscoveredPages > EXPORT_CONFIG.maxPages) {
         const cappedStatus = `Export capped at ${EXPORT_CONFIG.maxPages} pages (Set has ${result.totalDiscoveredPages})`;
         setStatus(cappedStatus);
@@ -2152,11 +2185,17 @@
       text: "",
       cssClass: "tk-pin-remove",
       title: "Remove Pin"
+    },
+    HIERARCHY: {
+      icon: "downloadHierarchy",
+      text: "HIERARCHY",
+      cssClass: "tk-badge-action-h",
+      title: "Export Set Hierarchy"
     }
   };
   var SHORTCUT_KEYS = ["CHECKLIST", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
-  var TOOLBAR_BADGES = ["CHECKLIST", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST", "CSV"];
-  var SET_LINK_BADGES = ["CHECKLIST", "PIN", "CSV", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
+  var TOOLBAR_BADGES = ["CHECKLIST", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST", "CSV", "HIERARCHY"];
+  var SET_LINK_BADGES = ["CHECKLIST", "PIN", "CSV", "HIERARCHY", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
   function createBadge(badgeKey, sid = null, onClickOverride = null, displayMode = "both", parentSid = null) {
     const config = BADGES[badgeKey];
     if (!config) return null;
@@ -2195,11 +2234,12 @@
   function renderBadgeSet(container, sid, {
     include = TOOLBAR_BADGES,
     onExport = null,
+    onExportHierarchy = null,
     onPin = null,
     displayMode = "both",
     parentSid = null
   } = {}) {
-    const handlers = { CSV: onExport, PIN: onPin };
+    const handlers = { CSV: onExport, PIN: onPin, HIERARCHY: onExportHierarchy };
     include.forEach((key) => {
       const isAction = key in handlers;
       if (isAction && !handlers[key]) return;
@@ -2207,6 +2247,411 @@
       if (badge) container.appendChild(badge);
     });
     return container;
+  }
+
+  // src/data/setHierarchyParser.js
+  function parseViewAllSets(doc, year) {
+    const parentSets = [];
+    const h3Elements = doc.querySelectorAll("h3.site");
+    h3Elements.forEach((h3) => {
+      if (h3.classList.contains("bottomnav") || h3.closest(".bottomnav") || h3.closest("footer") || h3.closest("#footer")) {
+        return;
+      }
+      const categoryName = h3.textContent.trim();
+      let next = h3.nextElementSibling;
+      while (next && next.tagName !== "UL" && next.tagName !== "H3") {
+        next = next.nextElementSibling;
+      }
+      if (next && next.tagName === "UL") {
+        const liElements = next.querySelectorAll("li");
+        liElements.forEach((li) => {
+          const primaryAnchor = li.querySelector('a[href*="/sid/"]');
+          if (!primaryAnchor) return;
+          const href = primaryAnchor.getAttribute("href") || "";
+          const setId = extractSid(href);
+          if (!setId) return;
+          let setName = primaryAnchor.textContent.trim();
+          const yearRegex = new RegExp(`^${year}\\s+`);
+          setName = setName.replace(yearRegex, "").trim();
+          const nextEl = li.nextElementSibling;
+          const hasHideDiv = !!(nextEl && nextEl.tagName === "DIV" && nextEl.id.startsWith("hideDiv"));
+          parentSets.push({
+            category: categoryName,
+            setId,
+            setName,
+            hasHideDiv
+          });
+        });
+      }
+    });
+    return parentSets;
+  }
+  function parseChildSets(doc) {
+    const childSets = [];
+    const h3Elements = doc.querySelectorAll("h3.site");
+    h3Elements.forEach((h3) => {
+      if (h3.classList.contains("bottomnav") || h3.closest(".bottomnav") || h3.closest("footer") || h3.closest("#footer")) {
+        return;
+      }
+      const categoryName = h3.textContent.trim().replace(/\s*\(\d+\)$/, "");
+      if (categoryName.toLowerCase() === "inserts") {
+        return;
+      }
+      const insideTable = h3.closest("table");
+      const startElement = insideTable || h3;
+      let next = startElement.nextElementSibling;
+      let table = null;
+      while (next) {
+        if (next.tagName === "TABLE") {
+          table = next;
+          break;
+        }
+        if (next.querySelector("h3.site") || next.tagName === "H3") {
+          break;
+        }
+        next = next.nextElementSibling;
+      }
+      if (table) {
+        const rows = table.querySelectorAll("tr");
+        rows.forEach((tr) => {
+          const anchors = Array.from(tr.querySelectorAll('a[href*="/sid/"]'));
+          const setAnchor = anchors.find((a) => {
+            const href = a.getAttribute("href") || "";
+            const text = a.textContent.trim();
+            return text.length > 0 && extractSid(href) && (href.includes("/Checklist.cfm/") || href.includes("/ViewSet.cfm/") || href.includes("Checklist.cfm?") || href.includes("ViewSet.cfm?"));
+          });
+          if (setAnchor) {
+            const href = setAnchor.getAttribute("href") || "";
+            const childSetId = extractSid(href);
+            const childSetName = setAnchor.textContent.trim();
+            const figcaptionEl = tr.querySelector("figcaption.figure-caption") || tr.querySelector("figcaption");
+            const childSetNotes = figcaptionEl ? figcaptionEl.textContent.trim() : "";
+            if (childSetId) {
+              childSets.push({
+                childCategory: categoryName,
+                childSetId,
+                childSetName,
+                childSetNotes
+              });
+            }
+          }
+        });
+      }
+    });
+    return childSets;
+  }
+
+  // src/net/setHierarchyExport.js
+  function exportSetHierarchyCSV(url) {
+    Log(`[CLIENT] Set Hierarchy CSV Export queued for URL: ${url}`, "debug", "client");
+    ExportQueue.enqueue("Set Hierarchy Export", () => runExportSetHierarchyCSV(url));
+  }
+  async function runExportSetHierarchyCSV(url) {
+    const remainingMin = cooldownRemainingMinutes();
+    if (remainingMin > 0) {
+      Log(`Export refused: anti-scraping cooldown active (${remainingMin} min remaining).`, "warn", "client");
+      setStatus("Export blocked (cooldown)");
+      showToast({
+        message: `Export paused — an anti-scraping block was detected recently. Try again in ~${remainingMin} min.`,
+        variant: "error"
+      });
+      return;
+    }
+    const sportMatch = url.match(/\/sp\/([^/]+)/i);
+    const yearMatch = url.match(/\/year\/([^/]+)/i);
+    if (!sportMatch || !yearMatch) {
+      Log(`Failed to parse Sport and Year from URL: ${url}`, "error", "client");
+      setStatus("Export Failed");
+      showToast({ message: "Failed to parse Sport and Year from current URL.", variant: "error" });
+      return;
+    }
+    const rawSport = decodeURIComponent(sportMatch[1]);
+    const sport = rawSport.charAt(0).toUpperCase() + rawSport.slice(1);
+    const year = decodeURIComponent(yearMatch[1]);
+    setStatus("Parsing parent sets...");
+    const parentSets = parseViewAllSets(document, year);
+    if (parentSets.length === 0) {
+      setStatus("No parent sets found");
+      showToast({ message: "No parent sets matching hierarchy requirements found on this page.", variant: "warn" });
+      return;
+    }
+    Log(`[CLIENT] Extracted ${parentSets.length} parent set(s) from current page`, "info", "client");
+    const controller = new AbortController();
+    CurrentRun.controller = controller;
+    CurrentRun.onStart?.();
+    const progress = showProgressToast({
+      title: "Exporting Set Hierarchy",
+      onCancel: () => {
+        controller.abort();
+      }
+    });
+    const csvRows = [
+      ["Sport", "Year", "Set Category", "Set ID", "Set Name", "Child Set Category", "Child Set ID", "Child Set Name", "Child Set Notes", "Full Set Name", "Full Set Name (Trunc)"]
+    ];
+    let isPartial = false;
+    let networkRequestsMade = 0;
+    try {
+      for (let i = 0; i < parentSets.length; i++) {
+        if (controller.signal.aborted) {
+          throw new AbortedError("Export cancelled.", true);
+        }
+        const parent = parentSets[i];
+        const parentLabel = `Parent ${i + 1}/${parentSets.length}: ${parent.setName}`;
+        setStatus(`Processing ${parent.setName}...`);
+        progress.update(parentLabel);
+        const parentLogMsg = `Processing Parent Set [${i + 1}/${parentSets.length}]: ${parent.setName} (ID: ${parent.setId})`;
+        Log(parentLogMsg, "info");
+        if (!parent.hasHideDiv) {
+          const fullName = buildFullSetName(year, parent.setName, "");
+          const fullNameTrunc = buildFullSetNameTrunc(year, parent.setName, "");
+          csvRows.push([sport, year, parent.category, parent.setId, parent.setName, "", "", "", "", fullName, fullNameTrunc]);
+          continue;
+        }
+        if (networkRequestsMade > 0) {
+          const min = EXPORT_CONFIG.hierarchyMinDelayMs ?? 1e4;
+          const max = Math.max(min, EXPORT_CONFIG.hierarchyMaxDelayMs ?? 15e3);
+          let sleepMs = 0;
+          if (parentSets.length > 50) {
+            if (networkRequestsMade % 15 === 0) {
+              const longPauseMinMs = 3e5;
+              const longPauseMaxMs = 42e4;
+              sleepMs = longPauseMinMs + Math.random() * (longPauseMaxMs - longPauseMinMs);
+              const longPauseMinText = Math.round(sleepMs / 1e3 / 60);
+              const logMsg = `Pacing safeguard: Triggering a long pause of ${longPauseMinText} minutes to prevent rate-limiting...`;
+              Log(logMsg, "warn");
+              setStatus(`Pausing for ${longPauseMinText} min...`);
+              progress.update(`Pause (${longPauseMinText}m)`);
+            } else {
+              const scale = 1 + networkRequestsMade * 0.02;
+              const scaledMin = min * scale;
+              const scaledMax = max * scale;
+              sleepMs = scaledMin + Math.random() * (scaledMax - scaledMin);
+              Log(`[CLIENT] Scaled pacing: Sleeping ${Math.round(sleepMs / 1e3)} seconds (scale: ${scale.toFixed(2)}x)...`, "debug", "client");
+            }
+          } else {
+            sleepMs = min + Math.random() * (max - min);
+            Log(`[CLIENT] Sleeping ${Math.round(sleepMs / 1e3)} seconds before next parent set request...`, "debug", "client");
+          }
+          await interruptibleSleep(sleepMs, controller.signal);
+        }
+        networkRequestsMade++;
+        const fetchUrl = `/Inserts.cfm/sid/${parent.setId}/`;
+        const fullFetchUrl = Utils.toFullUrl(fetchUrl);
+        Log(`HTTP GET Request -> ${fullFetchUrl}`, "info", "server");
+        try {
+          const response = await fetchPageWithRetry(fetchUrl, i + 1, { onStatus: setStatus, signal: controller.signal });
+          const html = await response.text();
+          Log(
+            `[CLIENT] HTTP ${response.status} response received for ${fullFetchUrl} (${Math.round(html.length / 1024)} KB)`,
+            "debug",
+            "client"
+          );
+          const blockMarker = detectBlock(html);
+          if (blockMarker) {
+            throw new BlockedError(`Challenge page received instead of content (matched '${blockMarker}').`);
+          }
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          const childSets = parseChildSets(doc);
+          const countLogMsg = `Found ${childSets.length} child sets on Inserts.cfm for Set ID ${parent.setId}`;
+          Log(countLogMsg, "info");
+          const fullNameBase = buildFullSetName(year, parent.setName, "");
+          const fullNameTruncBase = buildFullSetNameTrunc(year, parent.setName, "");
+          csvRows.push([sport, year, parent.category, parent.setId, parent.setName, "", "", "", "", fullNameBase, fullNameTruncBase]);
+          childSets.forEach((child, j) => {
+            const childLogMsg = `Processing Child Set [${j + 1}/${childSets.length}]: ${child.childSetName} (ID: ${child.childSetId})`;
+            Log(childLogMsg, "debug", "client");
+            const fullNameChild = buildFullSetName(year, parent.setName, child.childSetName);
+            const fullNameTruncChild = buildFullSetNameTrunc(year, parent.setName, child.childSetName);
+            csvRows.push([sport, year, parent.category, parent.setId, parent.setName, child.childCategory, child.childSetId, child.childSetName, child.childSetNotes || "", fullNameChild, fullNameTruncChild]);
+          });
+        } catch (err) {
+          if (err instanceof AbortedError) {
+            if (csvRows.length > 1) {
+              isPartial = true;
+              break;
+            }
+          }
+          throw err;
+        }
+      }
+      const filename = `${year}_${sport}_SetHierarchy.csv`;
+      CSV.download(CSV.toCSV(csvRows), filename);
+      setStatus("Export Complete");
+      progress.finish(`${parentSets.length} sets exported successfully.`, "success");
+    } catch (error) {
+      if (isPartial || error instanceof AbortedError || controller.signal.aborted) {
+        const filename = `${year}_${sport}_SetHierarchy.csv`;
+        CSV.download(CSV.toCSV(csvRows), filename);
+        setStatus("Export cancelled (partial delivered)");
+        progress.finish(`Cancelled — ${csvRows.length - 1} records downloaded.`, "warning");
+      } else if (error instanceof BlockedError) {
+        const parentId = parentSets[networkRequestsMade - 1]?.setId || "";
+        const lastUrl = `/Inserts.cfm/sid/${parentId}/`;
+        recordBlock(error.message, lastUrl);
+        if (csvRows.length > 1) {
+          const filename = `${year}_${sport}_SetHierarchy.csv`;
+          CSV.download(CSV.toCSV(csvRows), filename);
+          setStatus("Export blocked (partial delivered)");
+          progress.finish(`Blocked — ${csvRows.length - 1} records downloaded.`, "error");
+        } else {
+          progress.finish("Stopped — the site returned a challenge.", "error");
+          setStatus("Export blocked");
+        }
+      } else {
+        Log(`Set Hierarchy Export Failed: ${error.message}`, "error", "client");
+        progress.finish(`Failed: ${error.message}`, "error");
+        setStatus("Export Failed");
+      }
+    } finally {
+      CurrentRun.controller = null;
+      CurrentRun.onEnd?.();
+    }
+  }
+  function buildFullSetName(year, setName, childSetName) {
+    if (childSetName) {
+      return `${year} ${setName} - ${childSetName}`;
+    }
+    return `${year} ${setName}`;
+  }
+  function buildFullSetNameTrunc(year, setName, childSetName) {
+    const pName = setName || "";
+    const cName = childSetName || "";
+    if (pName.length >= 31) {
+      const truncatedParent = pName.slice(0, 32).trimEnd();
+      return `${year} ${truncatedParent}`;
+    }
+    if (cName) {
+      const combined = `${pName} - ${cName}`;
+      if (combined.length >= 30) {
+        const truncatedCombined = combined.slice(0, 30).trimEnd();
+        return `${year} ${truncatedCombined}`;
+      }
+      return `${year} ${combined}`;
+    }
+    return `${year} ${pName}`;
+  }
+  function resolveSportFromDocument() {
+    const sportBreadcrumb = document.querySelector('ol.breadcrumb li a[href*="/sp/"]');
+    if (sportBreadcrumb) {
+      const match2 = sportBreadcrumb.getAttribute("href").match(/\/sp\/([^/]+)/i);
+      if (match2) return decodeURIComponent(match2[1]);
+      return sportBreadcrumb.textContent.trim();
+    }
+    const match = document.URL.match(/\/sp\/([^/]+)/i);
+    if (match) return decodeURIComponent(match[1]);
+    return "Misc";
+  }
+  function resolveYearFromDocument(setName) {
+    const match = document.URL.match(/\/year\/([^/]+)/i);
+    if (match) return decodeURIComponent(match[1]);
+    const docTitle = document.title || "";
+    const yearMatch = docTitle.match(/\b(18|19|20)\d{2}\b/) || setName.match(/\b(18|19|20)\d{2}\b/);
+    if (yearMatch) return yearMatch[0];
+    return "Misc";
+  }
+  function stripYearPrefix(setName, year) {
+    if (!setName || !year) return setName;
+    const yearRegex = new RegExp(`^${year}\\s+`);
+    return setName.replace(yearRegex, "").trim();
+  }
+  function exportSingleParentSetHierarchy(setId, setName, options = {}) {
+    const sport = options.sport || resolveSportFromDocument();
+    const year = options.year || resolveYearFromDocument(setName);
+    const cleanSetName = stripYearPrefix(setName, year);
+    const category = options.category || "Major Releases";
+    const hasHideDiv = options.hasHideDiv !== void 0 ? options.hasHideDiv : true;
+    Log(`[CLIENT] Single Set Hierarchy CSV Export queued for Set ID: ${setId} (${cleanSetName})`, "debug", "client");
+    ExportQueue.enqueue(
+      `Set Hierarchy Export: ${cleanSetName}`,
+      () => runExportSingleParentSetHierarchy(setId, cleanSetName, { sport, year, category, hasHideDiv })
+    );
+  }
+  async function runExportSingleParentSetHierarchy(setId, setName, { sport, year, category, hasHideDiv }) {
+    const remainingMin = cooldownRemainingMinutes();
+    if (remainingMin > 0) {
+      Log(`Export refused: anti-scraping cooldown active (${remainingMin} min remaining).`, "warn", "client");
+      setStatus("Export blocked (cooldown)");
+      showToast({
+        message: `Export paused — an anti-scraping block was detected recently. Try again in ~${remainingMin} min.`,
+        variant: "error"
+      });
+      return;
+    }
+    const controller = new AbortController();
+    CurrentRun.controller = controller;
+    CurrentRun.onStart?.();
+    const progress = showProgressToast({
+      title: "Exporting Set Hierarchy",
+      onCancel: () => {
+        controller.abort();
+      }
+    });
+    const csvRows = [
+      ["Sport", "Year", "Set Category", "Set ID", "Set Name", "Child Set Category", "Child Set ID", "Child Set Name", "Child Set Notes", "Full Set Name", "Full Set Name (Trunc)"]
+    ];
+    try {
+      setStatus(`Processing ${setName}...`);
+      progress.update(`Exporting ${setName}`);
+      if (hasHideDiv === false) {
+        const fullName = buildFullSetName(year, setName, "");
+        const fullNameTrunc = buildFullSetNameTrunc(year, setName, "");
+        csvRows.push([sport, year, category, setId, setName, "", "", "", "", fullName, fullNameTrunc]);
+      } else {
+        const fetchUrl = `/Inserts.cfm/sid/${setId}/`;
+        const fullFetchUrl = Utils.toFullUrl(fetchUrl);
+        Log(`HTTP GET Request -> ${fullFetchUrl}`, "info", "server");
+        const response = await fetchPageWithRetry(fetchUrl, 1, { onStatus: setStatus, signal: controller.signal });
+        const html = await response.text();
+        const blockMarker = detectBlock(html);
+        if (blockMarker) {
+          throw new BlockedError(`Challenge page received instead of content (matched '${blockMarker}').`);
+        }
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const childSets = parseChildSets(doc);
+        Log(`Found ${childSets.length} child sets on Inserts.cfm for Set ID ${setId}`, "info");
+        const fullNameBase = buildFullSetName(year, setName, "");
+        const fullNameTruncBase = buildFullSetNameTrunc(year, setName, "");
+        csvRows.push([sport, year, category, setId, setName, "", "", "", "", fullNameBase, fullNameTruncBase]);
+        childSets.forEach((child) => {
+          const fullNameChild = buildFullSetName(year, setName, child.childSetName);
+          const fullNameTruncChild = buildFullSetNameTrunc(year, setName, child.childSetName);
+          csvRows.push([sport, year, category, setId, setName, child.childCategory, child.childSetId, child.childSetName, child.childSetNotes || "", fullNameChild, fullNameTruncChild]);
+        });
+      }
+      const setNameNoSpaces = setName.replace(/\s+/g, "");
+      const filename = `${year}_${sport}_${setNameNoSpaces}_SetHierarchy.csv`;
+      CSV.download(CSV.toCSV(csvRows), filename);
+      setStatus("Export Complete");
+      progress.finish(`Exported ${setName} successfully.`, "success");
+    } catch (error) {
+      if (error instanceof AbortedError || controller.signal.aborted) {
+        const setNameNoSpaces = setName.replace(/\s+/g, "");
+        const filename = `${year}_${sport}_${setNameNoSpaces}_SetHierarchy.csv`;
+        CSV.download(CSV.toCSV(csvRows), filename);
+        setStatus("Export cancelled (partial delivered)");
+        progress.finish("Cancelled — partial downloaded.", "warning");
+      } else if (error instanceof BlockedError) {
+        const lastUrl = `/Inserts.cfm/sid/${setId}/`;
+        recordBlock(error.message, lastUrl);
+        if (csvRows.length > 1) {
+          const setNameNoSpaces = setName.replace(/\s+/g, "");
+          const filename = `${year}_${sport}_${setNameNoSpaces}_SetHierarchy.csv`;
+          CSV.download(CSV.toCSV(csvRows), filename);
+          setStatus("Export blocked (partial delivered)");
+          progress.finish("Blocked — partial downloaded.", "error");
+        } else {
+          progress.finish("Stopped — the site returned a challenge.", "error");
+          setStatus("Export blocked");
+        }
+      } else {
+        Log(`Set Hierarchy Export Failed: ${error.message}`, "error", "client");
+        progress.finish(`Failed: ${error.message}`, "error");
+        setStatus("Export Failed");
+      }
+    } finally {
+      CurrentRun.controller = null;
+      CurrentRun.onEnd?.();
+    }
   }
 
   // src/ui/styles.js
@@ -2370,6 +2815,9 @@
 
 .tk-badge-action, .tk-badge-action:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
 .tk-badge-action:hover, .tk-badge-action:hover:visited { background: var(--tk-blue); color: #ffffff; }
+
+.tk-badge-action-h, .tk-badge-action-h:visited { background: var(--tk-bg-elevated); border-color: var(--tk-teal); color: var(--tk-teal); }
+.tk-badge-action-h:hover, .tk-badge-action-h:hover:visited { background: var(--tk-teal); color: #ffffff; }
 
 .tk-badge-link-c, .tk-badge-link-c:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
 .tk-badge-link-c:hover, .tk-badge-link-c:hover:visited { background: var(--tk-blue); color: #ffffff; }
@@ -2637,6 +3085,11 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         Log(`[CLIENT] Toolbar CSV Export button clicked for set ID ${sid} (${label}) — ${fullUrl}`, "info", "client");
         exportSetCSV(sid, label);
       },
+      onExportHierarchy: (e) => {
+        e.preventDefault();
+        Log(`[CLIENT] Toolbar Hierarchy CSV Export button clicked for set ID ${sid} (${label})`, "info", "client");
+        exportSingleParentSetHierarchy(sid, label);
+      },
       displayMode,
       parentSid
     });
@@ -2713,9 +3166,13 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       CurrentRun.onStart = () => {
         btn.hidden = false;
         btn.disabled = false;
+        const hierarchyBtn = document.getElementById("btn-export-hierarchy");
+        if (hierarchyBtn) hierarchyBtn.hidden = true;
       };
       CurrentRun.onEnd = () => {
         btn.hidden = true;
+        const hierarchyBtn = document.getElementById("btn-export-hierarchy");
+        if (hierarchyBtn) hierarchyBtn.hidden = false;
       };
     },
     /**
@@ -2941,6 +3398,26 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         const fullUrl = Utils.toFullUrl(link.getAttribute("href") || `/Checklist.cfm/sid/${setId}/`);
         Log(`[CLIENT] Set list badge CSV Export requested for set ID ${setId} (${setName}) — ${fullUrl}`, "info", "client");
         exportSetCSV(setId, setName);
+      },
+      onExportHierarchy: (e) => {
+        e.preventDefault();
+        const parentLi = link.closest("li");
+        let category = "Major Releases";
+        if (parentLi) {
+          let prev = parentLi.previousElementSibling;
+          while (prev) {
+            if (prev.tagName === "H3" && prev.classList.contains("site")) {
+              category = prev.textContent.trim().replace(/\s*\(\d+\)$/, "");
+              break;
+            }
+            prev = prev.previousElementSibling;
+          }
+        }
+        const nextEl = parentLi ? parentLi.nextElementSibling : null;
+        const hasHideDiv = !!(nextEl && nextEl.tagName === "DIV" && nextEl.id.startsWith("hideDiv"));
+        const sport = resolveSportFromDocument();
+        const year = resolveYearFromDocument(setName);
+        exportSingleParentSetHierarchy(setId, setName, { sport, year, category, hasHideDiv });
       },
       displayMode: Config.global?.setButtonDisplay || "both"
     });
@@ -3639,7 +4116,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     /** @type {AbortController|null} */
     controller: null
   };
-  async function assessPrintCollectionPageCount(doc = document, callbacks = {}) {
+  async function assessPrintCollectionPageCount(doc = document, callbacks = {}, signal = null) {
     const remainingMin = cooldownRemainingMinutes();
     if (remainingMin > 0) {
       setStatus("Export blocked (cooldown)");
@@ -3666,6 +4143,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         Log(`[CLIENT] Assessment safeguard: hit max limit of ${maxParts} parts.`, "warn", "client");
         break;
       }
+      if (signal?.aborted) throw new AbortedError("Export cancelled.", true);
       if (part > 1) {
         callbacks.onProgress?.(`Waiting anti-scraping delay...`);
         await jitteredDelay();
@@ -3679,7 +4157,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       try {
         let pageDoc = doc;
         if (part > 1 || !doc.querySelector(".yourcol-item")) {
-          const response = await fetchPageWithRetry(fetchUrl, part, { onStatus: setStatus });
+          const response = await fetchPageWithRetry(fetchUrl, part, { onStatus: setStatus, signal });
           const html = await response.text();
           const blockMarker = detectBlock(html);
           if (blockMarker) {
@@ -3703,6 +4181,18 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           part++;
         }
       } catch (err) {
+        if (err instanceof AbortedError && aggregatedRows.length > 0) {
+          assessmentCache = {
+            totalPages: part - 1,
+            totalCards,
+            totalQuantity,
+            rows: aggregatedRows,
+            includePrice,
+            sport,
+            isPartial: true
+          };
+          return assessmentCache;
+        }
         Log(`[CLIENT] Assessment halted at Part ${part}: ${err.message}`, "error", "client");
         if (part === 1) throw err;
         break;
@@ -3756,10 +4246,20 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         progress.update("Calculating page count...");
         data = await assessPrintCollectionPageCount(doc, {
           onProgress: (msg) => progress.update(msg)
-        });
+        }, controller.signal);
       }
       if (!data || !data.rows || data.rows.length === 0) {
         throw new Error("No printable card data found across pages.");
+      }
+      if (data.isPartial || controller.signal.aborted) {
+        const filename2 = buildPrintCollectionFilename({
+          includePrice: data.includePrice
+        });
+        const csvContent2 = CSV.toCSV(data.rows);
+        CSV.download(csvContent2, filename2);
+        setStatus("Export cancelled (partial delivered)");
+        progress.finish(`Cancelled — ${data.totalCards.toLocaleString()} cards downloaded.`, "warning");
+        return;
       }
       progress.update(`Compiling ${data.totalCards.toLocaleString()} cards...`);
       const filename = buildPrintCollectionFilename({
@@ -3929,7 +4429,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       Toolbar.addAction("btn-csv-player", "Export Player Collection", () => generateCSV("Player_Collection"), true);
     }
   }
-  var EXPORT_BUTTON_IDS = ["btn-csv-coll", "btn-csv-player", "btn-calc-pages", "btn-csv-pdf-all"];
+  var EXPORT_BUTTON_IDS = ["btn-csv-coll", "btn-csv-player", "btn-calc-pages", "btn-csv-pdf-all", "btn-export-hierarchy"];
 
   // src/modules/paginationLoader.js
   function normalizePaginationForms(root = document) {
@@ -4467,6 +4967,20 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     boundListeners = [];
   }
 
+  // src/modules/setHierarchyExport.js
+  function initSetHierarchyExport() {
+    if (Routes.isViewAllSets()) {
+      Toolbar.addAction(
+        "btn-export-hierarchy",
+        "Export Set Hierarchy",
+        () => {
+          exportSetHierarchyCSV(window.location.href);
+        },
+        true
+      );
+    }
+  }
+
   // src/core/registry.js
   var ModuleRegistry = [
     {
@@ -4527,6 +5041,13 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       description: "Counts distinct cards with Qty >= 1, total cards, and total item quantity on For Sale/Trade and Wantlist pages.",
       init: initCollectionQuantityCounter,
       isAsync: false
+    },
+    {
+      id: "setHierarchyExport",
+      name: "Set Hierarchy Export",
+      description: "Extract set hierarchies from ViewAll pages and output a CSV.",
+      init: initSetHierarchyExport,
+      isAsync: false
     }
   ];
   function resolveModules(url = window.location.href) {
@@ -4567,7 +5088,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   }
 
   // src/core/version.js
-  var APP_VERSION = "0.1.0-beta";
+  var APP_VERSION = "0.1-beta";
   function getAppVersion() {
     return APP_VERSION;
   }
@@ -6012,6 +6533,24 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           step: 25,
           unit: "ms",
           hint: "Slice interval before re-evaluating cross-tab request slot locks."
+        },
+        {
+          label: "Hierarchy Export Min Delay",
+          key: "exportHierarchyMinDelayMs",
+          min: 1e3,
+          max: 3e4,
+          step: 500,
+          unit: "ms",
+          hint: "Minimum delay before fetching each parent set in hierarchy export."
+        },
+        {
+          label: "Hierarchy Export Max Delay",
+          key: "exportHierarchyMaxDelayMs",
+          min: 1e3,
+          max: 6e4,
+          step: 500,
+          unit: "ms",
+          hint: "Maximum delay before fetching each parent set in hierarchy export."
         }
       ]
     },
