@@ -392,7 +392,7 @@ export async function runExportSingleParentSetHierarchy(setId, setName, { sport,
       csvRows.push([sport, year, category, setId, setName, '', '', '', '', fullNameBase, fullNameTruncBase]);
 
       // Child rows
-      childSets.forEach((child, j) => {
+      childSets.forEach((child) => {
         const fullNameChild = buildFullSetName(year, setName, child.childSetName);
         const fullNameTruncChild = buildFullSetNameTrunc(year, setName, child.childSetName);
         csvRows.push([sport, year, category, setId, setName, child.childCategory, child.childSetId, child.childSetName, child.childSetNotes || '', fullNameChild, fullNameTruncChild]);
