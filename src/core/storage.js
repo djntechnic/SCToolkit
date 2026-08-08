@@ -48,7 +48,14 @@ export const PINNED_SETS_KEY = 'tk_pinned_sets';
  * `tk_pinned_sets` directly; they all route through here now.
  */
 export const Pins = {
-  /** @returns {Array<{id: string, name: string, url: string, year: string}>} */
+  /**
+   * All stored pins in their persisted order.
+   *
+   * The `enabled` field is optional — pins created before this field was added
+   * have no `enabled` key, which is treated the same as `enabled: true`.
+   *
+   * @returns {Array<{id: string, name: string, url: string, year: string, enabled?: boolean}>}
+   */
   all: () => getValue(PINNED_SETS_KEY, []),
 
   /** @param {{id: string, name: string, url: string, year: string}} pin */
@@ -63,6 +70,36 @@ export const Pins = {
   /** @param {string} id */
   remove: (id) => {
     setValue(PINNED_SETS_KEY, Pins.all().filter((p) => p.id !== id));
+  },
+
+  /**
+   * Replace the entire stored pin list in one write.
+   *
+   * Used by drag-and-drop reordering: the caller assembles the new order and
+   * passes it here so storage is always consistent with the UI.
+   *
+   * @param {Array<{id: string, name: string, url: string, year: string, enabled?: boolean}>} pins
+   */
+  reorder: (pins) => {
+    setValue(PINNED_SETS_KEY, pins);
+  },
+
+  /**
+   * Flip the `enabled` field for a single pin and persist.
+   *
+   * Pins with no `enabled` field are treated as enabled; toggling them once
+   * sets `enabled: false`.
+   *
+   * @param {string} id
+   * @returns {boolean} the new enabled state, or `true` if pin not found
+   */
+  toggle: (id) => {
+    const pins = Pins.all();
+    const pin = pins.find((p) => p.id === id);
+    if (!pin) return true;
+    pin.enabled = !(pin.enabled !== false); // treat absent as true
+    setValue(PINNED_SETS_KEY, pins);
+    return pin.enabled;
   }
 };
 

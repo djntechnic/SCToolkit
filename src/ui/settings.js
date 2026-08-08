@@ -13,13 +13,14 @@ import { SETTINGS_CSS } from './styles.js';
 import { THEMES, applyTheme } from './theme.js';
 import { Routes } from '../core/routes.js';
 import { resolveModules } from '../core/registry.js';
-import { BLOCK_TS_KEY, getValue } from '../core/storage.js';
+import { BLOCK_TS_KEY, getValue, Pins } from '../core/storage.js';
 import { getContractResults } from '../core/contracts.js';
 import { showToast } from './toast.js';
 import { Toolbar } from './toolbar.js';
 import { reinjectSetActions } from '../modules/setListEnhancer.js';
 import { DiagnosticTests } from '../core/diagnostics.js';
 import { getAppVersion } from '../core/version.js';
+import { BADGES } from './badges.js';
 
 export const SettingsUI = {
   overlayId: 'tk-settings-overlay',
@@ -179,6 +180,11 @@ export const SettingsUI = {
     globalTab.className = 'tk-settings-tab active';
     globalTab.textContent = 'Global';
 
+    const pinsTab = document.createElement('button');
+    pinsTab.type = 'button';
+    pinsTab.className = 'tk-settings-tab';
+    pinsTab.textContent = 'Pins';
+
     const routesTab = document.createElement('button');
     routesTab.type = 'button';
     routesTab.className = 'tk-settings-tab';
@@ -199,13 +205,21 @@ export const SettingsUI = {
     diagTab.className = 'tk-settings-tab';
     diagTab.textContent = 'Diagnostics';
 
-    tabBar.append(globalTab, routesTab, regexTab, routeTesterTab, diagTab);
+
+    const badgesTab = document.createElement('button');
+    badgesTab.type = 'button';
+    badgesTab.className = 'tk-settings-tab';
+    badgesTab.textContent = 'Badges';
+
+    tabBar.append(globalTab, pinsTab, badgesTab, routesTab, regexTab, routeTesterTab, diagTab);
 
     const content = document.createElement('div');
     content.id = 'tk-settings-tab-content';
 
     const panes = {
       global: SettingsUI._buildGlobalPane(),
+      pins: SettingsUI._buildPinsPane(),
+      badges: SettingsUI._buildBadgesPane(),
       routes: SettingsUI._buildModulesPane(),
       regex: SettingsUI._buildRegexPane(),
       routetester: SettingsUI._buildRouteTesterPane(),
@@ -213,6 +227,8 @@ export const SettingsUI = {
     };
     const tabs = {
       global: globalTab,
+      pins: pinsTab,
+      badges: badgesTab,
       routes: routesTab,
       regex: regexTab,
       routetester: routeTesterTab,
@@ -233,6 +249,407 @@ export const SettingsUI = {
     body.appendChild(tabBar);
     body.appendChild(content);
     return body;
+  },
+
+  /**
+   * Pin Configuration tab.
+   *
+   * Lists every stored pin with a toggle (enabled/disabled), a drag handle for
+   * reordering, Up/Down keyboard controls, and a remove button. Every mutation
+   * writes immediately to storage and re-renders the toolbar.
+   */
+  _buildPinsPane: () => {
+    const pane = document.createElement('div');
+    pane.id = 'tk-settings-pins';
+
+    const title = document.createElement('div');
+    title.className = 'tk-settings-section-title';
+    title.textContent = 'Pin Configuration';
+    pane.appendChild(title);
+
+    const hint = document.createElement('div');
+    hint.className = 'tk-settings-hint';
+    hint.style.marginBottom = '10px';
+    hint.textContent =
+      'Toggle pins on/off and drag rows (or use the ↑↓ buttons) to set their order. ' +
+      'Disabled pins are hidden from the toolbar but remain saved. Changes apply immediately.';
+    pane.appendChild(hint);
+
+    const list = document.createElement('div');
+    list.className = 'tk-pin-config-list';
+    pane.appendChild(list);
+
+    // ------------------------------------------------------------------ //
+    // Internal state: a mutable working copy of the pin array.            //
+    // Every mutation rebuilds the list DOM and flushes to storage.        //
+    // ------------------------------------------------------------------ //
+    let workingPins = Pins.all(); // live reference, mutated in place
+
+    const flush = () => {
+      Pins.reorder(workingPins);
+      Toolbar.renderPins();
+    };
+
+    const rebuild = () => {
+      list.innerHTML = '';
+      workingPins = Pins.all(); // re-read after external changes (remove via toolbar)
+
+      if (workingPins.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'tk-pin-config-empty';
+        empty.textContent = 'No pins saved. Pin a set from any set page to get started.';
+        list.appendChild(empty);
+        return;
+      }
+
+      workingPins.forEach((pin, idx) => {
+        const row = document.createElement('div');
+        row.className = 'tk-pin-config-row' + (pin.enabled === false ? ' tk-pin-disabled' : '');
+        row.draggable = true;
+        row.dataset.pinId = pin.id;
+
+        // --- Drag handle ---
+        const handle = document.createElement('span');
+        handle.className = 'tk-pin-drag-handle';
+        handle.title = 'Drag to reorder';
+        handle.innerHTML = '&#9776;'; // ≡ hamburger
+        handle.setAttribute('aria-hidden', 'true');
+        row.appendChild(handle);
+
+        // --- Enable toggle ---
+        const toggle = document.createElement('input');
+        toggle.type = 'checkbox';
+        toggle.className = 'tk-pin-config-toggle';
+        toggle.checked = pin.enabled !== false;
+        toggle.title = toggle.checked ? 'Disable this pin' : 'Enable this pin';
+        toggle.setAttribute('aria-label', `Toggle ${pin.name}`);
+        toggle.addEventListener('change', () => {
+          Pins.toggle(pin.id);
+          workingPins = Pins.all();
+          Toolbar.renderPins();
+          rebuild();
+          Log(`Pin '${pin.name}' ${toggle.checked ? 'enabled' : 'disabled'}.`, 'debug');
+        });
+        row.appendChild(toggle);
+
+        // --- Name (clickable link) ---
+        const nameWrap = document.createElement('span');
+        nameWrap.className = 'tk-pin-config-name';
+        const nameLink = document.createElement('a');
+        nameLink.href = pin.url;
+        nameLink.textContent = pin.name;
+        nameLink.title = `Navigate to ${pin.name}`;
+        nameWrap.appendChild(nameLink);
+        row.appendChild(nameWrap);
+
+        // --- Year label ---
+        const yearLabel = document.createElement('span');
+        yearLabel.className = 'tk-pin-config-year';
+        yearLabel.textContent = pin.year || '';
+        row.appendChild(yearLabel);
+
+        // --- Reorder + Remove actions ---
+        const actions = document.createElement('span');
+        actions.className = 'tk-pin-config-actions';
+
+        const upBtn = document.createElement('button');
+        upBtn.type = 'button';
+        upBtn.className = 'tk-pin-reorder-btn';
+        upBtn.title = 'Move up';
+        upBtn.setAttribute('aria-label', `Move ${pin.name} up`);
+        upBtn.innerHTML = '&#8593;';
+        upBtn.disabled = idx === 0;
+        upBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (idx === 0) return;
+          workingPins = Pins.all();
+          [workingPins[idx - 1], workingPins[idx]] = [workingPins[idx], workingPins[idx - 1]];
+          flush();
+          rebuild();
+        });
+
+        const downBtn = document.createElement('button');
+        downBtn.type = 'button';
+        downBtn.className = 'tk-pin-reorder-btn';
+        downBtn.title = 'Move down';
+        downBtn.setAttribute('aria-label', `Move ${pin.name} down`);
+        downBtn.innerHTML = '&#8595;';
+        downBtn.disabled = idx === workingPins.length - 1;
+        downBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (idx === workingPins.length - 1) return;
+          workingPins = Pins.all();
+          [workingPins[idx], workingPins[idx + 1]] = [workingPins[idx + 1], workingPins[idx]];
+          flush();
+          rebuild();
+        });
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'tk-pin-remove-btn';
+        removeBtn.title = `Remove ${pin.name}`;
+        removeBtn.setAttribute('aria-label', `Remove pin: ${pin.name}`);
+        removeBtn.innerHTML = icon('x');
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          Pins.remove(pin.id);
+          workingPins = Pins.all();
+          Toolbar.renderPins();
+          rebuild();
+          Log(`Pin removed from settings: ${pin.name}`, 'debug');
+        });
+
+        actions.appendChild(upBtn);
+        actions.appendChild(downBtn);
+        actions.appendChild(removeBtn);
+        row.appendChild(actions);
+
+        // ---------------------------------------------------------------- //
+        // HTML5 drag-and-drop reordering                                   //
+        // ---------------------------------------------------------------- //
+        row.addEventListener('dragstart', (e) => {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', String(idx));
+          setTimeout(() => row.classList.add('tk-pin-row-dragging'), 0);
+        });
+
+        row.addEventListener('dragend', () => {
+          row.classList.remove('tk-pin-row-dragging');
+          list.querySelectorAll('.tk-pin-row-drag-over').forEach((r) => r.classList.remove('tk-pin-row-drag-over'));
+        });
+
+        row.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          list.querySelectorAll('.tk-pin-row-drag-over').forEach((r) => r.classList.remove('tk-pin-row-drag-over'));
+          row.classList.add('tk-pin-row-drag-over');
+        });
+
+        row.addEventListener('dragleave', () => {
+          row.classList.remove('tk-pin-row-drag-over');
+        });
+
+        row.addEventListener('drop', (e) => {
+          e.preventDefault();
+          row.classList.remove('tk-pin-row-drag-over');
+          const srcIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+          if (isNaN(srcIdx) || srcIdx === idx) return;
+          workingPins = Pins.all();
+          const [moved] = workingPins.splice(srcIdx, 1);
+          workingPins.splice(idx, 0, moved);
+          flush();
+          rebuild();
+        });
+
+        list.appendChild(row);
+      });
+    };
+
+    rebuild();
+    return pane;
+  },
+
+  /**
+   * Badge Configuration tab.
+   *
+   * Two groups — Toolbar Badges and Set Link Badges — each rendered as a
+   * draggable, togglable list. Changes write to Config.global and live-update
+   * the toolbar / injected badge groups immediately.
+   */
+  _buildBadgesPane: () => {
+    const pane = document.createElement('div');
+    pane.id = 'tk-settings-badges';
+
+    const title = document.createElement('div');
+    title.className = 'tk-settings-section-title';
+    title.textContent = 'Badge Configuration';
+    pane.appendChild(title);
+
+    const hint = document.createElement('div');
+    hint.className = 'tk-settings-hint';
+    hint.style.marginBottom = '12px';
+    hint.textContent =
+      'Toggle individual action badges on/off and drag rows (or use the ↑↓ buttons) to set their order. ' +
+      'Changes apply immediately to the toolbar and injected set-link badges.';
+    pane.appendChild(hint);
+
+    /**
+     * Build one sortable/togglable badge list section.
+     *
+     * @param {string} sectionTitle
+     * @param {string} configKey  - 'toolbarBadges' | 'setLinkBadges'
+     * @param {() => void} onApply  - called after any change to re-render the UI
+     */
+    const buildSection = (sectionTitle, configKey, onApply) => {
+      const section = document.createElement('div');
+      section.style.marginBottom = '16px';
+
+      const secTitle = document.createElement('div');
+      secTitle.style.cssText = 'font-family:var(--tk-font-mono);font-size:10px;font-weight:700;color:var(--tk-teal);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;';
+      secTitle.textContent = sectionTitle;
+      section.appendChild(secTitle);
+
+      const list = document.createElement('div');
+      list.className = 'tk-pin-config-list';
+      section.appendChild(list);
+
+      const getEntries = () => Config.global[configKey] || [];
+
+      const flush = () => {
+        SettingsUI._persist();
+        onApply();
+      };
+
+      const rebuild = () => {
+        list.innerHTML = '';
+        const entries = getEntries();
+
+        entries.forEach((entry, idx) => {
+          const badgeDef = BADGES[entry.key];
+          if (!badgeDef) return; // skip unknown keys
+
+          const row = document.createElement('div');
+          row.className = 'tk-pin-config-row' + (entry.enabled === false ? ' tk-pin-disabled' : '');
+          row.draggable = true;
+          row.dataset.badgeKey = entry.key;
+
+          // --- Drag handle ---
+          const handle = document.createElement('span');
+          handle.className = 'tk-pin-drag-handle';
+          handle.title = 'Drag to reorder';
+          handle.innerHTML = '&#9776;';
+          handle.setAttribute('aria-hidden', 'true');
+          row.appendChild(handle);
+
+          // --- Enable toggle ---
+          const toggle = document.createElement('input');
+          toggle.type = 'checkbox';
+          toggle.className = 'tk-pin-config-toggle';
+          toggle.checked = entry.enabled !== false;
+          toggle.title = toggle.checked ? 'Disable this badge' : 'Enable this badge';
+          toggle.setAttribute('aria-label', `Toggle ${badgeDef.text || entry.key} badge`);
+          toggle.addEventListener('change', () => {
+            entry.enabled = toggle.checked;
+            row.classList.toggle('tk-pin-disabled', !toggle.checked);
+            Log(`Config change: ${configKey}[${entry.key}].enabled = ${toggle.checked}`, 'info');
+            flush();
+          });
+          row.appendChild(toggle);
+
+          // --- Badge name ---
+          const nameWrap = document.createElement('span');
+          nameWrap.className = 'tk-pin-config-name';
+          nameWrap.textContent = badgeDef.title || entry.key;
+          row.appendChild(nameWrap);
+
+          // --- Badge key chip ---
+          const keyChip = document.createElement('span');
+          keyChip.className = 'tk-pin-config-year';
+          keyChip.textContent = badgeDef.text || entry.key;
+          row.appendChild(keyChip);
+
+          // --- Reorder + actions ---
+          const actions = document.createElement('span');
+          actions.className = 'tk-pin-config-actions';
+
+          const upBtn = document.createElement('button');
+          upBtn.type = 'button';
+          upBtn.className = 'tk-pin-reorder-btn';
+          upBtn.title = 'Move up';
+          upBtn.setAttribute('aria-label', `Move ${entry.key} up`);
+          upBtn.innerHTML = '&#8593;';
+          upBtn.disabled = idx === 0;
+          upBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (idx === 0) return;
+            const arr = getEntries();
+            [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+            Config.global[configKey] = arr;
+            Log(`Config change: ${configKey} reordered`, 'info');
+            flush();
+            rebuild();
+          });
+
+          const downBtn = document.createElement('button');
+          downBtn.type = 'button';
+          downBtn.className = 'tk-pin-reorder-btn';
+          downBtn.title = 'Move down';
+          downBtn.setAttribute('aria-label', `Move ${entry.key} down`);
+          downBtn.innerHTML = '&#8595;';
+          downBtn.disabled = idx === entries.length - 1;
+          downBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (idx === entries.length - 1) return;
+            const arr = getEntries();
+            [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+            Config.global[configKey] = arr;
+            Log(`Config change: ${configKey} reordered`, 'info');
+            flush();
+            rebuild();
+          });
+
+          actions.appendChild(upBtn);
+          actions.appendChild(downBtn);
+          row.appendChild(actions);
+
+          // --- HTML5 drag-and-drop ---
+          row.addEventListener('dragstart', (e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(idx));
+            setTimeout(() => row.classList.add('tk-pin-row-dragging'), 0);
+          });
+
+          row.addEventListener('dragend', () => {
+            row.classList.remove('tk-pin-row-dragging');
+            list.querySelectorAll('.tk-pin-row-drag-over').forEach((r) => r.classList.remove('tk-pin-row-drag-over'));
+          });
+
+          row.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            list.querySelectorAll('.tk-pin-row-drag-over').forEach((r) => r.classList.remove('tk-pin-row-drag-over'));
+            row.classList.add('tk-pin-row-drag-over');
+          });
+
+          row.addEventListener('dragleave', () => {
+            row.classList.remove('tk-pin-row-drag-over');
+          });
+
+          row.addEventListener('drop', (e) => {
+            e.preventDefault();
+            row.classList.remove('tk-pin-row-drag-over');
+            const srcIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+            if (isNaN(srcIdx) || srcIdx === idx) return;
+            const arr = getEntries();
+            const [moved] = arr.splice(srcIdx, 1);
+            arr.splice(idx, 0, moved);
+            Config.global[configKey] = arr;
+            Log(`Config change: ${configKey} reordered via drag`, 'info');
+            flush();
+            rebuild();
+          });
+
+          list.appendChild(row);
+        });
+      };
+
+      rebuild();
+      return section;
+    };
+
+    pane.appendChild(buildSection(
+      'Toolbar Badges',
+      'toolbarBadges',
+      () => Toolbar.renderCenterContext()
+    ));
+
+    pane.appendChild(buildSection(
+      'Set Link Badges',
+      'setLinkBadges',
+      () => reinjectSetActions()
+    ));
+
+    return pane;
   },
 
   _buildModulesPane: () => {

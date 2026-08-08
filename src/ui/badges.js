@@ -3,6 +3,7 @@
  */
 
 import { icon } from './icons.js';
+import { Config } from '../core/config.js';
 
 /**
  * Badge definitions. A definition with `getUrl` renders as an anchor; one
@@ -85,6 +86,34 @@ export const TOOLBAR_BADGES = ['CHECKLIST', 'INSERTS', 'PARALLELS', 'FOR_SALE', 
 
 /** Set-link order: checklist leads, followed by actions and set shortcuts. */
 export const SET_LINK_BADGES = ['CHECKLIST', 'PIN', 'CSV', 'HIERARCHY', 'INSERTS', 'PARALLELS', 'FOR_SALE', 'MULTI', 'WANTLIST'];
+
+/**
+ * Ordered, enabled badge keys for the toolbar, driven by Config.
+ *
+ * Falls back to the hardcoded `TOOLBAR_BADGES` constant when no config is
+ * present (tests, first-run before storage is seeded).
+ *
+ * @returns {string[]}
+ */
+export function getToolbarBadges() {
+  const cfg = Config.global?.toolbarBadges;
+  if (!Array.isArray(cfg) || cfg.length === 0) return TOOLBAR_BADGES;
+  return cfg.filter((b) => b.enabled !== false).map((b) => b.key);
+}
+
+/**
+ * Ordered, enabled badge keys for injected set-link badge groups, driven by Config.
+ *
+ * Falls back to the hardcoded `SET_LINK_BADGES` constant when no config is
+ * present.
+ *
+ * @returns {string[]}
+ */
+export function getSetLinkBadges() {
+  const cfg = Config.global?.setLinkBadges;
+  if (!Array.isArray(cfg) || cfg.length === 0) return SET_LINK_BADGES;
+  return cfg.filter((b) => b.enabled !== false).map((b) => b.key);
+}
 
 /**
  * @param {keyof BADGES} badgeKey

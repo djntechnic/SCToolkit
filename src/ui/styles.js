@@ -370,6 +370,31 @@ export const SETTINGS_CSS = `
 .tk-route-rule-item.pass { color: var(--tk-green); }
 .tk-route-rule-item.fail { color: var(--tk-red); }
 
+/* Pin Configuration Tab */
+#tk-settings-pins { text-align: left; }
+.tk-pin-config-list { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.tk-pin-config-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--tk-border); border-radius: var(--tk-radius-sm); background: var(--tk-bg-base); cursor: default; user-select: none; transition: background 0.1s ease, opacity 0.15s ease; }
+.tk-pin-config-row:hover { background: var(--tk-bg-hover); }
+.tk-pin-config-row.tk-pin-row-dragging { opacity: 0.4; }
+.tk-pin-config-row.tk-pin-row-drag-over { border-color: var(--tk-accent); background: var(--tk-bg-hover); box-shadow: 0 0 0 2px rgba(4,102,200,0.25); }
+.tk-pin-config-row.tk-pin-disabled { opacity: 0.5; }
+.tk-pin-drag-handle { display: inline-flex; align-items: center; justify-content: center; color: var(--tk-text-muted); cursor: grab; flex-shrink: 0; width: 16px; padding: 0 2px; }
+.tk-pin-drag-handle:active { cursor: grabbing; }
+.tk-pin-config-toggle { flex-shrink: 0; accent-color: var(--tk-accent); width: 14px; height: 14px; cursor: pointer; }
+.tk-pin-config-name { flex: 1 1 auto; min-width: 0; font-size: 11px; font-weight: 600; color: var(--tk-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-pin-config-name a { color: inherit; text-decoration: none; }
+.tk-pin-config-name a:hover { color: var(--tk-accent); text-decoration: underline; }
+.tk-pin-config-year { font-family: var(--tk-font-mono); font-size: 9.5px; color: var(--tk-text-muted); flex-shrink: 0; }
+.tk-pin-config-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.tk-pin-reorder-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; background: transparent; border: 1px solid var(--tk-border-strong); color: var(--tk-text-muted); border-radius: var(--tk-radius-sm); cursor: pointer; padding: 0; }
+.tk-pin-reorder-btn:hover:not(:disabled) { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: var(--tk-accent); }
+.tk-pin-reorder-btn:disabled { opacity: 0.25; cursor: default; }
+.tk-pin-reorder-btn:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
+.tk-pin-remove-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; background: transparent; border: 1px solid var(--tk-border-strong); color: var(--tk-text-muted); border-radius: var(--tk-radius-sm); cursor: pointer; padding: 0; }
+.tk-pin-remove-btn:hover { background: var(--tk-red); border-color: var(--tk-red); color: #fff; }
+.tk-pin-remove-btn:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; }
+.tk-pin-config-empty { color: var(--tk-text-muted); font-size: 11px; padding: 16px 0; text-align: center; }
+
 @media (max-width: 480px) {
     .tk-route-row { flex-wrap: wrap; }
     .tk-route-row input[type="text"] { flex-basis: 100%; }

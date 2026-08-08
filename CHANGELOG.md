@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Collection Defaulter Module**: Automatically sets the 'Collection' selection dropdown (`#CFForm_1 > select`) to a user-configured default value (default Collection ID `6`) on `ViewCollection.cfm` pages.
+- **Pin Configuration Settings Tab**: New tab in the Settings modal allowing users to globally toggle individual pinned sets on/off and reorder them via drag-and-drop or keyboard controls.
+- **Badge Configuration Settings Tab**: New tab in the Settings modal allowing users to independently toggle on/off and reorder action/shortcut badges for both the fixed top toolbar and injected set-link badge groups with real-time UI updates.
+
 ## [0.1.0-beta] — 2026-08-06
 
 ### Added

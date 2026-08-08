@@ -11,7 +11,7 @@ import { Pins, SET_YEAR_REGEX } from '../core/storage.js';
 import { Utils } from '../core/utils.js';
 import { CurrentRun, cancelCurrentExport, exportSetCSV } from '../net/setExport.js';
 import { exportSingleParentSetHierarchy } from '../net/setHierarchyExport.js';
-import { TOOLBAR_BADGES, createBadge, renderBadgeSet } from './badges.js';
+import { createBadge, renderBadgeSet, getToolbarBadges } from './badges.js';
 import { createBtn, injectStyle } from './dom.js';
 import { icon, installIconSprite } from './icons.js';
 import { TOOLBAR_CSS } from './styles.js';
@@ -34,7 +34,7 @@ export function appendShortcutBadges(
   parentSid = null
 ) {
   renderBadgeSet(container, sid, {
-    include: TOOLBAR_BADGES,
+    include: getToolbarBadges(),
     onExport: (e) => {
       e.preventDefault();
       const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${sid}/`);
@@ -201,7 +201,7 @@ export const Toolbar = {
     if (!container) return;
     container.innerHTML = '';
 
-    const pins = Pins.all();
+    const pins = Pins.all().filter((p) => p.enabled !== false);
     if (pins.length === 0) return;
 
     const grouped = pins.reduce((acc, pin) => {

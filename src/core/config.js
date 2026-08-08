@@ -106,6 +106,11 @@ export const DEFAULT_CONFIG = {
       ],
       actions: {}
     },
+    collectionDefaulter: {
+      enabled: true,
+      urlMatch: [{ pattern: "/viewcollection\\.cfm", exclude: false }],
+      actions: {}
+    },
   },
   global: {
     exportBaseDelayMs: EXPORT_CONFIG.baseDelayMs,
@@ -147,6 +152,28 @@ export const DEFAULT_CONFIG = {
     toolbarButtonDisplay: "both",
     pinButtonDisplay: "both",
     setButtonDisplay: "both",
+    defaultCollectionId: 6,
+    toolbarBadges: [
+      { key: 'CHECKLIST', enabled: true },
+      { key: 'INSERTS', enabled: true },
+      { key: 'PARALLELS', enabled: true },
+      { key: 'FOR_SALE', enabled: true },
+      { key: 'MULTI', enabled: true },
+      { key: 'WANTLIST', enabled: true },
+      { key: 'CSV', enabled: true },
+      { key: 'HIERARCHY', enabled: true }
+    ],
+    setLinkBadges: [
+      { key: 'CHECKLIST', enabled: true },
+      { key: 'PIN', enabled: true },
+      { key: 'CSV', enabled: true },
+      { key: 'HIERARCHY', enabled: true },
+      { key: 'INSERTS', enabled: true },
+      { key: 'PARALLELS', enabled: true },
+      { key: 'FOR_SALE', enabled: true },
+      { key: 'MULTI', enabled: true },
+      { key: 'WANTLIST', enabled: true }
+    ],
   },
 };
 

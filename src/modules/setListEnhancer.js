@@ -13,7 +13,7 @@ import { Log } from '../core/log.js';
 import { extractSid } from '../core/sid.js';
 import { Pins, deriveSetYear } from '../core/storage.js';
 import { exportSetCSV } from '../net/setExport.js';
-import { SET_LINK_BADGES, renderBadgeSet } from '../ui/badges.js';
+import { renderBadgeSet, getSetLinkBadges } from '../ui/badges.js';
 import { assertContract, recordContract } from '../core/contracts.js';
 import { showToast } from '../ui/toast.js';
 import { Toolbar } from '../ui/toolbar.js';
@@ -107,7 +107,7 @@ function buildBadgeGroup(link, setId, currentPageSid) {
   // Inserts and Parallels only mean something for a link that heads a group
   // of sub-sets; on a leaf set they would point at empty pages.
   const expandable = isExpandableParent(link);
-  const include = SET_LINK_BADGES.filter(
+  const include = getSetLinkBadges().filter(
     (key) => expandable || (key !== 'INSERTS' && key !== 'PARALLELS')
   );
 
