@@ -24,9 +24,10 @@ A userscript toolkit for sports card database browsing: instant table & set list
 | **Collection Quantity Counter Widget** | ViewCollectionForSaleTrade, ViewCollectionWantlist | Floating overlay widget tracking distinct collected cards vs total item quantity (`Qty >= 1`). |
 | **Card Name Formatter Engine** | ViewCard, Checklist, Collections | Compiles structured card metadata into customizable tokenized text strings with floating popover or auto-copy. |
 | **Set List Shortcut Badges** | ViewAll, Inserts, Set Lists | Injects inline badges (Checklist, Inserts, Parallels, For Sale, Wantlist, Add Multiples, Pin, CSV, Hierarchy) next to set links. |
+| **Collection Defaulter** | ViewCollection | Automatically selects a preferred Collection ID on ViewCollection.cfm pages. |
 | **Keyboard-First Data Entry** | Add Multiples & Form Inputs | Converts `Enter` to `Tab` navigation across inputs and auto-scrolls focused fields into the middle 80% viewport zone. |
 | **Paced Multi-Page Export Engine** | Set Checklists, Collections, Print Views | Multi-page checklist CSV exporter with rate limiting, exponential backoff, anti-scraping protection, and 24h caching. |
-| **Interactive Settings Modal** | Toolbar Gear Icon / `Ctrl+K` | Comprehensive settings UI featuring module toggles, regex route editing, global thresholds, log timezone/format, and diagnostics. |
+| **Interactive Settings Modal** | Toolbar Gear Icon / `Ctrl+K` | Comprehensive settings UI featuring module toggles, regex route editing, Pin Configuration, Badge Configuration (Toolbar & Set Links), global thresholds, log timezone/format, and diagnostics. |
 
 ---
 
@@ -99,7 +100,16 @@ SCToolkit is built as a modular framework. Each feature is encapsulated in a ded
   - `global.setListEnhancerChunkSize`: Processing chunk size for link enhancement.
   - `setListEnhancer.urlMatch`: Route match patterns (`/viewall.cfm`, `/inserts.cfm`).
 
-### 6. Add Multiples Enhancer
+### 6. Collection Defaulter
+- **Source File**: [`src/modules/collectionDefaulter.js`](file:///c:/Dev/SCToolkit/src/modules/collectionDefaulter.js)
+- **Functions & Capabilities**:
+  - Automatically selects a default preferred Collection ID on `ViewCollection.cfm` pages (target selector: `#CFForm_1 > select`).
+- **Configurable Settings**:
+  - `collectionDefaulter.enabled`: Toggle module ON/OFF.
+  - `global.defaultCollectionId`: Preferred default Collection ID value (default `6`).
+  - `collectionDefaulter.urlMatch`: Route match patterns (`/viewcollection.cfm`).
+
+### 7. Add Multiples Enhancer
 - **Source File**: [`src/modules/addMultiplesEnhancer.js`](file:///c:/Dev/SCToolkit/src/modules/addMultiplesEnhancer.js)
 - **Functions & Capabilities**:
   - Optimizes bulk collection entry pages (`CollectionAddMultiplesText.cfm`).
@@ -110,7 +120,7 @@ SCToolkit is built as a modular framework. Each feature is encapsulated in a ded
   - `global.addMultiplesFocusDeadlineMs`: Focus detection timeout (default `1200ms`).
   - `addMultiplesEnhancer.urlMatch`: Route match patterns (`/collectionaddmultiples`).
 
-### 7. Input Optimization
+### 8. Input Optimization
 - **Source File**: [`src/modules/inputOptimization.js`](file:///c:/Dev/SCToolkit/src/modules/inputOptimization.js)
 - **Functions & Capabilities**:
   - Keyboard-first form navigation. Converts `Enter` key presses inside text and number fields into `Tab` navigation to allow rapid single-key data entry.
@@ -118,7 +128,7 @@ SCToolkit is built as a modular framework. Each feature is encapsulated in a ded
 - **Configurable Settings**:
   - `inputOptimization.enabled`: Toggle module ON/OFF globally.
 
-### 8. Pagination Loader
+### 9. Pagination Loader
 - **Source File**: [`src/modules/paginationLoader.js`](file:///c:/Dev/SCToolkit/src/modules/paginationLoader.js)
 - **Functions & Capabilities**:
   - Infinite scroll pagination engine for listing views.
@@ -138,10 +148,7 @@ Access the Settings Modal by clicking the **gear icon** in the top toolbar or us
 
 ### Modal Tabs & Features
 
-1. **Modules Tab**:
-   - Lists all 8 modules in alphabetical accordion cards.
-   - Expand any module to toggle its master switch, view its target description, toggle sub-actions, or edit its regex route patterns directly.
-2. **Global Tab**:
+1. **Global Tab**:
    - **Theme Selector**: Choose `auto` (follows OS preference), `light`, or `dark`.
    - **Button Display Modes**: Customize button modes (`both`, `icon`, `text`) independently for the main Toolbar, Pinned Sets dropdown, and Injected Set badges.
    - **Export Pacing & Thresholds**: Adjust base delay, jitter, max retries, backoff parameters, safety page ceilings, and request timeouts.
@@ -149,11 +156,22 @@ Access the Settings Modal by clicking the **gear icon** in the top toolbar or us
    - **Card Formatter Options**: Edit token template string, output mode (`popover` vs `clipboard`), and popover duration.
    - **Quantity Counter Position**: Select widget placement (`bottom-right`, `bottom-left`, `toolbar`).
    - **Logging & Timezone**: Set console log level (`info`, `debug`, `warn`, `error`), log timezone (`auto` or IANA string), and timestamp pattern.
-3. **RegEx Tester Tab**:
+2. **Pins Tab**:
+   - Manage pinned sets globally.
+   - **Toggle On/Off**: Enable or disable individual pinned sets.
+   - **Reorder**: Drag-and-drop rows or use ↑ / ↓ buttons to rearrange pinned set ordering.
+3. **Badges Tab**:
+   - Independently configure **Toolbar Badges** and **Injected Set Link Badges**.
+   - **Toggle On/Off**: Enable or disable specific action buttons (Checklist, Inserts, Parallels, For Sale, Multi, Wantlist, Pin, CSV, Hierarchy).
+   - **Reorder**: Drag-and-drop or use ↑ / ↓ buttons to rearrange button display order live.
+4. **Modules Tab**:
+   - Lists all 9 modules in alphabetical accordion cards.
+   - Expand any module to toggle its master switch, view its target description, toggle sub-actions, or edit its regex route patterns directly.
+5. **RegEx Tester Tab**:
    - Interactive sandbox for testing custom regular expressions against sample URL strings with real-time match highlighting and capture group tables.
-4. **Route Tester Tab**:
+6. **Route Tester Tab**:
    - Evaluates any target URL string against all active module rules simultaneously to verify route matching.
-5. **Diagnostics Tab**:
+7. **Diagnostics Tab**:
    - Displays real-time contract check results (verifying DOM elements exist), active modules, resolved theme, current pacing penalty, and an Export Cache Manager with a one-click **Purge Cache** button.
 
 ---

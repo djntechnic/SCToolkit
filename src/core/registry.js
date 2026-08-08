@@ -18,6 +18,7 @@ import { initPaginationLoader } from '../modules/paginationLoader.js';
 import { initCardNameFormatter } from '../modules/cardNameFormatter.js';
 import { initCollectionQuantityCounter } from '../modules/collectionQuantityCounter.js';
 import { initSetHierarchyExport } from '../modules/setHierarchyExport.js';
+import { initCollectionDefaulter } from '../modules/collectionDefaulter.js';
 
 /**
  * @typedef {object} ModuleDefinition
@@ -97,6 +98,13 @@ export const ModuleRegistry = [
     name: 'Set Hierarchy Export',
     description: 'Extract set hierarchies from ViewAll pages and output a CSV.',
     init: initSetHierarchyExport,
+    isAsync: false
+  },
+  {
+    id: 'collectionDefaulter',
+    name: 'Collection Defaulter',
+    description: 'Automatically selects a preferred Collection on the ViewCollection (Add / Update) page.',
+    init: initCollectionDefaulter,
     isAsync: false
   }
 ];

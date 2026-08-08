@@ -52,6 +52,7 @@ SCToolkit
 │   │   ├── 📜 addMultiplesEnhancer.js
 │   │   ├── 📜 cardNameFormatter.js
 │   │   ├── 📜 checklistEnhancer.js
+│   │   ├── 📜 collectionDefaulter.js
 │   │   ├── 📜 collectionQuantityCounter.js
 │   │   ├── 📜 csvExportEngine.js
 │   │   ├── 📜 inputOptimization.js
@@ -3183,6 +3184,7 @@ SCToolkit
 │   ├── 📜 cardNameFormatter.test.js
 │   ├── 📜 checklistParser.test.js
 │   ├── 📜 collectionBrowse.test.js
+│   ├── 📜 collectionDefaulter.test.js
 │   ├── 📜 config.test.js
 │   ├── 📜 csv.test.js
 │   ├── 📜 diagnostics.test.js
