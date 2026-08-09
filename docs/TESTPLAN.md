@@ -94,5 +94,5 @@ testable yet.
 
 ## Migration check
 
-Install v3.0 over an existing v2.42 profile: pins survive, stored config
+Install v0.1-beta over an existing profile: pins survive, stored config
 migrates without reset, Settings reflects prior values.

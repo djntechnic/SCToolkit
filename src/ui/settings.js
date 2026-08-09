@@ -1161,11 +1161,100 @@ export const SettingsUI = {
     });
     outputModeField.append(outputModeLabel, outputModeSelect);
 
+    const showCopyField = document.createElement('div');
+    showCopyField.className = 'tk-settings-field';
+    const showCopyLabel = document.createElement('label');
+    showCopyLabel.style.display = 'flex';
+    showCopyLabel.style.alignItems = 'center';
+    showCopyLabel.style.gap = '6px';
+    showCopyLabel.style.cursor = 'pointer';
+    const showCopyCheckbox = document.createElement('input');
+    showCopyCheckbox.type = 'checkbox';
+    showCopyCheckbox.checked = Config.global.cardFormatterShowCopy !== false;
+
+    const showBRefField = document.createElement('div');
+    showBRefField.className = 'tk-settings-field';
+    const showBRefLabel = document.createElement('label');
+    showBRefLabel.style.display = 'flex';
+    showBRefLabel.style.alignItems = 'center';
+    showBRefLabel.style.gap = '6px';
+    showBRefLabel.style.cursor = 'pointer';
+    const showBRefCheckbox = document.createElement('input');
+    showBRefCheckbox.type = 'checkbox';
+    showBRefCheckbox.checked = Config.global.cardFormatterShowBRef !== false;
+
+    const showGoogleField = document.createElement('div');
+    showGoogleField.className = 'tk-settings-field';
+    const showGoogleLabel = document.createElement('label');
+    showGoogleLabel.style.display = 'flex';
+    showGoogleLabel.style.alignItems = 'center';
+    showGoogleLabel.style.gap = '6px';
+    showGoogleLabel.style.cursor = 'pointer';
+    const showGoogleCheckbox = document.createElement('input');
+    showGoogleCheckbox.type = 'checkbox';
+    showGoogleCheckbox.checked = Config.global.cardFormatterShowGoogle !== false;
+
+    const updateOutputModeState = () => {
+      const showCopy = showCopyCheckbox.checked;
+      const showBRef = showBRefCheckbox.checked;
+      const showGoogle = showGoogleCheckbox.checked;
+      const hasSearch = showBRef || showGoogle;
+
+      if (hasSearch) {
+        outputModeSelect.value = 'popover';
+        outputModeSelect.disabled = true;
+        outputModeSelect.title = 'Floating Popover is required when Baseball Reference or Google search is enabled.';
+        if (Config.global.cardFormatterOutputMode !== 'popover') {
+          Config.global.cardFormatterOutputMode = 'popover';
+          Log('Config change: global.cardFormatterOutputMode = popover (required by active search actions)', 'info');
+        }
+      } else if (showCopy) {
+        outputModeSelect.disabled = false;
+        outputModeSelect.title = 'popover: show floating copy button near text. clipboard: auto-copy to clipboard.';
+      } else {
+        outputModeSelect.value = 'clipboard';
+        outputModeSelect.disabled = true;
+        outputModeSelect.title = 'No actions selected.';
+        if (Config.global.cardFormatterOutputMode !== 'clipboard') {
+          Config.global.cardFormatterOutputMode = 'clipboard';
+        }
+      }
+    };
+
+    showCopyCheckbox.addEventListener('change', () => {
+      Config.global.cardFormatterShowCopy = showCopyCheckbox.checked;
+      Log(`Config change: global.cardFormatterShowCopy = ${showCopyCheckbox.checked}`, 'info');
+      updateOutputModeState();
+      SettingsUI._persist();
+    });
+    showCopyLabel.append(showCopyCheckbox, document.createTextNode('Show Copy Button'));
+    showCopyField.appendChild(showCopyLabel);
+
+    showBRefCheckbox.addEventListener('change', () => {
+      Config.global.cardFormatterShowBRef = showBRefCheckbox.checked;
+      Log(`Config change: global.cardFormatterShowBRef = ${showBRefCheckbox.checked}`, 'info');
+      updateOutputModeState();
+      SettingsUI._persist();
+    });
+    showBRefLabel.append(showBRefCheckbox, document.createTextNode('Show Baseball Reference Search'));
+    showBRefField.appendChild(showBRefLabel);
+
+    showGoogleCheckbox.addEventListener('change', () => {
+      Config.global.cardFormatterShowGoogle = showGoogleCheckbox.checked;
+      Log(`Config change: global.cardFormatterShowGoogle = ${showGoogleCheckbox.checked}`, 'info');
+      updateOutputModeState();
+      SettingsUI._persist();
+    });
+    showGoogleLabel.append(showGoogleCheckbox, document.createTextNode('Show Google Search'));
+    showGoogleField.appendChild(showGoogleLabel);
+
+    updateOutputModeState();
+
     pane.appendChild(
       SettingsUI._buildCollapsibleSection(
         'Card Name Formatter Settings',
-        [templateField, outputModeField],
-        'Configure custom copy templates and floating popover output modes.',
+        [templateField, outputModeField, showCopyField, showBRefField, showGoogleField],
+        'Configure custom copy templates, floating popover output modes, and search actions.',
         false
       )
     );

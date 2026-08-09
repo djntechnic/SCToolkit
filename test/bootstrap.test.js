@@ -55,7 +55,7 @@ function bootBundle(url) {
   const store = new Map();
   window.GM_getValue = (key, fallback) => (store.has(key) ? store.get(key) : fallback);
   window.GM_setValue = (key, value) => store.set(key, value);
-  window.GM_info = { script: { version: '3.0.0-test' } };
+  window.GM_info = { script: { version: '0.1-beta-test' } };
   window.scrollTo = () => {};
 
   window.eval(readFileSync(BUNDLE, 'utf8'));

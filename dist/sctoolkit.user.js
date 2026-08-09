@@ -474,6 +474,9 @@
       cardFormatterTemplate: "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}",
       cardFormatterOutputMode: "popover",
       cardFormatterPopoverDurationMs: 4e3,
+      cardFormatterShowCopy: true,
+      cardFormatterShowBRef: true,
+      cardFormatterShowGoogle: true,
       quantityCounterPosition: "bottom-right",
       theme: "auto",
       logLevel: "info",
@@ -915,6 +918,16 @@
       size: 12,
       strokeWidth: 2,
       body: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'
+    },
+    bref: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<circle cx="12" cy="12" r="9"/><path d="M8.5 3.5a10.5 10.5 0 0 0 0 17"/><path d="M15.5 3.5a10.5 10.5 0 0 1 0 17"/><path d="M7 7h3M6 10.5h3.5M6 13.5h3.5M7 17h3"/><path d="M14 7h3M14.5 10.5H18M14.5 13.5H18M14 17h3"/>'
+    },
+    google: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M12 12h8.5A8.5 8.5 0 1 1 17.8 6.2"/><path d="m21 21-4.3-4.3"/>'
     },
     check: {
       size: 12,
@@ -4839,10 +4852,22 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
      * Render popover near user selection coordinates
      * @param {Selection} selection
      * @param {string} formattedText
-     * @param {Document} [doc=document]
+     * @param {Object|Document} [tokensOrDoc=document] - Tokens dictionary or Document object
+     * @param {Document} [doc=document] - Document object
      */
-    show: function(selection, formattedText, doc = document) {
-      this.hide(doc);
+    show: function(selection, formattedText, tokensOrDoc, doc) {
+      const defaultDoc = typeof document !== "undefined" ? document : null;
+      let tokens = null;
+      let targetDoc = doc || defaultDoc;
+      if (tokensOrDoc && (tokensOrDoc.nodeType === 9 || tokensOrDoc.defaultView)) {
+        targetDoc = tokensOrDoc;
+        tokens = null;
+      } else if (tokensOrDoc && typeof tokensOrDoc === "object") {
+        tokens = tokensOrDoc;
+        if (!doc) targetDoc = defaultDoc;
+      }
+      if (!targetDoc) return;
+      this.hide(targetDoc);
       if (!selection || selection.rangeCount === 0) return;
       let rect;
       try {
@@ -4851,57 +4876,95 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       } catch {
         return;
       }
-      const win = doc.defaultView || window;
+      const win = targetDoc.defaultView || window;
       const top = (win.scrollY || 0) + rect.bottom + 6;
       const left = Math.max(10, (win.scrollX || 0) + rect.left);
-      const popover = doc.createElement("div");
+      const popover = targetDoc.createElement("div");
       popover.id = this.elementId;
       popover.className = "tk-formatter-popover";
       popover.style.top = `${top}px`;
       popover.style.left = `${left}px`;
-      const label = doc.createElement("span");
+      const label = targetDoc.createElement("span");
       label.className = "tk-popover-label";
       label.textContent = formattedText;
       label.title = formattedText;
-      const copyBtn = doc.createElement("button");
-      copyBtn.type = "button";
-      copyBtn.className = "sctk-btn";
-      copyBtn.innerHTML = icon("copy");
-      copyBtn.title = "Copy formatted text";
-      copyBtn.setAttribute("aria-label", "Copy formatted text");
-      copyBtn.style.height = "20px";
-      copyBtn.style.padding = "0 6px";
-      copyBtn.addEventListener("click", () => {
-        const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(formattedText) : Promise.resolve();
-        writePromise.then(() => {
-          copyBtn.innerHTML = icon("check");
-          showToast({
-            message: `Copied: <b>${Utils.escape.html(formattedText)}</b>`,
-            variant: "success"
-          });
-          setTimeout(() => this.hide(doc), 1e3);
-        }).catch((err) => {
-          Log(`Clipboard write failed: ${err.message}`, "error");
-        });
-      });
       popover.appendChild(label);
-      popover.appendChild(copyBtn);
-      doc.body.appendChild(popover);
+      if (Config.global.cardFormatterShowCopy !== false) {
+        const copyBtn = targetDoc.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "sctk-btn";
+        copyBtn.innerHTML = icon("copy");
+        copyBtn.title = "Copy formatted text";
+        copyBtn.setAttribute("aria-label", "Copy formatted text");
+        copyBtn.style.height = "20px";
+        copyBtn.style.padding = "0 6px";
+        copyBtn.addEventListener("click", () => {
+          const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(formattedText) : Promise.resolve();
+          writePromise.then(() => {
+            copyBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied: <b>${Utils.escape.html(formattedText)}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => this.hide(targetDoc), 1e3);
+          }).catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+        });
+        popover.appendChild(copyBtn);
+      }
+      const playerName = tokens?.PlayerName || "";
+      if (playerName) {
+        const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+        if (Config.global.cardFormatterShowBRef !== false) {
+          const brefBtn = targetDoc.createElement("button");
+          brefBtn.type = "button";
+          brefBtn.className = "sctk-btn";
+          brefBtn.innerHTML = icon("bref");
+          brefBtn.title = "Search Baseball Reference";
+          brefBtn.setAttribute("aria-label", "Search Baseball Reference");
+          brefBtn.style.height = "20px";
+          brefBtn.style.padding = "0 6px";
+          brefBtn.addEventListener("click", () => {
+            const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
+            win.open(brefUrl, "_blank", "noopener,noreferrer");
+          });
+          popover.appendChild(brefBtn);
+        }
+        if (Config.global.cardFormatterShowGoogle !== false) {
+          const googleBtn = targetDoc.createElement("button");
+          googleBtn.type = "button";
+          googleBtn.className = "sctk-btn";
+          googleBtn.innerHTML = icon("google");
+          googleBtn.title = "Search Google";
+          googleBtn.setAttribute("aria-label", "Search Google");
+          googleBtn.style.height = "20px";
+          googleBtn.style.padding = "0 6px";
+          googleBtn.addEventListener("click", () => {
+            const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
+            win.open(googleUrl, "_blank", "noopener,noreferrer");
+          });
+          popover.appendChild(googleBtn);
+        }
+      }
+      targetDoc.body.appendChild(popover);
       const duration = Config.global.cardFormatterPopoverDurationMs || 4e3;
       this._dismissTimer = setTimeout(() => {
-        this.hide(doc);
+        this.hide(targetDoc);
       }, duration);
     },
     /**
      * Remove popover element if present
      * @param {Document} [doc=document]
      */
-    hide: function(doc = document) {
+    hide: function(doc) {
+      const targetDoc = doc || (typeof document !== "undefined" ? document : null);
+      if (!targetDoc) return;
       if (this._dismissTimer) {
         clearTimeout(this._dismissTimer);
         this._dismissTimer = null;
       }
-      const existing = doc.getElementById(this.elementId);
+      const existing = targetDoc.getElementById(this.elementId);
       if (existing) existing.remove();
     }
   };
@@ -4924,7 +4987,15 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         FormattedCopyPopover.hide();
         return;
       }
-      if (Config.global.cardFormatterOutputMode === "clipboard") {
+      const showCopy = Config.global.cardFormatterShowCopy !== false;
+      const showBRef = Config.global.cardFormatterShowBRef !== false;
+      const showGoogle = Config.global.cardFormatterShowGoogle !== false;
+      const hasSearch = showBRef || showGoogle;
+      if (!showCopy && !hasSearch) {
+        FormattedCopyPopover.hide();
+        return;
+      }
+      if (!hasSearch && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
         if (window.navigator?.clipboard?.writeText) {
           window.navigator.clipboard.writeText(formatted).then(() => {
             showToast({
@@ -4934,7 +5005,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           });
         }
       } else {
-        FormattedCopyPopover.show(selection, formatted);
+        FormattedCopyPopover.show(selection, formatted, tokens);
       }
     }, 250);
     document.addEventListener("selectionchange", handleSelection);
@@ -6252,11 +6323,91 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         SettingsUI._persist();
       });
       outputModeField.append(outputModeLabel, outputModeSelect);
+      const showCopyField = document.createElement("div");
+      showCopyField.className = "tk-settings-field";
+      const showCopyLabel = document.createElement("label");
+      showCopyLabel.style.display = "flex";
+      showCopyLabel.style.alignItems = "center";
+      showCopyLabel.style.gap = "6px";
+      showCopyLabel.style.cursor = "pointer";
+      const showCopyCheckbox = document.createElement("input");
+      showCopyCheckbox.type = "checkbox";
+      showCopyCheckbox.checked = Config.global.cardFormatterShowCopy !== false;
+      const showBRefField = document.createElement("div");
+      showBRefField.className = "tk-settings-field";
+      const showBRefLabel = document.createElement("label");
+      showBRefLabel.style.display = "flex";
+      showBRefLabel.style.alignItems = "center";
+      showBRefLabel.style.gap = "6px";
+      showBRefLabel.style.cursor = "pointer";
+      const showBRefCheckbox = document.createElement("input");
+      showBRefCheckbox.type = "checkbox";
+      showBRefCheckbox.checked = Config.global.cardFormatterShowBRef !== false;
+      const showGoogleField = document.createElement("div");
+      showGoogleField.className = "tk-settings-field";
+      const showGoogleLabel = document.createElement("label");
+      showGoogleLabel.style.display = "flex";
+      showGoogleLabel.style.alignItems = "center";
+      showGoogleLabel.style.gap = "6px";
+      showGoogleLabel.style.cursor = "pointer";
+      const showGoogleCheckbox = document.createElement("input");
+      showGoogleCheckbox.type = "checkbox";
+      showGoogleCheckbox.checked = Config.global.cardFormatterShowGoogle !== false;
+      const updateOutputModeState = () => {
+        const showCopy = showCopyCheckbox.checked;
+        const showBRef = showBRefCheckbox.checked;
+        const showGoogle = showGoogleCheckbox.checked;
+        const hasSearch = showBRef || showGoogle;
+        if (hasSearch) {
+          outputModeSelect.value = "popover";
+          outputModeSelect.disabled = true;
+          outputModeSelect.title = "Floating Popover is required when Baseball Reference or Google search is enabled.";
+          if (Config.global.cardFormatterOutputMode !== "popover") {
+            Config.global.cardFormatterOutputMode = "popover";
+            Log("Config change: global.cardFormatterOutputMode = popover (required by active search actions)", "info");
+          }
+        } else if (showCopy) {
+          outputModeSelect.disabled = false;
+          outputModeSelect.title = "popover: show floating copy button near text. clipboard: auto-copy to clipboard.";
+        } else {
+          outputModeSelect.value = "clipboard";
+          outputModeSelect.disabled = true;
+          outputModeSelect.title = "No actions selected.";
+          if (Config.global.cardFormatterOutputMode !== "clipboard") {
+            Config.global.cardFormatterOutputMode = "clipboard";
+          }
+        }
+      };
+      showCopyCheckbox.addEventListener("change", () => {
+        Config.global.cardFormatterShowCopy = showCopyCheckbox.checked;
+        Log(`Config change: global.cardFormatterShowCopy = ${showCopyCheckbox.checked}`, "info");
+        updateOutputModeState();
+        SettingsUI._persist();
+      });
+      showCopyLabel.append(showCopyCheckbox, document.createTextNode("Show Copy Button"));
+      showCopyField.appendChild(showCopyLabel);
+      showBRefCheckbox.addEventListener("change", () => {
+        Config.global.cardFormatterShowBRef = showBRefCheckbox.checked;
+        Log(`Config change: global.cardFormatterShowBRef = ${showBRefCheckbox.checked}`, "info");
+        updateOutputModeState();
+        SettingsUI._persist();
+      });
+      showBRefLabel.append(showBRefCheckbox, document.createTextNode("Show Baseball Reference Search"));
+      showBRefField.appendChild(showBRefLabel);
+      showGoogleCheckbox.addEventListener("change", () => {
+        Config.global.cardFormatterShowGoogle = showGoogleCheckbox.checked;
+        Log(`Config change: global.cardFormatterShowGoogle = ${showGoogleCheckbox.checked}`, "info");
+        updateOutputModeState();
+        SettingsUI._persist();
+      });
+      showGoogleLabel.append(showGoogleCheckbox, document.createTextNode("Show Google Search"));
+      showGoogleField.appendChild(showGoogleLabel);
+      updateOutputModeState();
       pane.appendChild(
         SettingsUI._buildCollapsibleSection(
           "Card Name Formatter Settings",
-          [templateField, outputModeField],
-          "Configure custom copy templates and floating popover output modes.",
+          [templateField, outputModeField, showCopyField, showBRefField, showGoogleField],
+          "Configure custom copy templates, floating popover output modes, and search actions.",
           false
         )
       );

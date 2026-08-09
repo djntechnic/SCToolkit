@@ -193,7 +193,7 @@ Access the Settings Modal by clicking the **gear icon** in the top toolbar or us
 - **`PrintYourCollectionPDF.cfm` says "Calculated 1 Page(s)"**:
   Click **Calculate Page Count** to probe all pages. SCToolkit will display progress, format the total card count (e.g., `(1,743 Cards)`), and reveal the **`Export All Parts (1 - N)`** button.
 - **Console logging appears on two lines**:
-  Ensure you are on v3.1.0+. Log URLs are truncated cleanly using concise parameter format (e.g. `PrintYourCollectionPDF.cfm?Part=1`) to prevent wrapping.
+  Ensure you are on v0.1.0-beta+. Log URLs are truncated cleanly using concise parameter format (e.g. `PrintYourCollectionPDF.cfm?Part=1`) to prevent wrapping.
 
 ---
 
