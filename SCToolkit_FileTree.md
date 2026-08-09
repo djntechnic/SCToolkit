@@ -57,6 +57,7 @@ SCToolkit
 │   │   ├── 📜 csvExportEngine.js
 │   │   ├── 📜 inputOptimization.js
 │   │   ├── 📜 paginationLoader.js
+│   │   ├── 📜 setDropdownSearchEnhancer.js
 │   │   ├── 📜 setHierarchyExport.js
 │   │   └── 📜 setListEnhancer.js
 │   ├── 📁 net
@@ -3200,6 +3201,7 @@ SCToolkit
 │   ├── 📜 regexTester.test.js
 │   ├── 📜 registry.test.js
 │   ├── 📜 selectors.test.js
+│   ├── 📜 setDropdownSearchEnhancer.test.js
 │   ├── 📜 setHierarchyParser.test.js
 │   ├── 📜 setListEnhancer.test.js
 │   ├── 📜 storage.test.js

@@ -385,12 +385,23 @@
         enabled: true,
         urlMatch: [
           { pattern: "/viewall\\.cfm", exclude: false },
-          { pattern: "/inserts\\.cfm", exclude: false },
-          { pattern: "/checklist\\.cfm", exclude: false },
-          { pattern: "/viewset\\.cfm", exclude: false },
-          { pattern: "collection", exclude: false }
+          { pattern: "/inserts\\.cfm", exclude: false }
         ],
         actions: {}
+      },
+      setDropdownSearchEnhancer: {
+        enabled: true,
+        urlMatch: [
+          { pattern: "collectionsummary", exclude: false },
+          { pattern: "viewcollection", exclude: false },
+          { pattern: "collectionaddcardnumber", exclude: false },
+          { pattern: "collectionaddmultiples", exclude: false },
+          { pattern: "collectionaddmultiplestext", exclude: false },
+          { pattern: "collectiondelmultiples", exclude: false }
+        ],
+        actions: {
+          substringSearch: true
+        }
       },
       addMultiplesEnhancer: {
         enabled: true,
@@ -3609,7 +3620,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         try {
-          enhanceSetDropdownSearch(target.ownerDocument || document);
           const pending = findUninjectedSetLinks();
           if (pending.length > 0) {
             injectInChunks(pending, (n) => {
@@ -3643,36 +3653,8 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     }
     return observer;
   }
-  function enhanceSetDropdownSearch(doc = document) {
-    const searchInput = doc.querySelector(SELECTOR_REGISTRY.setDropdown.search);
-    const setList = doc.querySelector(SELECTOR_REGISTRY.setDropdown.list);
-    if (!searchInput || !setList) return false;
-    if (searchInput.dataset.tkEnhanced) return true;
-    searchInput.dataset.tkEnhanced = "true";
-    searchInput.addEventListener(
-      "input",
-      (e) => {
-        e.stopImmediatePropagation();
-        const term = searchInput.value.trim().toLowerCase();
-        const conditions = term ? term.split(/[,;|\s]+/).filter(Boolean) : [];
-        const listItems = setList.querySelectorAll("li");
-        listItems.forEach((li) => {
-          const link = li.querySelector("a");
-          if (!link) return;
-          const text = link.textContent.trim().toLowerCase();
-          const match = conditions.length === 0 || conditions.some((cond) => text.includes(cond));
-          li.classList.toggle("hidden", !match);
-        });
-      },
-      true
-    );
-    Log("Set List Enhancer: Enhanced set dropdown search with substring and OR matching.", "info");
-    recordContract("setListEnhancer", "enhanced set dropdown search", true);
-    return true;
-  }
   function initSetListEnhancer() {
     disconnectSetListEnhancer();
-    enhanceSetDropdownSearch();
     const setLinks = findSetLinks();
     if (setLinks.length === 0) {
       Log("Set List Enhancer: Waiting for set links to render...", "info");
@@ -5228,6 +5210,46 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     }
   }
 
+  // src/modules/setDropdownSearchEnhancer.js
+  function enhanceSetDropdownSearch(doc = document) {
+    if (Config.modules.setDropdownSearchEnhancer?.actions?.substringSearch === false) return false;
+    const searchInput = doc.querySelector(SELECTOR_REGISTRY.setDropdown.search);
+    const setList = doc.querySelector(SELECTOR_REGISTRY.setDropdown.list);
+    if (!searchInput || !setList) return false;
+    if (searchInput.dataset.tkEnhanced) return true;
+    searchInput.dataset.tkEnhanced = "true";
+    searchInput.addEventListener(
+      "input",
+      (e) => {
+        e.stopImmediatePropagation();
+        const term = searchInput.value.trim().toLowerCase();
+        const conditions = term ? term.split(/[,;|\s]+/).filter(Boolean) : [];
+        const listItems = setList.querySelectorAll("li");
+        listItems.forEach((li) => {
+          const link = li.querySelector("a");
+          if (!link) return;
+          const text = link.textContent.trim().toLowerCase();
+          const match = conditions.length === 0 || conditions.some((cond) => text.includes(cond));
+          li.classList.toggle("hidden", !match);
+        });
+      },
+      true
+      // capture phase to intercept native TCDB startsWith listener
+    );
+    Log("Set Dropdown Search Enhancer: Enhanced set dropdown search with substring and OR matching.", "info");
+    recordContract("setDropdownSearchEnhancer", "enhanced set dropdown search", true);
+    return true;
+  }
+  function initSetDropdownSearchEnhancer() {
+    if (!Config.modules.setDropdownSearchEnhancer?.enabled) return;
+    const success = enhanceSetDropdownSearch();
+    if (!success) {
+      assertContract("setDropdownSearchEnhancer", [
+        { selector: SELECTOR_REGISTRY.setDropdown.search, label: "set dropdown search input (#setSearch)", optional: true }
+      ]);
+    }
+  }
+
   // src/core/registry.js
   var ModuleRegistry = [
     {
@@ -5253,6 +5275,16 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       description: "Injects pin/CSV/shortcut badges next to set links on set-listing pages.",
       init: initSetListEnhancer,
       isAsync: false
+    },
+    {
+      id: "setDropdownSearchEnhancer",
+      name: "Set Dropdown Search Enhancer",
+      description: "Enhances the set selection dropdown search (#setSearch) on collection pages with substring and OR condition matching.",
+      init: initSetDropdownSearchEnhancer,
+      isAsync: false,
+      actionLabels: {
+        substringSearch: "Substring & OR Condition Matching"
+      }
     },
     {
       id: "addMultiplesEnhancer",

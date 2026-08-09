@@ -19,6 +19,7 @@ import { initCardNameFormatter } from '../modules/cardNameFormatter.js';
 import { initCollectionQuantityCounter } from '../modules/collectionQuantityCounter.js';
 import { initSetHierarchyExport } from '../modules/setHierarchyExport.js';
 import { initCollectionDefaulter } from '../modules/collectionDefaulter.js';
+import { initSetDropdownSearchEnhancer } from '../modules/setDropdownSearchEnhancer.js';
 
 /**
  * @typedef {object} ModuleDefinition
@@ -55,6 +56,16 @@ export const ModuleRegistry = [
     description: 'Injects pin/CSV/shortcut badges next to set links on set-listing pages.',
     init: initSetListEnhancer,
     isAsync: false
+  },
+  {
+    id: 'setDropdownSearchEnhancer',
+    name: 'Set Dropdown Search Enhancer',
+    description: 'Enhances the set selection dropdown search (#setSearch) on collection pages with substring and OR condition matching.',
+    init: initSetDropdownSearchEnhancer,
+    isAsync: false,
+    actionLabels: {
+      substringSearch: 'Substring & OR Condition Matching'
+    }
   },
   {
     id: 'addMultiplesEnhancer',

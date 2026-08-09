@@ -55,11 +55,22 @@ export const DEFAULT_CONFIG = {
       urlMatch: [
         { pattern: "/viewall\\.cfm", exclude: false },
         { pattern: "/inserts\\.cfm", exclude: false },
-        { pattern: "/checklist\\.cfm", exclude: false },
-        { pattern: "/viewset\\.cfm", exclude: false },
-        { pattern: "collection", exclude: false },
       ],
       actions: {},
+    },
+    setDropdownSearchEnhancer: {
+      enabled: true,
+      urlMatch: [
+        { pattern: "collectionsummary", exclude: false },
+        { pattern: "viewcollection", exclude: false },
+        { pattern: "collectionaddcardnumber", exclude: false },
+        { pattern: "collectionaddmultiples", exclude: false },
+        { pattern: "collectionaddmultiplestext", exclude: false },
+        { pattern: "collectiondelmultiples", exclude: false },
+      ],
+      actions: {
+        substringSearch: true,
+      },
     },
     addMultiplesEnhancer: {
       enabled: true,
