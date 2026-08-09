@@ -89,9 +89,13 @@ export function buildRowIndex(mainContent) {
 export function applyFilter(index, term) {
   let visible = 0;
   const updates = [];
+  const rawTerm = (term || '').trim().toLowerCase();
+  const conditions = rawTerm ? rawTerm.split(/[,;|\s]+/).filter(Boolean) : [];
 
   index.forEach(({ el, haystack }) => {
-    const match = term === '' || haystack.includes(term);
+    const match =
+      conditions.length === 0 ||
+      conditions.some((cond) => haystack.includes(cond));
     updates.push({ el, match });
     if (match) visible++;
   });
