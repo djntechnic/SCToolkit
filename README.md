@@ -25,6 +25,7 @@ A userscript toolkit for sports card database browsing: instant table & set list
 | **Card Name Formatter Engine** | ViewCard, Checklist, Collections | Compiles structured card metadata into customizable tokenized text strings with floating popover or auto-copy. |
 | **Set List Shortcut Badges** | ViewAll, Inserts, Set Lists | Injects inline badges (Checklist, Inserts, Parallels, For Sale, Wantlist, Add Multiples, Pin, CSV, Hierarchy) next to set links. |
 | **Collection Defaulter** | ViewCollection | Automatically selects a preferred Collection ID on ViewCollection.cfm pages. |
+| **Set Dropdown Search Enhancer** | Collection Pages | Intercepts native `#setSearch` input on collection pages with substring (`includes`) and OR condition matching. |
 | **Keyboard-First Data Entry** | Add Multiples & Form Inputs | Converts `Enter` to `Tab` navigation across inputs and auto-scrolls focused fields into the middle 80% viewport zone. |
 | **Paced Multi-Page Export Engine** | Set Checklists, Collections, Print Views | Multi-page checklist CSV exporter with rate limiting, exponential backoff, anti-scraping protection, and 24h caching. |
 | **Interactive Settings Modal** | Toolbar Gear Icon / `Ctrl+K` | Comprehensive settings UI featuring module toggles, regex route editing, Pin Configuration, Badge Configuration (Toolbar & Set Links), global thresholds, log timezone/format, and diagnostics. |
@@ -140,6 +141,16 @@ SCToolkit is built as a modular framework. Each feature is encapsulated in a ded
   - `global.paginationThrottleStartPage`: Page index threshold to initiate throttled fetches (default page `6`).
   - `paginationLoader.urlMatch`: Exclude rules (e.g., excludes `addmultiples`).
 
+### 10. Set Dropdown Search Enhancer
+- **Source File**: [`src/modules/setDropdownSearchEnhancer.js`](file:///c:/Dev/SCToolkit/src/modules/setDropdownSearchEnhancer.js)
+- **Functions & Capabilities**:
+  - Intercepts native TCDB set dropdown search input (`#setSearch`) in capturing phase (`useCapture = true`), overriding strict `startsWith` matching with substring (`includes`) and OR condition matching across comma (`,`), semicolon (`;`), pipe (`|`), or space delimiters.
+  - Operates across collection pages (`CollectionSummary.cfm`, `ViewCollection.cfm`, `CollectionAddCardNumber.cfm`, `CollectionAddMultiples.cfm`, `ViewCollectionForSaleTrade.cfm`, `ViewCollectionWantlist.cfm`, `CollectionAddMultiplesText.cfm`, `CollectionDelMultiples.cfm`).
+- **Configurable Settings**:
+  - `setDropdownSearchEnhancer.enabled`: Toggle module ON/OFF.
+  - `setDropdownSearchEnhancer.actions.substringSearch`: Toggle Substring & OR Condition matching.
+  - `setDropdownSearchEnhancer.urlMatch`: Route match patterns (`collectionsummary`, `viewcollection`, `collectionaddcardnumber`, `collectionaddmultiples`, `collectionaddmultiplestext`, `collectiondelmultiples`).
+
 ---
 
 ## Settings Modal Reference
@@ -165,7 +176,7 @@ Access the Settings Modal by clicking the **gear icon** in the top toolbar or us
    - **Toggle On/Off**: Enable or disable specific action buttons (Checklist, Inserts, Parallels, For Sale, Multi, Wantlist, Pin, CSV, Hierarchy).
    - **Reorder**: Drag-and-drop or use ↑ / ↓ buttons to rearrange button display order live.
 4. **Modules Tab**:
-   - Lists all 9 modules in alphabetical accordion cards.
+   - Lists all 10 modules in alphabetical accordion cards.
    - Expand any module to toggle its master switch, view its target description, toggle sub-actions, or edit its regex route patterns directly.
 5. **RegEx Tester Tab**:
    - Interactive sandbox for testing custom regular expressions against sample URL strings with real-time match highlighting and capture group tables.
@@ -203,7 +214,7 @@ Access the Settings Modal by clicking the **gear icon** in the top toolbar or us
 npm ci
 npm run lint      # ESLint (includes userscript metadata rules)
 npm run build     # esbuild compilation -> dist/sctoolkit.user.js
-npm test          # Runs node --test suite (333+ automated tests)
+npm test          # Runs node --test suite (362+ automated tests)
 npm run check     # Full validation: lint -> build -> test -> stale-dist check
 ```
 
@@ -220,7 +231,7 @@ For local iteration, point Tampermonkey at the local file on disk:
 | [`src/net/`](file:///c:/Dev/SCToolkit/src/net/) | Fetch pacing, retry logic, anti-scraping block detection, print/set export queue orchestration. |
 | [`src/data/`](file:///c:/Dev/SCToolkit/src/data/) | Page parsers (checklist, print collection, collection browse), CSV generator, filename builders. |
 | [`src/ui/`](file:///c:/Dev/SCToolkit/src/ui/) | Design tokens, CSS styles, icon sprite, badges, fixed toolbar, toasts, settings modal. |
-| [`src/modules/`](file:///c:/Dev/SCToolkit/src/modules/) | 8 user-facing feature modules registered and gated by configuration. |
+| [`src/modules/`](file:///c:/Dev/SCToolkit/src/modules/) | 10 user-facing feature modules registered and gated by configuration. |
 | [`test/`](file:///c:/Dev/SCToolkit/test/) | Native `node --test` test suite with HTML page fixtures in `test/fixtures/`. |
 
 ---
