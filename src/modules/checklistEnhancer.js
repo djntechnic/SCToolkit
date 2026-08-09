@@ -71,6 +71,7 @@ export function buildRowIndex(mainContent) {
 
   elements.forEach((el) => {
     if (el.closest(SIDEBAR_CHROME_SELECTOR)) return;
+    if (el.parentElement && el.parentElement.closest(ITEM_ELEMENT_SELECTOR)) return;
     if (el.tagName === 'TR' && el.querySelector('th')) return;
     if (!el.querySelector(DATA_ROW_SELECTOR)) return;
     index.push({ el, haystack: el.textContent.replace(/\s+/g, ' ').toLowerCase() });

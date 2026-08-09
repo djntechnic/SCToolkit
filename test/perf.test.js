@@ -112,6 +112,41 @@ test('applyFilter matches OR conditions using comma, semicolon, pipe, or space',
   assert.equal(applyFilter(index, 'ryan, ripken | griffey'), 3);
 });
 
+test('buildRowIndex ignores action dropdown li items inside card rows to prevent double counting', () => {
+  const tableWithDropdowns = `
+  <div id="main-content-area">
+    <table>
+      <tr><th>Card</th><th>Subject</th><th>Actions</th></tr>
+      <tr>
+        <td><a href="/ViewCard.cfm/sid/1/cid/1">1</a></td>
+        <td>Nolan Ryan</td>
+        <td>
+          <div class="btn-group">
+            <ul class="dropdown-menu">
+              <li><a href="/ViewCard.cfm/sid/1/cid/1">View Details</a></li>
+              <li><a href="/Checklist.cfm">Checklist</a></li>
+            </ul>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td><a href="/ViewCard.cfm/sid/1/cid/2">2</a></td>
+        <td>Cal Ripken, Jr.</td>
+        <td>
+          <div class="btn-group">
+            <ul class="dropdown-menu">
+              <li><a href="/ViewCard.cfm/sid/1/cid/2">View Details</a></li>
+            </ul>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>`;
+  const dom = mount(tableWithDropdowns);
+  const index = buildRowIndex(dom.window.document.getElementById('main-content-area'));
+  assert.equal(index.length, 2, 'Should index only top-level table rows, excluding dropdown menu li items');
+});
+
 // --- input eligibility ------------------------------------------------------
 
 /** jsdom has no layout, so `offsetParent` is stubbed per element. */
