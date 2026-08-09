@@ -385,7 +385,10 @@
         enabled: true,
         urlMatch: [
           { pattern: "/viewall\\.cfm", exclude: false },
-          { pattern: "/inserts\\.cfm", exclude: false }
+          { pattern: "/inserts\\.cfm", exclude: false },
+          { pattern: "/checklist\\.cfm", exclude: false },
+          { pattern: "/viewset\\.cfm", exclude: false },
+          { pattern: "collection", exclude: false }
         ],
         actions: {}
       },
@@ -1005,6 +1008,12 @@
       dataRows: 'a[href*="ViewCard.cfm"], a[href*="Checklist.cfm"], a[href*="ViewSet.cfm"], a[href*="/sid/"], a[href*="ViewAll.cfm"], a[href*="Person.cfm"], a[href*="Team.cfm"], input, select',
       itemElements: "table tr, ul > li, ol > li",
       chrome: ".col-md-3, .col-md-4, nav, .breadcrumb, .navbar, #topnav, #sctk-toolbar, .menu-linksV, .list-unstyled, .set-wrapper, .set-dropdown, #setDropdown, #setList, .offcanvas, .dropdown-menu, .dropdown, .modal, .btn-group"
+    },
+    setDropdown: {
+      wrapper: "#setWrapper",
+      dropdown: "#setDropdown",
+      search: "#setSearch",
+      list: "#setList"
     },
     setLinks: [
       'a[href*="ViewSet" i]',
@@ -3600,6 +3609,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         try {
+          enhanceSetDropdownSearch(target.ownerDocument || document);
           const pending = findUninjectedSetLinks();
           if (pending.length > 0) {
             injectInChunks(pending, (n) => {
@@ -3633,8 +3643,36 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     }
     return observer;
   }
+  function enhanceSetDropdownSearch(doc = document) {
+    const searchInput = doc.querySelector(SELECTOR_REGISTRY.setDropdown.search);
+    const setList = doc.querySelector(SELECTOR_REGISTRY.setDropdown.list);
+    if (!searchInput || !setList) return false;
+    if (searchInput.dataset.tkEnhanced) return true;
+    searchInput.dataset.tkEnhanced = "true";
+    searchInput.addEventListener(
+      "input",
+      (e) => {
+        e.stopImmediatePropagation();
+        const term = searchInput.value.trim().toLowerCase();
+        const conditions = term ? term.split(/[,;|\s]+/).filter(Boolean) : [];
+        const listItems = setList.querySelectorAll("li");
+        listItems.forEach((li) => {
+          const link = li.querySelector("a");
+          if (!link) return;
+          const text = link.textContent.trim().toLowerCase();
+          const match = conditions.length === 0 || conditions.some((cond) => text.includes(cond));
+          li.classList.toggle("hidden", !match);
+        });
+      },
+      true
+    );
+    Log("Set List Enhancer: Enhanced set dropdown search with substring and OR matching.", "info");
+    recordContract("setListEnhancer", "enhanced set dropdown search", true);
+    return true;
+  }
   function initSetListEnhancer() {
     disconnectSetListEnhancer();
+    enhanceSetDropdownSearch();
     const setLinks = findSetLinks();
     if (setLinks.length === 0) {
       Log("Set List Enhancer: Waiting for set links to render...", "info");

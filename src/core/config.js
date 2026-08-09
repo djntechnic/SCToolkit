@@ -55,6 +55,9 @@ export const DEFAULT_CONFIG = {
       urlMatch: [
         { pattern: "/viewall\\.cfm", exclude: false },
         { pattern: "/inserts\\.cfm", exclude: false },
+        { pattern: "/checklist\\.cfm", exclude: false },
+        { pattern: "/viewset\\.cfm", exclude: false },
+        { pattern: "collection", exclude: false },
       ],
       actions: {},
     },

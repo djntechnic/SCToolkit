@@ -11,6 +11,12 @@ export const SELECTOR_REGISTRY = {
     itemElements: 'table tr, ul > li, ol > li',
     chrome: '.col-md-3, .col-md-4, nav, .breadcrumb, .navbar, #topnav, #sctk-toolbar, .menu-linksV, .list-unstyled, .set-wrapper, .set-dropdown, #setDropdown, #setList, .offcanvas, .dropdown-menu, .dropdown, .modal, .btn-group'
   },
+  setDropdown: {
+    wrapper: '#setWrapper',
+    dropdown: '#setDropdown',
+    search: '#setSearch',
+    list: '#setList'
+  },
   setLinks: [
     'a[href*="ViewSet" i]',
     'a[href*="CollectionSummary" i]',
