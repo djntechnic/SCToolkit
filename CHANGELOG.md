@@ -7,6 +7,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Set Dropdown Substring & OR Search Override**: Added `enhanceSetDropdownSearch` in `setListEnhancer` to intercept native TCDB set dropdown search inputs (`#setSearch`) in capturing phase, overriding strict `startsWith` matching with substring (`includes`) and OR condition matching across comma, semicolon, pipe, or space delimiters.
 - **Filter Items OR Conditions**: Extended real-time listing filter matching (`applyFilter`) to support OR conditions using commas (`,`), semicolons (`;`), pipes (`|`), or spaces (` `) as delimiters.
 - **Card Name Formatter Search Actions**: Added optional Baseball Reference and Google player search buttons to the floating popover with custom stroke SVG icons (`bref`, `google`). Only the extracted player name is passed to the search queries (`https://www.baseball-reference.com/search/search.fcgi?search=...` and `https://www.google.com/search?q=...`), and search actions always open in a new tab.
 - **Card Name Formatter Settings & Scoping**: Added settings controls to toggle Copy, Baseball Reference Search, and Google Search. Output Mode selection is automatically set to `Floating Popover` and disabled when search actions are enabled, and configurable only when Copy alone is enabled.
