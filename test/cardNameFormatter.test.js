@@ -264,6 +264,7 @@ test('FormattedCopyPopover.show: renders BRef and Google search buttons and hand
   const brefBtn = buttons[1];
   const googleBtn = buttons[2];
 
+  assert.equal(copyBtn.title, 'Copy formatted text');
   assert.equal(brefBtn.title, 'Search Baseball Reference');
   assert.equal(googleBtn.title, 'Search Google');
 
