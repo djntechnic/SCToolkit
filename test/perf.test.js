@@ -96,6 +96,22 @@ test('applyFilter is idempotent for the same term', () => {
   assert.equal(applyFilter(index, 'jr.'), 2);
 });
 
+test('applyFilter matches OR conditions using comma, semicolon, pipe, or space', () => {
+  const dom = mount(TABLE);
+  const index = buildRowIndex(dom.window.document.getElementById('main-content-area'));
+
+  // Comma
+  assert.equal(applyFilter(index, 'ryan, griffey'), 2);
+  // Semicolon
+  assert.equal(applyFilter(index, 'ryan; ripken'), 2);
+  // Pipe
+  assert.equal(applyFilter(index, 'ripken | griffey'), 2);
+  // Space
+  assert.equal(applyFilter(index, 'ryan griffey'), 2);
+  // Multiple delimiters
+  assert.equal(applyFilter(index, 'ryan, ripken | griffey'), 3);
+});
+
 // --- input eligibility ------------------------------------------------------
 
 /** jsdom has no layout, so `offsetParent` is stubbed per element. */
