@@ -1004,7 +1004,7 @@
       scopes: ["#main-content-area", "#content"],
       dataRows: 'a[href*="ViewCard.cfm"], a[href*="Checklist.cfm"], a[href*="ViewSet.cfm"], a[href*="/sid/"], a[href*="ViewAll.cfm"], a[href*="Person.cfm"], a[href*="Team.cfm"], input, select',
       itemElements: "table tr, ul > li, ol > li",
-      chrome: ".col-md-3, .col-md-4, nav, .breadcrumb, .navbar, #topnav, #sctk-toolbar, .menu-linksV, .list-unstyled, .set-wrapper, .set-dropdown, #setDropdown, #setList, .offcanvas"
+      chrome: ".col-md-3, .col-md-4, nav, .breadcrumb, .navbar, #topnav, #sctk-toolbar, .menu-linksV, .list-unstyled, .set-wrapper, .set-dropdown, #setDropdown, #setList, .offcanvas, .dropdown-menu, .dropdown, .modal, .btn-group"
     },
     setLinks: [
       'a[href*="ViewSet" i]',
@@ -1041,6 +1041,7 @@
     const elements = mainContent.querySelectorAll(ITEM_ELEMENT_SELECTOR);
     elements.forEach((el) => {
       if (el.closest(SIDEBAR_CHROME_SELECTOR)) return;
+      if (el.parentElement && el.parentElement.closest(ITEM_ELEMENT_SELECTOR)) return;
       if (el.tagName === "TR" && el.querySelector("th")) return;
       if (!el.querySelector(DATA_ROW_SELECTOR)) return;
       index.push({ el, haystack: el.textContent.replace(/\s+/g, " ").toLowerCase() });

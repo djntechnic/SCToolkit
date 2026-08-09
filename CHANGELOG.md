@@ -14,6 +14,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Pin Configuration Settings Tab**: New tab in the Settings modal allowing users to globally toggle individual pinned sets on/off and reorder them via drag-and-drop or keyboard controls.
 - **Badge Configuration Settings Tab**: New tab in the Settings modal allowing users to independently toggle on/off and reorder action/shortcut badges for both the fixed top toolbar and injected set-link badge groups with real-time UI updates.
 
+### Fixed
+- **Filter Items Double-Counting Fix**: Fixed an issue where `buildRowIndex` double-counted data items on collection and listing tables by indexing nested `li` elements inside row action dropdown menus. Updated `buildRowIndex` and selector chrome definitions (`.dropdown-menu`, `.dropdown`, `.btn-group`, `.modal`) to ignore child menu items inside card rows.
+
 ## [0.1.0-beta] — 2026-08-06
 
 ### Added
