@@ -86,6 +86,16 @@ export const ICONS = {
     strokeWidth: 2,
     body: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
   },
+  bref: {
+    size: 12,
+    strokeWidth: 2,
+    body: '<circle cx="12" cy="12" r="9"/><path d="M8.5 3.5a10.5 10.5 0 0 0 0 17"/><path d="M15.5 3.5a10.5 10.5 0 0 1 0 17"/><path d="M7 7h3M6 10.5h3.5M6 13.5h3.5M7 17h3"/><path d="M14 7h3M14.5 10.5H18M14.5 13.5H18M14 17h3"/>',
+  },
+  google: {
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M12 12h8.5A8.5 8.5 0 1 1 17.8 6.2"/><path d="m21 21-4.3-4.3"/>',
+  },
   check: {
     size: 12,
     strokeWidth: 2,

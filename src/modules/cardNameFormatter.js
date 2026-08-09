@@ -211,10 +211,24 @@ export const FormattedCopyPopover = {
    * Render popover near user selection coordinates
    * @param {Selection} selection
    * @param {string} formattedText
-   * @param {Document} [doc=document]
+   * @param {Object|Document} [tokensOrDoc=document] - Tokens dictionary or Document object
+   * @param {Document} [doc=document] - Document object
    */
-  show: function (selection, formattedText, doc = document) {
-    this.hide(doc);
+  show: function (selection, formattedText, tokensOrDoc, doc) {
+    const defaultDoc = typeof document !== "undefined" ? document : null;
+    let tokens = null;
+    let targetDoc = doc || defaultDoc;
+
+    if (tokensOrDoc && (tokensOrDoc.nodeType === 9 || tokensOrDoc.defaultView)) {
+      targetDoc = tokensOrDoc;
+      tokens = null;
+    } else if (tokensOrDoc && typeof tokensOrDoc === "object") {
+      tokens = tokensOrDoc;
+      if (!doc) targetDoc = defaultDoc;
+    }
+
+    if (!targetDoc) return;
+    this.hide(targetDoc);
     if (!selection || selection.rangeCount === 0) return;
 
     let rect;
@@ -225,56 +239,97 @@ export const FormattedCopyPopover = {
       return;
     }
 
-    const win = doc.defaultView || window;
+    const win = targetDoc.defaultView || window;
     const top = (win.scrollY || 0) + rect.bottom + 6;
     const left = Math.max(10, (win.scrollX || 0) + rect.left);
 
-    const popover = doc.createElement("div");
+    const popover = targetDoc.createElement("div");
     popover.id = this.elementId;
     popover.className = "tk-formatter-popover";
     popover.style.top = `${top}px`;
     popover.style.left = `${left}px`;
 
-    const label = doc.createElement("span");
+    const label = targetDoc.createElement("span");
     label.className = "tk-popover-label";
     label.textContent = formattedText;
     label.title = formattedText;
-
-    const copyBtn = doc.createElement("button");
-    copyBtn.type = "button";
-    copyBtn.className = "sctk-btn";
-    copyBtn.innerHTML = icon("copy");
-    copyBtn.title = "Copy formatted text";
-    copyBtn.setAttribute("aria-label", "Copy formatted text");
-    copyBtn.style.height = "20px";
-    copyBtn.style.padding = "0 6px";
-
-    copyBtn.addEventListener("click", () => {
-      const writePromise = win.navigator?.clipboard?.writeText
-        ? win.navigator.clipboard.writeText(formattedText)
-        : Promise.resolve();
-
-      writePromise
-        .then(() => {
-          copyBtn.innerHTML = icon("check");
-          showToast({
-            message: `Copied: <b>${Utils.escape.html(formattedText)}</b>`,
-            variant: "success",
-          });
-          setTimeout(() => this.hide(doc), 1000);
-        })
-        .catch((err) => {
-          Log(`Clipboard write failed: ${err.message}`, "error");
-        });
-    });
-
     popover.appendChild(label);
-    popover.appendChild(copyBtn);
-    doc.body.appendChild(popover);
+
+    if (Config.global.cardFormatterShowCopy !== false) {
+      const copyBtn = targetDoc.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "sctk-btn";
+      copyBtn.innerHTML = icon("copy");
+      copyBtn.title = "Copy formatted text";
+      copyBtn.setAttribute("aria-label", "Copy formatted text");
+      copyBtn.style.height = "20px";
+      copyBtn.style.padding = "0 6px";
+
+      copyBtn.addEventListener("click", () => {
+        const writePromise = win.navigator?.clipboard?.writeText
+          ? win.navigator.clipboard.writeText(formattedText)
+          : Promise.resolve();
+
+        writePromise
+          .then(() => {
+            copyBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied: <b>${Utils.escape.html(formattedText)}</b>`,
+              variant: "success",
+            });
+            setTimeout(() => this.hide(targetDoc), 1000);
+          })
+          .catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+      });
+      popover.appendChild(copyBtn);
+    }
+
+    const playerName = tokens?.PlayerName || "";
+    if (playerName) {
+      const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+
+      if (Config.global.cardFormatterShowBRef !== false) {
+        const brefBtn = targetDoc.createElement("button");
+        brefBtn.type = "button";
+        brefBtn.className = "sctk-btn";
+        brefBtn.innerHTML = icon("bref");
+        brefBtn.title = "Search Baseball Reference";
+        brefBtn.setAttribute("aria-label", "Search Baseball Reference");
+        brefBtn.style.height = "20px";
+        brefBtn.style.padding = "0 6px";
+
+        brefBtn.addEventListener("click", () => {
+          const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
+          win.open(brefUrl, "_blank", "noopener,noreferrer");
+        });
+        popover.appendChild(brefBtn);
+      }
+
+      if (Config.global.cardFormatterShowGoogle !== false) {
+        const googleBtn = targetDoc.createElement("button");
+        googleBtn.type = "button";
+        googleBtn.className = "sctk-btn";
+        googleBtn.innerHTML = icon("google");
+        googleBtn.title = "Search Google";
+        googleBtn.setAttribute("aria-label", "Search Google");
+        googleBtn.style.height = "20px";
+        googleBtn.style.padding = "0 6px";
+
+        googleBtn.addEventListener("click", () => {
+          const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
+          win.open(googleUrl, "_blank", "noopener,noreferrer");
+        });
+        popover.appendChild(googleBtn);
+      }
+    }
+
+    targetDoc.body.appendChild(popover);
 
     const duration = Config.global.cardFormatterPopoverDurationMs || 4000;
     this._dismissTimer = setTimeout(() => {
-      this.hide(doc);
+      this.hide(targetDoc);
     }, duration);
   },
 
@@ -282,12 +337,14 @@ export const FormattedCopyPopover = {
    * Remove popover element if present
    * @param {Document} [doc=document]
    */
-  hide: function (doc = document) {
+  hide: function (doc) {
+    const targetDoc = doc || (typeof document !== "undefined" ? document : null);
+    if (!targetDoc) return;
     if (this._dismissTimer) {
       clearTimeout(this._dismissTimer);
       this._dismissTimer = null;
     }
-    const existing = doc.getElementById(this.elementId);
+    const existing = targetDoc.getElementById(this.elementId);
     if (existing) existing.remove();
   },
 };
@@ -321,7 +378,17 @@ export function initCardNameFormatter() {
       return;
     }
 
-    if (Config.global.cardFormatterOutputMode === "clipboard") {
+    const showCopy = Config.global.cardFormatterShowCopy !== false;
+    const showBRef = Config.global.cardFormatterShowBRef !== false;
+    const showGoogle = Config.global.cardFormatterShowGoogle !== false;
+    const hasSearch = showBRef || showGoogle;
+
+    if (!showCopy && !hasSearch) {
+      FormattedCopyPopover.hide();
+      return;
+    }
+
+    if (!hasSearch && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
       if (window.navigator?.clipboard?.writeText) {
         window.navigator.clipboard.writeText(formatted).then(() => {
           showToast({
@@ -331,7 +398,7 @@ export function initCardNameFormatter() {
         });
       }
     } else {
-      FormattedCopyPopover.show(selection, formatted);
+      FormattedCopyPopover.show(selection, formatted, tokens);
     }
   }, 250);
 

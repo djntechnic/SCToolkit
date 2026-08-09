@@ -9,6 +9,9 @@ test('Config: contains default Card Name Formatter settings', () => {
   assert.equal(Config.global.cardFormatterTemplate, '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}');
   assert.equal(Config.global.cardFormatterOutputMode, 'popover');
   assert.equal(Config.global.cardFormatterPopoverDurationMs, 4000);
+  assert.equal(Config.global.cardFormatterShowCopy, true);
+  assert.equal(Config.global.cardFormatterShowBRef, true);
+  assert.equal(Config.global.cardFormatterShowGoogle, true);
 });
 
 test('CardMetadataExtractor.compile: should replace all tokens correctly when all values exist', () => {
@@ -220,4 +223,92 @@ test('FormattedCopyPopover.show and hide: renders and removes popover element', 
 
   FormattedCopyPopover.hide(mockDoc);
   assert.equal(mockDoc.getElementById(FormattedCopyPopover.elementId), null);
+});
+
+test('FormattedCopyPopover.show: renders BRef and Google search buttons and handles clicks', () => {
+  const dom = new JSDOM('<html><body></body></html>', { url: 'https://example.com' });
+  const mockDoc = dom.window.document;
+
+  let openedUrl = null;
+  let openedTarget = null;
+  dom.window.open = (url, target) => {
+    openedUrl = url;
+    openedTarget = target;
+    return {};
+  };
+
+  const selection = {
+    isCollapsed: false,
+    rangeCount: 1,
+    getRangeAt: () => ({
+      getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 100, right: 200, width: 100, height: 20 })
+    })
+  };
+
+  const tokens = {
+    PlayerName: 'Ken Griffey Jr.',
+    Year: '1989',
+    SetName: 'Upper Deck',
+    CardNo: '#1'
+  };
+
+  FormattedCopyPopover.show(selection, 'Ken Griffey Jr. - 1989 Upper Deck #1', tokens, mockDoc);
+
+  const popover = mockDoc.getElementById(FormattedCopyPopover.elementId);
+  assert.notEqual(popover, null);
+
+  const buttons = popover.querySelectorAll('button.sctk-btn');
+  assert.equal(buttons.length, 3, 'Should render copy, bref, and google buttons');
+
+  const copyBtn = buttons[0];
+  const brefBtn = buttons[1];
+  const googleBtn = buttons[2];
+
+  assert.equal(brefBtn.title, 'Search Baseball Reference');
+  assert.equal(googleBtn.title, 'Search Google');
+
+  // Click BRef button
+  brefBtn.click();
+  assert.equal(openedUrl, 'https://www.baseball-reference.com/search/search.fcgi?search=Ken+Griffey+Jr.');
+  assert.equal(openedTarget, '_blank');
+
+  // Click Google button
+  googleBtn.click();
+  assert.equal(openedUrl, 'https://www.google.com/search?q=Ken+Griffey+Jr.');
+  assert.equal(openedTarget, '_blank');
+
+  FormattedCopyPopover.hide(mockDoc);
+});
+
+test('FormattedCopyPopover.show: respects config settings to hide individual action buttons', () => {
+  const dom = new JSDOM('<html><body></body></html>');
+  const mockDoc = dom.window.document;
+
+  const selection = {
+    isCollapsed: false,
+    rangeCount: 1,
+    getRangeAt: () => ({
+      getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 100, right: 200, width: 100, height: 20 })
+    })
+  };
+
+  const tokens = { PlayerName: 'Shohei Ohtani' };
+
+  Config.global.cardFormatterShowCopy = false;
+  Config.global.cardFormatterShowBRef = true;
+  Config.global.cardFormatterShowGoogle = false;
+
+  FormattedCopyPopover.show(selection, 'Shohei Ohtani', tokens, mockDoc);
+
+  const popover = mockDoc.getElementById(FormattedCopyPopover.elementId);
+  const buttons = popover.querySelectorAll('button.sctk-btn');
+  assert.equal(buttons.length, 1, 'Only BRef button should be shown');
+  assert.equal(buttons[0].title, 'Search Baseball Reference');
+
+  // Restore defaults
+  Config.global.cardFormatterShowCopy = true;
+  Config.global.cardFormatterShowBRef = true;
+  Config.global.cardFormatterShowGoogle = true;
+
+  FormattedCopyPopover.hide(mockDoc);
 });

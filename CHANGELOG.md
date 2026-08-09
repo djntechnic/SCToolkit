@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Card Name Formatter Search Actions**: Added optional Baseball Reference and Google player search buttons to the floating popover with custom stroke SVG icons (`bref`, `google`). Only the extracted player name is passed to the search queries (`https://www.baseball-reference.com/search/search.fcgi?search=...` and `https://www.google.com/search?q=...`), and search actions always open in a new tab.
+- **Card Name Formatter Settings & Scoping**: Added settings controls to toggle Copy, Baseball Reference Search, and Google Search. Output Mode selection is automatically set to `Floating Popover` and disabled when search actions are enabled, and configurable only when Copy alone is enabled.
 - **Collection Defaulter Module**: Automatically sets the 'Collection' selection dropdown (`#CFForm_1 > select`) to a user-configured default value (default Collection ID `6`) on `ViewCollection.cfm` pages.
 - **Pin Configuration Settings Tab**: New tab in the Settings modal allowing users to globally toggle individual pinned sets on/off and reorder them via drag-and-drop or keyboard controls.
 - **Badge Configuration Settings Tab**: New tab in the Settings modal allowing users to independently toggle on/off and reorder action/shortcut badges for both the fixed top toolbar and injected set-link badge groups with real-time UI updates.
