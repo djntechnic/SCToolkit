@@ -7,7 +7,7 @@
 export const SELECTOR_REGISTRY = {
   checklist: {
     scopes: ['#main-content-area', '#content'],
-    dataRows: 'a[href*="ViewCard.cfm"], a[href*="Checklist.cfm"], a[href*="ViewSet.cfm"], a[href*="/sid/"], a[href*="ViewAll.cfm"], a[href*="Person.cfm"], a[href*="Team.cfm"], input, select',
+    dataRows: 'a[href*="ViewCard" i], a[href*="Checklist" i], a[href*="ViewSet" i], a[href*="/sid/" i], a[href*="ViewAll" i], a[href*="ViewAllC" i], a[href*="Person" i], a[href*="Team" i], input, select',
     itemElements: 'table tr, ul > li, ol > li',
     chrome: '.col-md-3, .col-md-4, nav, .breadcrumb, .navbar, #topnav, #sctk-toolbar, .menu-linksV, .list-unstyled, .set-wrapper, .set-dropdown, #setDropdown, #setList, .offcanvas, .dropdown-menu, .dropdown, .modal, .btn-group'
   },
