@@ -240,9 +240,8 @@ export function showCollectionQuantityDetailsModal(counts = {}, root = document)
   const totalQuantity = counts.totalQuantitySum ?? items.reduce((sum, item) => sum + item.qty, 0);
 
   const itemsHtml = items.length > 0
-    ? items.map((item, idx) => `
+    ? items.map((item) => `
         <tr>
-          <td>${idx + 1}</td>
           <td><strong>${escapeHtml(item.cardNo)}</strong></td>
           <td>${escapeHtml(item.player)}</td>
           <td>${item.tags ? `<span class="badge bg-secondary">${escapeHtml(item.tags)}</span>` : ''}</td>
@@ -250,7 +249,7 @@ export function showCollectionQuantityDetailsModal(counts = {}, root = document)
           <td class="text-end"><span class="badge bg-primary fs-6">${item.qty}</span></td>
         </tr>
       `).join('')
-    : `<tr><td colspan="6" class="text-center text-muted py-4">No added items found (Qty >= 1).</td></tr>`;
+    : `<tr><td colspan="5" class="text-center text-muted py-4">No added items found (Qty >= 1).</td></tr>`;
 
   const modal = document.createElement('div');
   modal.id = 'sctk-qty-details-modal';
@@ -273,7 +272,6 @@ export function showCollectionQuantityDetailsModal(counts = {}, root = document)
           <table class="table table-striped table-hover align-middle mb-0">
             <thead>
               <tr>
-                <th>#</th>
                 <th>Card No</th>
                 <th>Player</th>
                 <th>Tags</th>
