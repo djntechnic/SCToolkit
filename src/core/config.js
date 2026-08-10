@@ -152,6 +152,8 @@ export const DEFAULT_CONFIG = {
     exportCacheMaxEntries: 20,
     exportCacheMaxRows: 20000,
     addMultiplesFocusDeadlineMs: 1200,
+    addMultiplesPauseDurationMs: 3000,
+    addMultiplesAutoAdvance: true,
     setListEnhancerChunkSize: 25,
     settingsSaveDebounceMs: 400,
     cardFormatterTemplate:

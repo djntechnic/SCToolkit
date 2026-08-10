@@ -91,7 +91,7 @@ export function applyFilter(index, term) {
   let visible = 0;
   const updates = [];
   const rawTerm = (term || '').trim().toLowerCase();
-  const conditions = rawTerm ? rawTerm.split(/[,;|\s]+/).filter(Boolean) : [];
+  const conditions = rawTerm ? rawTerm.split(/[,;|\s.]+/).filter(Boolean) : [];
 
   index.forEach(({ el, haystack }) => {
     const match =
@@ -157,10 +157,13 @@ export function findFilterTarget(mainContent) {
  * Insert the filter box above the first content table or list and wire it up.
  *
  * @param {HTMLElement} mainContent
+ * @returns {boolean} true if filter was installed or already present
  */
 function installFilter(mainContent) {
+  if (document.getElementById('tk-checklist-filter-wrap')) return true;
+
   const targetElement = findFilterTarget(mainContent);
-  if (!targetElement) return;
+  if (!targetElement) return false;
 
   const index = buildRowIndex(mainContent);
   Log(`Checklist filter indexed ${index.length} data item(s).`, 'info');
@@ -221,19 +224,116 @@ function installFilter(mainContent) {
       performFilter();
     });
   }
+
+  return true;
+}
+
+/** Active observers tracking checklist filter insertion. */
+export const ActiveObservers = new Set();
+
+/**
+ * Disconnect and clear all active checklistEnhancer observers.
+ */
+export function disconnectChecklistEnhancer() {
+  ActiveObservers.forEach((obs) => {
+    try {
+      obs.disconnect();
+    } catch {
+      // Ignore disconnect errors
+    }
+  });
+  ActiveObservers.clear();
+}
+
+/**
+ * Watch for listing containers or tables that render dynamically or arrive via late DOM updates / AJAX.
+ *
+ * @param {object} [options]
+ * @param {number} [options.timeoutMs] optional timeout to auto-disconnect
+ * @returns {MutationObserver|null}
+ */
+export function observeChecklistFilter(options = {}) {
+  disconnectChecklistEnhancer();
+
+  if (typeof MutationObserver !== 'function' || typeof document === 'undefined') return null;
+
+  const target = document.getElementById('main-content-area') || document.getElementById('content') || document.body;
+  if (!target) return null;
+
+  let debounceTimer = null;
+
+  const observer = new MutationObserver((mutations) => {
+    const isSelfMutation = mutations.every((m) =>
+      Array.from(m.addedNodes).every(
+        (node) =>
+          node.nodeType === 1 &&
+          (node.id === 'tk-checklist-filter-wrap' ||
+            node.querySelector?.('#tk-checklist-filter-wrap') !== null)
+      )
+    );
+    if (isSelfMutation) return;
+
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      try {
+        if (!document.getElementById('tk-checklist-filter-wrap')) {
+          const scope = findFilterScope();
+          if (scope) {
+            const installed = installFilter(scope);
+            if (installed) {
+              Log('Checklist Enhancer: Installed filter bar via late DOM update / AJAX observer.', 'info');
+            }
+          }
+        }
+      } catch (err) {
+        Log(`Checklist Enhancer observer error: ${err.message}`, 'warn');
+      }
+    }, 150);
+  });
+
+  try {
+    observer.observe(target, { childList: true, subtree: true });
+    ActiveObservers.add(observer);
+
+    if (options.timeoutMs > 0) {
+      setTimeout(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        try {
+          observer.disconnect();
+        } finally {
+          ActiveObservers.delete(observer);
+        }
+      }, options.timeoutMs);
+    }
+  } catch (err) {
+    Log(`Checklist Enhancer: Failed to observe target element: ${err.message}`, 'warn');
+    observer.disconnect();
+    return null;
+  }
+
+  return observer;
 }
 
 export function initChecklistEnhancer() {
   if (!Config.modules.checklistEnhancer.actions.realtimeFilter) return;
-  if (document.getElementById('tk-checklist-filter-wrap')) return;
 
-  const scope = findFilterScope();
-  if (!scope) {
-    assertContract('checklistEnhancer', [
-      { selector: FILTER_SCOPES.join(', '), label: 'a listing container holding a table or list' }
-    ]);
+  disconnectChecklistEnhancer();
+
+  if (document.getElementById('tk-checklist-filter-wrap')) {
+    observeChecklistFilter();
     return;
   }
 
-  installFilter(scope);
+  const scope = findFilterScope();
+  if (!scope) {
+    Log('Checklist Enhancer: Waiting for listing container to render...', 'info');
+    assertContract('checklistEnhancer', [
+      { selector: FILTER_SCOPES.join(', '), label: 'a listing container holding a table or list', optional: true }
+    ]);
+  } else {
+    installFilter(scope);
+  }
+
+  observeChecklistFilter();
 }
+
