@@ -169,3 +169,32 @@ test('showCollectionQuantityDetailsModal: renders Details button and opens modal
   assert.equal(dom.window.document.getElementById('sctk-qty-details-modal'), null, 'Modal should close when clicking close button');
 });
 
+test('getCollectionCardDetails: correctly parses 10-cell TCDB collection row structure', async () => {
+  const dom = new JSDOM(`
+    <table>
+      <tr class="collection_row" bgcolor="#9DFF9D">
+        <td><a href="/CollectionEdit.cfm?..."><span class="badge bg-primary" title="Quantity">1</span></a></td>
+        <td>thumb1</td>
+        <td>thumb2</td>
+        <td>icon</td>
+        <td><div class="dropdown"><ul class="dropdown-menu"><li><a href="/CollectionEdit.cfm">Edit Details...</a></li></ul></div></td>
+        <td nowrap="" valign="top"><a href="/ViewCard.cfm/sid/357729/cid/21211724/2023-Bowman-1-Byron-Buxton">1</a></td>
+        <td valign="top" width="42%"><a href="/ViewCard.cfm/sid/357729/cid/21211724/2023-Bowman-1-Byron-Buxton">Byron Buxton</a> RC</td>
+        <td valign="top" width="42%"><a href="/ViewCard.cfm/sid/357729/cid/21211724/2023-Bowman-1-Byron-Buxton">Minnesota Twins</a></td>
+        <td></td>
+        <td></td>
+      </tr>
+    </table>
+  `);
+
+  const { getCollectionCardDetails } = await import('../src/modules/collectionQuantityCounter.js');
+  const details = getCollectionCardDetails(dom.window.document);
+
+  assert.equal(details.length, 1);
+  assert.equal(details[0].qty, 1);
+  assert.equal(details[0].cardNo, '1');
+  assert.equal(details[0].player, 'Byron Buxton');
+  assert.equal(details[0].tags, 'RC');
+  assert.equal(details[0].team, 'Minnesota Twins');
+});
+

@@ -149,34 +149,57 @@ export function getCollectionCardDetails(root = document) {
     let tags = '';
     let team = '';
 
-    const viewCardLinks = Array.from(row.querySelectorAll('a[href*="ViewCard.cfm"], a[href*="CollectionEdit.cfm"]'));
+    const tds = Array.from(row.querySelectorAll('td'));
 
-    if (viewCardLinks.length >= 2) {
-      cardNo = viewCardLinks[0].textContent.trim();
-      player = viewCardLinks[1].textContent.trim();
-      if (viewCardLinks.length >= 3) {
-        team = viewCardLinks[2].textContent.trim();
-      }
-      const playerTd = viewCardLinks[1].closest('td');
-      if (playerTd) {
-        const playerTdClone = playerTd.cloneNode(true);
-        playerTdClone.querySelectorAll('a').forEach((a) => a.remove());
-        tags = playerTdClone.textContent.trim();
-      }
-    } else if (viewCardLinks.length === 1) {
-      cardNo = viewCardLinks[0].textContent.trim();
-      const cardTd = viewCardLinks[0].closest('td');
-      const nextTd = cardTd ? cardTd.nextElementSibling : null;
-      if (nextTd) {
-        const playerLink = nextTd.querySelector('a');
-        player = playerLink ? playerLink.textContent.trim() : nextTd.textContent.trim();
-        const playerClone = nextTd.cloneNode(true);
-        playerClone.querySelectorAll('a').forEach((a) => a.remove());
-        tags = playerClone.textContent.trim();
+    if (tds.length >= 8) {
+      // Standard TCDB collection row layout:
+      // 1st <td> (tds[0]): Qty
+      // 6th <td> (tds[5]): Card #
+      // 7th <td> (tds[6]): Player with Tags
+      // 8th <td> (tds[7]): Team
+      const cardNoLink = tds[5].querySelector('a[href*="ViewCard.cfm"]');
+      cardNo = (cardNoLink ? cardNoLink.textContent : tds[5].textContent).trim();
 
-        const teamTd = nextTd.nextElementSibling;
-        if (teamTd) {
-          team = teamTd.textContent.trim();
+      const playerLink = tds[6].querySelector('a[href*="ViewCard.cfm"], a[href*="Person.cfm"]');
+      player = (playerLink ? playerLink.textContent : tds[6].textContent).trim();
+
+      const playerTdClone = tds[6].cloneNode(true);
+      playerTdClone.querySelectorAll('a').forEach((a) => a.remove());
+      tags = playerTdClone.textContent.trim();
+
+      const teamLink = tds[7].querySelector('a[href*="ViewCard.cfm"], a[href*="Team.cfm"]');
+      team = (teamLink ? teamLink.textContent : tds[7].textContent).trim();
+    } else {
+      // Fallback targeting ViewCard.cfm links explicitly (ignoring CollectionEdit.cfm dropdown links)
+      const viewCardLinks = Array.from(row.querySelectorAll('a[href*="ViewCard.cfm"]'));
+
+      if (viewCardLinks.length >= 2) {
+        cardNo = viewCardLinks[0].textContent.trim();
+        player = viewCardLinks[1].textContent.trim();
+        if (viewCardLinks.length >= 3) {
+          team = viewCardLinks[2].textContent.trim();
+        }
+        const playerTd = viewCardLinks[1].closest('td');
+        if (playerTd) {
+          const playerTdClone = playerTd.cloneNode(true);
+          playerTdClone.querySelectorAll('a').forEach((a) => a.remove());
+          tags = playerTdClone.textContent.trim();
+        }
+      } else if (viewCardLinks.length === 1) {
+        cardNo = viewCardLinks[0].textContent.trim();
+        const cardTd = viewCardLinks[0].closest('td');
+        const nextTd = cardTd ? cardTd.nextElementSibling : null;
+        if (nextTd) {
+          const playerLink = nextTd.querySelector('a');
+          player = playerLink ? playerLink.textContent.trim() : nextTd.textContent.trim();
+          const playerClone = nextTd.cloneNode(true);
+          playerClone.querySelectorAll('a').forEach((a) => a.remove());
+          tags = playerClone.textContent.trim();
+
+          const teamTd = nextTd.nextElementSibling;
+          if (teamTd) {
+            team = teamTd.textContent.trim();
+          }
         }
       }
     }
