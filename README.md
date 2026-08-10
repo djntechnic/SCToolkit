@@ -70,6 +70,7 @@ SCToolkit is built as a modular framework. Each feature is encapsulated in a ded
 - **Functions & Capabilities**:
   - Renders a real-time quantity counter widget (`.sctk-qty-counter`) on collection pages (`ViewCollectionMode.cfm`, `ViewCollectionForSaleTrade.cfm`, `ViewCollectionWantlist.cfm`).
   - Distinguishes between distinct card items collected and total item quantity (`Qty >= 1`).
+  - Includes an interactive **Details** button that opens a Bootstrap modal detailing `Card No`, `Player`, `Tags`, `Team`, and `Qty` for all added items.
   - Updates dynamically when input quantities change.
 - **Configurable Settings**:
   - `collectionQuantityCounter.enabled`: Toggle module ON/OFF.
@@ -214,7 +215,7 @@ Access the Settings Modal by clicking the **gear icon** in the top toolbar or us
 npm ci
 npm run lint      # ESLint (includes userscript metadata rules)
 npm run build     # esbuild compilation -> dist/sctoolkit.user.js
-npm test          # Runs node --test suite (362+ automated tests)
+npm test          # Runs node --test suite (376+ automated tests)
 npm run check     # Full validation: lint -> build -> test -> stale-dist check
 ```
 
