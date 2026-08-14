@@ -6159,12 +6159,13 @@ button.tk-add-btn {
         });
         const responseText = await response.text();
         if (response.ok && !responseText.includes("<title>Error") && !responseText.includes("Login")) {
-          Log(`Quick Add Grid: Server response 200 OK for CardID: ${cardId}. Updating DOM...`, "debug", "server");
+          Log(`Quick Add Grid: Server response 200 OK for CardID: ${cardId}. Parsing response DOM...`, "info", "server");
           const virtualDOM = new DOMParser().parseFromString(responseText, "text/html");
           const backgroundCardLink = virtualDOM.querySelector(`a[href*="/cid/${cardId}"]`);
           if (backgroundCardLink) {
             const backgroundRow = backgroundCardLink.closest("tr");
             if (backgroundRow) {
+              Log(`Quick Add Grid: Found backgroundRow for CardID: ${cardId} in response DOM.`, "debug", "server");
               if (backgroundRow.getAttribute("class")) {
                 row.className = backgroundRow.className;
               }
@@ -6179,12 +6180,14 @@ button.tk-add-btn {
               if (backgroundRow.style.backgroundColor) {
                 row.style.backgroundColor = backgroundRow.style.backgroundColor;
               }
+              Log(`Quick Add Grid: Updated row background styling (class: '${row.className}', bgcolor: '${row.getAttribute("bgcolor")}').`, "debug", "server");
               const serverQtyCell = backgroundRow.querySelector("td:nth-child(1)");
               const liveQtyCell = row.querySelector("td:nth-child(1)");
               if (liveQtyCell) {
                 const serverBadge = serverQtyCell?.querySelector(".badge");
                 if (serverBadge) {
                   liveQtyCell.innerHTML = serverQtyCell.innerHTML;
+                  Log(`Quick Add Grid: Synced Column 1 badge from server response: ${liveQtyCell.innerHTML}`, "debug", "server");
                 } else {
                   const existingBadge = liveQtyCell.querySelector(".badge");
                   const addedNum = parseInt(addQty, 10) || 1;
@@ -6194,6 +6197,7 @@ button.tk-add-btn {
                   } else {
                     liveQtyCell.innerHTML = `<span class="badge bg-primary">${addedNum}</span>`;
                   }
+                  Log(`Quick Add Grid: Injected Column 1 quantity badge: ${liveQtyCell.innerHTML}`, "info", "server");
                 }
               }
               const liveStatusCell = row.querySelector(".tk-inline-add")?.parentElement || row.querySelector("td:nth-child(4)");
@@ -6203,6 +6207,7 @@ button.tk-add-btn {
                 const hasStatusIcon = serverStatusCell && (serverStatusCell.querySelector("img, i, svg, .fa-handshake, .fa-heart, .fa-box") || !serverStatusCell.querySelector('input[type="checkbox"]') && serverStatusCell.textContent.trim() !== "");
                 if (hasStatusIcon) {
                   liveStatusCell.innerHTML = serverStatusCell.innerHTML;
+                  Log(`Quick Add Grid: Synced Column 4 status icon from server response.`, "debug", "server");
                 } else {
                   let iconHtml = '<i class="fa-solid fa-box text-primary" title="In Collection"></i>';
                   if (listContext === "S") {
@@ -6211,6 +6216,7 @@ button.tk-add-btn {
                     iconHtml = '<i class="fa-solid fa-heart text-danger" title="On Wantlist"></i>';
                   }
                   liveStatusCell.innerHTML = iconHtml;
+                  Log(`Quick Add Grid: Injected Column 4 status icon '${iconHtml}'.`, "info", "server");
                 }
                 if (customUI) {
                   liveStatusCell.appendChild(customUI);
@@ -6219,10 +6225,17 @@ button.tk-add-btn {
               const serverActions = backgroundRow.querySelector('div[id^="nActions"]') || backgroundRow.querySelector(`#nActions${cardId}`) || backgroundRow.querySelector(".btn-group");
               const liveActions = row.querySelector('div[id^="nActions"]') || row.querySelector(`#nActions${cardId}`) || row.querySelector(".btn-group");
               if (serverActions && liveActions) {
-                if (serverActions.id) {
+                const itemMatch = serverActions.innerHTML.match(/ReturnRow=(\d+)/i) || serverActions.innerHTML.match(/ItemID=(\d+)/i);
+                if (itemMatch) {
+                  const compositeId = itemMatch[1].startsWith(cardId) ? `nActions${itemMatch[1]}` : `nActions${cardId}${itemMatch[1]}`;
+                  liveActions.id = compositeId;
+                  Log(`Quick Add Grid: Set context menu element ID to '${compositeId}' from return parameter.`, "info", "server");
+                } else if (serverActions.id) {
                   liveActions.id = serverActions.id;
+                  Log(`Quick Add Grid: Set context menu element ID to '${serverActions.id}'.`, "info", "server");
                 }
                 liveActions.innerHTML = serverActions.innerHTML;
+                Log(`Quick Add Grid: Synced context menu innerHTML for CardID: ${cardId}.`, "debug", "server");
               }
             }
           } else {

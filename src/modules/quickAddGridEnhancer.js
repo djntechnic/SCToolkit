@@ -181,7 +181,7 @@ export function injectRowQuickAdd(row, context = {}) {
       const responseText = await response.text();
 
       if (response.ok && !responseText.includes('<title>Error') && !responseText.includes('Login')) {
-        Log(`Quick Add Grid: Server response 200 OK for CardID: ${cardId}. Updating DOM...`, 'debug', 'server');
+        Log(`Quick Add Grid: Server response 200 OK for CardID: ${cardId}. Parsing response DOM...`, 'info', 'server');
 
         const virtualDOM = new DOMParser().parseFromString(responseText, 'text/html');
         const backgroundCardLink = virtualDOM.querySelector(`a[href*="/cid/${cardId}"]`);
@@ -190,6 +190,8 @@ export function injectRowQuickAdd(row, context = {}) {
           const backgroundRow = backgroundCardLink.closest('tr');
 
           if (backgroundRow) {
+            Log(`Quick Add Grid: Found backgroundRow for CardID: ${cardId} in response DOM.`, 'debug', 'server');
+
             // 1. Update row color/background class & style
             if (backgroundRow.getAttribute('class')) {
               row.className = backgroundRow.className;
@@ -205,6 +207,7 @@ export function injectRowQuickAdd(row, context = {}) {
             if (backgroundRow.style.backgroundColor) {
               row.style.backgroundColor = backgroundRow.style.backgroundColor;
             }
+            Log(`Quick Add Grid: Updated row background styling (class: '${row.className}', bgcolor: '${row.getAttribute('bgcolor')}').`, 'debug', 'server');
 
             // 2. Update Column 1 (Quantity Badge / Icon)
             const serverQtyCell = backgroundRow.querySelector('td:nth-child(1)');
@@ -213,6 +216,7 @@ export function injectRowQuickAdd(row, context = {}) {
               const serverBadge = serverQtyCell?.querySelector('.badge');
               if (serverBadge) {
                 liveQtyCell.innerHTML = serverQtyCell.innerHTML;
+                Log(`Quick Add Grid: Synced Column 1 badge from server response: ${liveQtyCell.innerHTML}`, 'debug', 'server');
               } else {
                 const existingBadge = liveQtyCell.querySelector('.badge');
                 const addedNum = parseInt(addQty, 10) || 1;
@@ -222,6 +226,7 @@ export function injectRowQuickAdd(row, context = {}) {
                 } else {
                   liveQtyCell.innerHTML = `<span class="badge bg-primary">${addedNum}</span>`;
                 }
+                Log(`Quick Add Grid: Injected Column 1 quantity badge: ${liveQtyCell.innerHTML}`, 'info', 'server');
               }
             }
 
@@ -240,6 +245,7 @@ export function injectRowQuickAdd(row, context = {}) {
 
               if (hasStatusIcon) {
                 liveStatusCell.innerHTML = serverStatusCell.innerHTML;
+                Log(`Quick Add Grid: Synced Column 4 status icon from server response.`, 'debug', 'server');
               } else {
                 let iconHtml = '<i class="fa-solid fa-box text-primary" title="In Collection"></i>';
                 if (listContext === 'S') {
@@ -248,6 +254,7 @@ export function injectRowQuickAdd(row, context = {}) {
                   iconHtml = '<i class="fa-solid fa-heart text-danger" title="On Wantlist"></i>';
                 }
                 liveStatusCell.innerHTML = iconHtml;
+                Log(`Quick Add Grid: Injected Column 4 status icon '${iconHtml}'.`, 'info', 'server');
               }
 
               if (customUI) {
@@ -266,10 +273,21 @@ export function injectRowQuickAdd(row, context = {}) {
               row.querySelector('.btn-group');
 
             if (serverActions && liveActions) {
-              if (serverActions.id) {
+              const itemMatch =
+                serverActions.innerHTML.match(/ReturnRow=(\d+)/i) ||
+                serverActions.innerHTML.match(/ItemID=(\d+)/i);
+              if (itemMatch) {
+                const compositeId = itemMatch[1].startsWith(cardId)
+                  ? `nActions${itemMatch[1]}`
+                  : `nActions${cardId}${itemMatch[1]}`;
+                liveActions.id = compositeId;
+                Log(`Quick Add Grid: Set context menu element ID to '${compositeId}' from return parameter.`, 'info', 'server');
+              } else if (serverActions.id) {
                 liveActions.id = serverActions.id;
+                Log(`Quick Add Grid: Set context menu element ID to '${serverActions.id}'.`, 'info', 'server');
               }
               liveActions.innerHTML = serverActions.innerHTML;
+              Log(`Quick Add Grid: Synced context menu innerHTML for CardID: ${cardId}.`, 'debug', 'server');
             }
           }
         } else {
