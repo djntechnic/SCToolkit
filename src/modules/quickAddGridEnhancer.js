@@ -215,55 +215,6 @@ export function injectRowQuickAdd(row, context = {}) {
     }
   });
 
-  // Also handle native checkbox clicks to update quantity & row background
-  const nativeCheckbox = row.querySelector('td:nth-child(4) input[type="checkbox"]');
-  if (nativeCheckbox && !nativeCheckbox.dataset.sctkWired) {
-    nativeCheckbox.dataset.sctkWired = 'true';
-    nativeCheckbox.addEventListener('change', async () => {
-      if (nativeCheckbox.checked) {
-        const listContext = context.listContext || getListContext();
-        Log(`Quick Add Grid: Checkbox checked for CardID: ${cardId}. Executing quick add...`, 'info', 'server');
-
-        const payload = buildQuickAddPayload({
-          cardId,
-          quantity: '1',
-          listContext,
-          contextSetId: context.contextSetId || getContextSetId(),
-          sportType: context.sportType || getSportType()
-        });
-
-        try {
-          const response = await fetch('/CollectionAddM2.cfm', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'X-Requested-With': 'XMLHttpRequest',
-              Referer: window.location.href
-            },
-            body: payload.toString()
-          });
-
-          const responseText = await response.text();
-
-          if (response.ok && !responseText.includes('<title>Error') && !responseText.includes('Login')) {
-            const virtualDOM = new DOMParser().parseFromString(responseText, 'text/html');
-            const backgroundCardLink = virtualDOM.querySelector(`a[href*="/cid/${cardId}"]`);
-
-            if (backgroundCardLink) {
-              const backgroundRow = backgroundCardLink.closest('tr');
-              if (backgroundRow) {
-                updateRowFromBackground(row, backgroundRow, cardId, '1', listContext);
-              }
-            }
-          }
-        } catch (err) {
-          Log(`Quick Add Grid: Error on checkbox change for CardID ${cardId}: ${err.message}`, 'error', 'server');
-        }
-      }
-    });
-  }
-
   container.appendChild(qtyInput);
   container.appendChild(actionBtn);
   targetCell.appendChild(container);
@@ -307,7 +258,7 @@ export function updateRowFromBackground(row, backgroundRow, cardId, addQty, list
   Log(
     `Quick Add Grid: Updated row background styling (class: '${row.className}', bgcolor: '${row.getAttribute(
       'bgcolor'
-    )}', onmouseout: '${row.getAttribute('onmouseout')}').`,
+    )}').`,
     'debug',
     'server'
   );
@@ -376,57 +327,11 @@ export function updateRowFromBackground(row, backgroundRow, cardId, addQty, list
     row.querySelector('.btn-group');
 
   if (serverActions && liveActions) {
-    let resolvedId = null;
-
-    // Strategy 1 (Highest Priority): Target ID specified by ColdFusion.navigate in the Remove link
-    const removeLink = serverActions.querySelector('a[href*="Remove"]') || serverActions.querySelector('a[onclick*="Remove"]');
-    if (removeLink) {
-      const cfMatch = removeLink.outerHTML.match(/ColdFusion\.navigate\([^,]+,\s*['"](nActions\d+)['"]/i);
-      if (cfMatch) {
-        resolvedId = cfMatch[1];
-      }
+    if (serverActions.id) {
+      liveActions.id = serverActions.id;
     }
-
-    // Strategy 2: Any ColdFusion.navigate call in serverActions
-    if (!resolvedId) {
-      const cfMatch = serverActions.innerHTML.match(/ColdFusion\.navigate\([^,]+,\s*['"](nActions\d+)['"]/i);
-      if (cfMatch) {
-        resolvedId = cfMatch[1];
-      }
-    }
-
-    // Strategy 3: Check serverActions.id or nested div[id^="nActions"] id if present
-    if (!resolvedId) {
-      const serverActionsId = serverActions.id || serverActions.querySelector('div[id^="nActions"]')?.id;
-      if (serverActionsId && serverActionsId !== 'nActions') {
-        resolvedId = serverActionsId;
-      }
-    }
-
-    // Strategy 4: Fallback to nActions + cardId
-    if (!resolvedId) {
-      resolvedId = `nActions${cardId}`;
-    }
-
-    if (resolvedId) {
-      liveActions.id = resolvedId;
-      Log(`Quick Add Grid: Set context menu element ID to '${resolvedId}'.`, 'info', 'server');
-    }
-
     liveActions.innerHTML = serverActions.innerHTML;
-    Log(`Quick Add Grid: Synced context menu innerHTML for CardID: ${cardId}.`, 'debug', 'server');
-
-    // Attach click listener to Remove link inside liveActions to reset row state on removal
-    const liveRemoveLink = liveActions.querySelector('a[href*="Remove"]') || liveActions.querySelector('a[onclick*="Remove"]');
-    if (liveRemoveLink && !liveRemoveLink.dataset.sctkRemoveWired) {
-      liveRemoveLink.dataset.sctkRemoveWired = 'true';
-      liveRemoveLink.addEventListener('click', () => {
-        Log(`Quick Add Grid: Remove clicked for CardID: ${cardId}. Resetting row state...`, 'info', 'server');
-        setTimeout(() => {
-          resetRowToUncollected(row, cardId);
-        }, 350);
-      });
-    }
+    Log(`Quick Add Grid: Synced context menu element ID '${liveActions.id}' and innerHTML for CardID: ${cardId}.`, 'debug', 'server');
   }
 }
 

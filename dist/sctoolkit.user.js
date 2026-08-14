@@ -6197,48 +6197,6 @@ button.tk-add-btn {
         }, 2e3);
       }
     });
-    const nativeCheckbox = row.querySelector('td:nth-child(4) input[type="checkbox"]');
-    if (nativeCheckbox && !nativeCheckbox.dataset.sctkWired) {
-      nativeCheckbox.dataset.sctkWired = "true";
-      nativeCheckbox.addEventListener("change", async () => {
-        if (nativeCheckbox.checked) {
-          const listContext = context.listContext || getListContext();
-          Log(`Quick Add Grid: Checkbox checked for CardID: ${cardId}. Executing quick add...`, "info", "server");
-          const payload = buildQuickAddPayload({
-            cardId,
-            quantity: "1",
-            listContext,
-            contextSetId: context.contextSetId || getContextSetId(),
-            sportType: context.sportType || getSportType()
-          });
-          try {
-            const response = await fetch("/CollectionAddM2.cfm", {
-              method: "POST",
-              credentials: "same-origin",
-              headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "X-Requested-With": "XMLHttpRequest",
-                Referer: window.location.href
-              },
-              body: payload.toString()
-            });
-            const responseText = await response.text();
-            if (response.ok && !responseText.includes("<title>Error") && !responseText.includes("Login")) {
-              const virtualDOM = new DOMParser().parseFromString(responseText, "text/html");
-              const backgroundCardLink = virtualDOM.querySelector(`a[href*="/cid/${cardId}"]`);
-              if (backgroundCardLink) {
-                const backgroundRow = backgroundCardLink.closest("tr");
-                if (backgroundRow) {
-                  updateRowFromBackground(row, backgroundRow, cardId, "1", listContext);
-                }
-              }
-            }
-          } catch (err) {
-            Log(`Quick Add Grid: Error on checkbox change for CardID ${cardId}: ${err.message}`, "error", "server");
-          }
-        }
-      });
-    }
     container.appendChild(qtyInput);
     container.appendChild(actionBtn);
     targetCell.appendChild(container);
@@ -6270,7 +6228,7 @@ button.tk-add-btn {
     Log(
       `Quick Add Grid: Updated row background styling (class: '${row.className}', bgcolor: '${row.getAttribute(
         "bgcolor"
-      )}', onmouseout: '${row.getAttribute("onmouseout")}').`,
+      )}').`,
       "debug",
       "server"
     );
@@ -6318,79 +6276,12 @@ button.tk-add-btn {
     const serverActions = backgroundRow.querySelector('div[id^="nActions"]') || backgroundRow.querySelector(`#nActions${cardId}`) || backgroundRow.querySelector(".btn-group");
     const liveActions = row.querySelector('div[id^="nActions"]') || row.querySelector(`#nActions${cardId}`) || row.querySelector(".btn-group");
     if (serverActions && liveActions) {
-      let resolvedId = null;
-      const removeLink = serverActions.querySelector('a[href*="Remove"]') || serverActions.querySelector('a[onclick*="Remove"]');
-      if (removeLink) {
-        const cfMatch = removeLink.outerHTML.match(/ColdFusion\.navigate\([^,]+,\s*['"](nActions\d+)['"]/i);
-        if (cfMatch) {
-          resolvedId = cfMatch[1];
-        }
-      }
-      if (!resolvedId) {
-        const cfMatch = serverActions.innerHTML.match(/ColdFusion\.navigate\([^,]+,\s*['"](nActions\d+)['"]/i);
-        if (cfMatch) {
-          resolvedId = cfMatch[1];
-        }
-      }
-      if (!resolvedId) {
-        const serverActionsId = serverActions.id || serverActions.querySelector('div[id^="nActions"]')?.id;
-        if (serverActionsId && serverActionsId !== "nActions") {
-          resolvedId = serverActionsId;
-        }
-      }
-      if (!resolvedId) {
-        resolvedId = `nActions${cardId}`;
-      }
-      if (resolvedId) {
-        liveActions.id = resolvedId;
-        Log(`Quick Add Grid: Set context menu element ID to '${resolvedId}'.`, "info", "server");
+      if (serverActions.id) {
+        liveActions.id = serverActions.id;
       }
       liveActions.innerHTML = serverActions.innerHTML;
-      Log(`Quick Add Grid: Synced context menu innerHTML for CardID: ${cardId}.`, "debug", "server");
-      const liveRemoveLink = liveActions.querySelector('a[href*="Remove"]') || liveActions.querySelector('a[onclick*="Remove"]');
-      if (liveRemoveLink && !liveRemoveLink.dataset.sctkRemoveWired) {
-        liveRemoveLink.dataset.sctkRemoveWired = "true";
-        liveRemoveLink.addEventListener("click", () => {
-          Log(`Quick Add Grid: Remove clicked for CardID: ${cardId}. Resetting row state...`, "info", "server");
-          setTimeout(() => {
-            resetRowToUncollected(row, cardId);
-          }, 350);
-        });
-      }
+      Log(`Quick Add Grid: Synced context menu element ID '${liveActions.id}' and innerHTML for CardID: ${cardId}.`, "debug", "server");
     }
-  }
-  function resetRowToUncollected(row, cardId) {
-    if (!row) return;
-    row.className = "collection_row";
-    row.removeAttribute("bgcolor");
-    row.style.backgroundColor = "";
-    row.setAttribute("onmouseout", "this.bgColor='#F7F9F9';");
-    row.setAttribute("onmouseover", "this.bgColor='#FFCC00';");
-    const liveQtyCell = row.querySelector("td:nth-child(1)");
-    if (liveQtyCell) {
-      liveQtyCell.innerHTML = "";
-    }
-    const liveStatusCell = row.querySelector(".tk-inline-add")?.parentElement || row.querySelector("td:nth-child(4)");
-    if (liveStatusCell) {
-      const customUI = liveStatusCell.querySelector(".tk-inline-add");
-      const checkboxHtml = `<label><input type="checkbox" class="form-check-input" style="transform: scale(1.4); margin: 3px;"></label>`;
-      liveStatusCell.innerHTML = checkboxHtml;
-      if (customUI) {
-        liveStatusCell.appendChild(customUI);
-        const qtyInput = customUI.querySelector(".tk-qty-input");
-        if (qtyInput) qtyInput.value = "1";
-      }
-    }
-    if (window.SCToolkit?.modules?.collectionQuantityCounter?.init) {
-      try {
-        window.SCToolkit.modules.collectionQuantityCounter.init();
-      } catch (err) {
-        Log(`Quick Add Grid: Could not update counter: ${err.message}`, "debug");
-      }
-    } else if (typeof window !== "undefined" && typeof window.CustomEvent !== "undefined") {
-      document.dispatchEvent(new window.CustomEvent("sctk:collection-changed"));
-    }
-    Log(`Quick Add Grid: Row for CardID ${cardId} reset to uncollected state.`, "info", "server");
   }
   function initQuickAddGridEnhancer() {
     const ok = assertContract("quickAddGridEnhancer", [
