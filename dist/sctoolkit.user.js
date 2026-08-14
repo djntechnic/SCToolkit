@@ -1116,6 +1116,8 @@
     const index = buildRowIndex(mainContent);
     Log(`Checklist filter indexed ${index.length} data item(s).`, "info");
     recordContract("checklistEnhancer", `indexed ${index.length} data item(s)`, index.length > 0);
+    const hasCheckboxes = index.some(({ el }) => el.querySelector('input[type="checkbox"]') !== null);
+    Log(`Checklist filter: hasCheckboxes=${hasCheckboxes}`, "debug");
     const placeholderText = getFilterPlaceholder();
     const filterWrap = document.createElement("div");
     filterWrap.id = "tk-checklist-filter-wrap";
@@ -1128,12 +1130,16 @@
         ${icon("x")}
       </button>
     </div>
+    <button type="button" id="tk-checklist-filter-select-all" class="sctk-btn" title="Select all visible matching items" aria-label="Select all visible items" style="display: none;">
+      Select All
+    </button>
     <span id="tk-filter-count" aria-live="polite"></span>
   `;
     targetElement.before(filterWrap);
     const countEl = filterWrap.querySelector("#tk-filter-count");
     const input = filterWrap.querySelector("#tk-checklist-filter");
     const clearBtn = filterWrap.querySelector("#tk-checklist-filter-clear");
+    const selectAllBtn = filterWrap.querySelector("#tk-checklist-filter-select-all");
     const updateClearVisibility = () => {
       if (clearBtn) {
         clearBtn.style.display = input.value.trim() !== "" ? "inline-flex" : "none";
@@ -1142,6 +1148,11 @@
     const run = debounce((term) => {
       const visible = applyFilter(index, term);
       countEl.textContent = term === "" ? "" : `${visible} of ${index.length}`;
+      if (selectAllBtn) {
+        const showBtn = hasCheckboxes && term !== "" && visible > 0;
+        selectAllBtn.style.display = showBtn ? "inline-flex" : "none";
+      }
+      Log(`Checklist filter: applied term "${term}" (${visible} of ${index.length} visible)`, "debug");
     }, Config.global.checklistFilterDebounceMs);
     const performFilter = () => {
       const val = input.value.toLowerCase().trim();
@@ -1161,6 +1172,21 @@
         input.value = "";
         input.focus();
         performFilter();
+      });
+    }
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => {
+        let count = 0;
+        index.forEach(({ el }) => {
+          if (!el.classList.contains(HIDDEN_CLASS)) {
+            const cb = el.querySelector('input[type="checkbox"]');
+            if (cb && !cb.checked) {
+              cb.click();
+              count++;
+            }
+          }
+        });
+        Log(`Checklist filter: "Select All" clicked, checked ${count} matching item checkbox(es).`, "debug");
       });
     }
     return true;
@@ -3022,6 +3048,7 @@
 #tk-checklist-filter { padding: 3px 22px 3px 6px; border: 1px solid var(--tk-border-strong); background: var(--tk-bg-elevated); color: var(--tk-text); border-radius: 3px; font-size: 11.5px; width: 320px; font-family: var(--tk-font-ui); box-sizing: border-box; }
 #tk-checklist-filter-clear { position: absolute; right: 4px; background: transparent; border: none; color: var(--tk-text-muted); padding: 2px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 2px; height: 16px; width: 16px; margin: 0; }
 #tk-checklist-filter-clear:hover { color: var(--tk-red); background: var(--tk-bg-hover); }
+#tk-checklist-filter-select-all { height: 22px; padding: 1px 8px 0 8px; font-size: 10.5px; flex-shrink: 0; }
 #tk-filter-count { font-family: var(--tk-font-mono); font-size: 10px; color: var(--tk-text-muted); white-space: nowrap; flex-shrink: 0; }
 #tk-checklist-filter:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; border-color: var(--tk-accent); }
 
