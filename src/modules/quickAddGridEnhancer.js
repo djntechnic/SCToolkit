@@ -213,7 +213,20 @@ export function injectRowQuickAdd(row, context = {}) {
               liveQtyCell.innerHTML = serverQtyCell.innerHTML;
             }
 
-            // 3. Update Context Menu (div[id^="nActions"] or #nActions... or .btn-group)
+            // 3. Update Column 4 (Status / Checkbox Cell) preserving .tk-inline-add
+            const liveStatusCell =
+              row.querySelector('.tk-inline-add')?.parentElement ||
+              row.querySelector('td:nth-child(4)');
+            const serverStatusCell = backgroundRow.querySelector('td:nth-child(4)');
+            if (liveStatusCell && serverStatusCell) {
+              const customUI = liveStatusCell.querySelector('.tk-inline-add');
+              liveStatusCell.innerHTML = serverStatusCell.innerHTML;
+              if (customUI) {
+                liveStatusCell.appendChild(customUI);
+              }
+            }
+
+            // 4. Update Context Menu (div[id^="nActions"] or #nActions... or .btn-group)
             const serverActions =
               backgroundRow.querySelector('div[id^="nActions"]') ||
               backgroundRow.querySelector(`#nActions${cardId}`) ||
@@ -228,18 +241,6 @@ export function injectRowQuickAdd(row, context = {}) {
                 liveActions.id = serverActions.id;
               }
               liveActions.innerHTML = serverActions.innerHTML;
-            } else {
-              const serverMenuCell =
-                backgroundRow.querySelector('td:nth-child(5)') ||
-                backgroundRow.querySelector('td:nth-child(4)');
-              const liveMenuCell =
-                row.querySelector('td:nth-child(5)') ||
-                row.querySelector('td:nth-child(4)');
-              if (serverMenuCell && liveMenuCell) {
-                const customUI = liveMenuCell.querySelector('.tk-inline-add');
-                liveMenuCell.innerHTML = serverMenuCell.innerHTML;
-                if (customUI) liveMenuCell.appendChild(customUI);
-              }
             }
           }
         } else {

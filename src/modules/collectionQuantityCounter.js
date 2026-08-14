@@ -62,7 +62,7 @@ export function countCollectionQuantities(root = document) {
 
     // 2. Look for checked checkbox or quantity input if no badge gave a value
     if (qty === 0) {
-      const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]');
+      const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]:not(.tk-qty-input)');
       if (qtyInput && qtyInput.value) {
         const parsed = parseInt(qtyInput.value.trim(), 10);
         if (!isNaN(parsed)) qty = Math.max(0, parsed);
@@ -130,7 +130,7 @@ export function getCollectionCardDetails(root = document) {
     }
 
     if (qty === 0) {
-      const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]');
+      const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]:not(.tk-qty-input)');
       if (qtyInput && qtyInput.value) {
         const parsed = parseInt(qtyInput.value.trim(), 10);
         if (!isNaN(parsed)) qty = Math.max(0, parsed);

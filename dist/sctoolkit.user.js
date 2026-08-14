@@ -5692,7 +5692,7 @@ button.tk-add-btn {
         if (!isNaN(parsed)) qty = Math.max(0, parsed);
       }
       if (qty === 0) {
-        const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]');
+        const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]:not(.tk-qty-input)');
         if (qtyInput && qtyInput.value) {
           const parsed = parseInt(qtyInput.value.trim(), 10);
           if (!isNaN(parsed)) qty = Math.max(0, parsed);
@@ -5734,7 +5734,7 @@ button.tk-add-btn {
         if (!isNaN(parsed)) qty = Math.max(0, parsed);
       }
       if (qty === 0) {
-        const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]');
+        const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]:not(.tk-qty-input)');
         if (qtyInput && qtyInput.value) {
           const parsed = parseInt(qtyInput.value.trim(), 10);
           if (!isNaN(parsed)) qty = Math.max(0, parsed);
@@ -6184,6 +6184,15 @@ button.tk-add-btn {
               if (serverQtyCell && liveQtyCell) {
                 liveQtyCell.innerHTML = serverQtyCell.innerHTML;
               }
+              const liveStatusCell = row.querySelector(".tk-inline-add")?.parentElement || row.querySelector("td:nth-child(4)");
+              const serverStatusCell = backgroundRow.querySelector("td:nth-child(4)");
+              if (liveStatusCell && serverStatusCell) {
+                const customUI = liveStatusCell.querySelector(".tk-inline-add");
+                liveStatusCell.innerHTML = serverStatusCell.innerHTML;
+                if (customUI) {
+                  liveStatusCell.appendChild(customUI);
+                }
+              }
               const serverActions = backgroundRow.querySelector('div[id^="nActions"]') || backgroundRow.querySelector(`#nActions${cardId}`) || backgroundRow.querySelector(".btn-group");
               const liveActions = row.querySelector('div[id^="nActions"]') || row.querySelector(`#nActions${cardId}`) || row.querySelector(".btn-group");
               if (serverActions && liveActions) {
@@ -6191,14 +6200,6 @@ button.tk-add-btn {
                   liveActions.id = serverActions.id;
                 }
                 liveActions.innerHTML = serverActions.innerHTML;
-              } else {
-                const serverMenuCell = backgroundRow.querySelector("td:nth-child(5)") || backgroundRow.querySelector("td:nth-child(4)");
-                const liveMenuCell = row.querySelector("td:nth-child(5)") || row.querySelector("td:nth-child(4)");
-                if (serverMenuCell && liveMenuCell) {
-                  const customUI = liveMenuCell.querySelector(".tk-inline-add");
-                  liveMenuCell.innerHTML = serverMenuCell.innerHTML;
-                  if (customUI) liveMenuCell.appendChild(customUI);
-                }
               }
             }
           } else {
