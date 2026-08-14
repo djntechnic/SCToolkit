@@ -125,17 +125,23 @@ export function injectRowQuickAdd(row, context = {}) {
 
   const container = document.createElement('div');
   container.className = 'tk-inline-add';
+  container.style.cssText =
+    'display: inline-flex !important; flex-direction: row !important; align-items: center !important; flex-wrap: nowrap !important; margin-top: 4px !important; margin-bottom: 2px !important; width: max-content !important; min-width: 0 !important; max-width: 100% !important; vertical-align: middle !important;';
 
   const qtyInput = document.createElement('input');
   qtyInput.type = 'number';
   qtyInput.className = 'tk-qty-input';
   qtyInput.value = '1';
   qtyInput.min = '1';
+  qtyInput.style.cssText =
+    'width: 28px !important; min-width: 28px !important; max-width: 28px !important; flex: 0 0 28px !important; height: 22px !important; text-align: center !important; border: 1px solid var(--tk-border-strong, #ccc) !important; border-right: none !important; border-radius: 3px 0 0 3px !important; font-size: 11px !important; font-family: monospace !important; padding: 0 !important; margin: 0 !important; outline: none !important; background: var(--tk-bg-elevated, #ffffff) !important; color: var(--tk-text, #000000) !important; box-sizing: border-box !important; line-height: 20px !important; -moz-appearance: textfield;';
 
   const actionBtn = document.createElement('button');
   actionBtn.type = 'button';
   actionBtn.className = 'tk-add-btn';
   actionBtn.textContent = '+';
+  actionBtn.style.cssText =
+    'width: 24px !important; min-width: 24px !important; max-width: 24px !important; flex: 0 0 24px !important; height: 22px !important; background: var(--tk-accent, #0d6efd) !important; color: #ffffff !important; border: 1px solid var(--tk-accent, #0d6efd) !important; border-radius: 0 3px 3px 0 !important; padding: 0 !important; margin: 0 !important; font-size: 12px !important; font-weight: 700 !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; box-sizing: border-box !important; line-height: 1 !important; user-select: none !important;';
 
   actionBtn.addEventListener('click', async (e) => {
     e.preventDefault();
@@ -207,15 +213,20 @@ export function injectRowQuickAdd(row, context = {}) {
               liveQtyCell.innerHTML = serverQtyCell.innerHTML;
             }
 
-            // 3. Update Context Menu (#nActions{cardId} or .btn-group or dropdown)
+            // 3. Update Context Menu (div[id^="nActions"] or #nActions... or .btn-group)
             const serverActions =
+              backgroundRow.querySelector('div[id^="nActions"]') ||
               backgroundRow.querySelector(`#nActions${cardId}`) ||
               backgroundRow.querySelector('.btn-group');
             const liveActions =
+              row.querySelector('div[id^="nActions"]') ||
               row.querySelector(`#nActions${cardId}`) ||
               row.querySelector('.btn-group');
 
             if (serverActions && liveActions) {
+              if (serverActions.id) {
+                liveActions.id = serverActions.id;
+              }
               liveActions.innerHTML = serverActions.innerHTML;
             } else {
               const serverMenuCell =

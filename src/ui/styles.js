@@ -402,6 +402,9 @@ export const SETTINGS_CSS = `
 }
 
 /* Quick Add Grid Enhancer */
+table tr td .tk-inline-add,
+.table tr td .tk-inline-add,
+.table td .tk-inline-add,
 .tk-inline-add {
     display: inline-flex !important;
     flex-direction: row !important;
@@ -419,7 +422,10 @@ export const SETTINGS_CSS = `
 .tk-inline-add:hover {
     opacity: 1;
 }
-.tk-qty-input {
+table tr td input.tk-qty-input,
+.table tr td input.tk-qty-input,
+.table td input.tk-qty-input,
+input.tk-qty-input {
     width: 28px !important;
     min-width: 28px !important;
     max-width: 28px !important;
@@ -448,7 +454,10 @@ export const SETTINGS_CSS = `
 .tk-qty-input:focus {
     border-color: var(--tk-accent) !important;
 }
-.tk-add-btn {
+table tr td button.tk-add-btn,
+.table tr td button.tk-add-btn,
+.table td button.tk-add-btn,
+button.tk-add-btn {
     width: 24px !important;
     min-width: 24px !important;
     max-width: 24px !important;

@@ -139,7 +139,7 @@ test('initQuickAddGridEnhancer: initializes module and injects controls into car
   assert.equal(injectedContainers.length, 1);
 });
 
-test('injectRowQuickAdd: click handler dispatches POST and updates row color, badge, and context menu', async () => {
+test('injectRowQuickAdd: click handler dispatches POST and updates row color, badge, and context menu ID', async () => {
   const dom = new JSDOM(
     `<!DOCTYPE html>
     <html>
@@ -173,7 +173,7 @@ test('injectRowQuickAdd: click handler dispatches POST and updates row color, ba
             <tr class="collection_row table-success" bgcolor="#d4edda">
               <td><span class="badge">1</span></td>
               <td>101</td>
-              <td><div id="nActions55555"><ul class="dropdown-menu"><li>Add Another to Collection</li><li>Remove</li></ul></div></td>
+              <td><div id="nActions5555598518"><ul class="dropdown-menu"><li>Add Another to Collection</li><li>Remove</li></ul></div></td>
               <td><a href="/ViewCard.cfm/sid/100/cid/55555/101-Shohei-Ohtani">Card Link</a></td>
             </tr>
           </table>
@@ -195,9 +195,10 @@ test('injectRowQuickAdd: click handler dispatches POST and updates row color, ba
   assert.equal(row.getAttribute('bgcolor'), '#d4edda');
   assert.equal(row.className, 'collection_row table-success');
 
-  const liveActions = row.querySelector('#nActions55555');
-  assert.ok(liveActions);
-  assert.ok(liveActions.innerHTML.includes('Add Another to Collection'));
-  assert.ok(liveActions.innerHTML.includes('Remove'));
+  const updatedActions = row.querySelector('#nActions5555598518');
+  assert.ok(updatedActions, 'Expected element with updated ID nActions5555598518');
+  assert.ok(updatedActions.innerHTML.includes('Add Another to Collection'));
+  assert.ok(updatedActions.innerHTML.includes('Remove'));
 });
+
 
