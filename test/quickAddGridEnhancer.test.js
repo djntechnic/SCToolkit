@@ -194,6 +194,7 @@ test('injectRowQuickAdd: click handler dispatches POST and updates row color, ba
 
   assert.equal(row.getAttribute('bgcolor'), '#d4edda');
   assert.equal(row.className, 'collection_row table-success');
+  assert.ok(row.getAttribute('onmouseout')?.includes('#d4edda'));
 
   const liveBadge = row.querySelector('td:nth-child(1) .badge');
   assert.ok(liveBadge, 'Expected quantity badge in Column 1');
@@ -203,6 +204,61 @@ test('injectRowQuickAdd: click handler dispatches POST and updates row color, ba
   assert.ok(updatedActions, 'Expected element with updated ID nActions5555598518');
   assert.ok(updatedActions.innerHTML.includes('Add Another to Collection'));
   assert.ok(updatedActions.innerHTML.includes('Remove'));
+});
+
+test('injectRowQuickAdd: native checkbox change event triggers quick add and updates row', async () => {
+  const dom = new JSDOM(`
+    <html>
+      <body>
+        <table>
+          <tr class="collection_row" bgcolor="#ffffff">
+            <td></td>
+            <td>101</td>
+            <td><div id="nActions77777"><ul class="dropdown-menu"><li><a href="/CollectionAddO.cfm?CardID=77777&ReturnRow=77777999">Add</a></li></ul></div></td>
+            <td><label><input type="checkbox" class="form-check-input"></label><a href="/ViewCard.cfm/sid/100/cid/77777/101-Card">Card Link</a></td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `);
+
+  global.window = dom.window;
+  global.document = dom.window.document;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => `
+      <html>
+        <body>
+          <table>
+            <tr class="collection_row table-success" bgcolor="#9DFF9D">
+              <td><span class="badge">1</span></td>
+              <td>101</td>
+              <td><div id="nActions77777999"><ul class="dropdown-menu"><li>Remove</li></ul></div></td>
+              <td><a href="/ViewCard.cfm/sid/100/cid/77777/101-Card">Card Link</a></td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `
+  });
+
+  const row = dom.window.document.querySelector('table tr');
+  injectRowQuickAdd(row, { listContext: 'S', contextSetId: '100', sportType: 'Baseball' });
+
+  const checkbox = row.querySelector('input[type="checkbox"]');
+  assert.ok(checkbox);
+
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new dom.window.Event('change'));
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.equal(row.getAttribute('bgcolor'), '#9DFF9D');
+  assert.ok(row.getAttribute('onmouseout')?.includes('#9DFF9D'));
+  const liveBadge = row.querySelector('td:nth-child(1) .badge');
+  assert.ok(liveBadge);
+  assert.equal(liveBadge.textContent.trim(), '1');
 });
 
 
