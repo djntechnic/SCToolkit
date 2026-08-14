@@ -6311,11 +6311,34 @@ button.tk-add-btn {
     const serverActions = backgroundRow.querySelector('div[id^="nActions"]') || backgroundRow.querySelector(`#nActions${cardId}`) || backgroundRow.querySelector(".btn-group");
     const liveActions = row.querySelector('div[id^="nActions"]') || row.querySelector(`#nActions${cardId}`) || row.querySelector(".btn-group");
     if (serverActions && liveActions) {
-      const itemMatch = serverActions.innerHTML.match(/ReturnRow=(\d+)/i) || serverActions.innerHTML.match(/ItemID=(\d+)/i);
-      if (itemMatch) {
-        const compositeId = itemMatch[1].startsWith(cardId) ? `nActions${itemMatch[1]}` : `nActions${cardId}${itemMatch[1]}`;
-        liveActions.id = compositeId;
-        Log(`Quick Add Grid: Set context menu element ID to '${compositeId}' from return parameter.`, "info", "server");
+      let resolvedId = null;
+      const serverActionsId = serverActions.id || serverActions.querySelector('div[id^="nActions"]')?.id;
+      if (serverActionsId && serverActionsId !== `nActions${cardId}` && serverActionsId !== "nActions") {
+        resolvedId = serverActionsId;
+      }
+      if (!resolvedId) {
+        const cfMatch = serverActions.innerHTML.match(/ColdFusion\.navigate\([^,]+,\s*['"](nActions\d+)['"]/i);
+        if (cfMatch) {
+          resolvedId = cfMatch[1];
+        }
+      }
+      if (!resolvedId) {
+        const itemMatch = serverActions.innerHTML.match(/ItemID=([1-9]\d*)/i);
+        if (itemMatch) {
+          const itemId = itemMatch[1];
+          resolvedId = itemId.startsWith(cardId) ? `nActions${itemId}` : `nActions${cardId}${itemId}`;
+        }
+      }
+      if (!resolvedId) {
+        const returnMatch = serverActions.innerHTML.match(/ReturnRow=([1-9]\d*)/i);
+        if (returnMatch) {
+          const rowId = returnMatch[1];
+          resolvedId = rowId.startsWith(cardId) ? `nActions${rowId}` : `nActions${cardId}${rowId}`;
+        }
+      }
+      if (resolvedId) {
+        liveActions.id = resolvedId;
+        Log(`Quick Add Grid: Set context menu element ID to '${resolvedId}'.`, "info", "server");
       } else if (serverActions.id) {
         liveActions.id = serverActions.id;
         Log(`Quick Add Grid: Set context menu element ID to '${serverActions.id}'.`, "info", "server");

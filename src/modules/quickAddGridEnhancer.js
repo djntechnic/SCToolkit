@@ -376,19 +376,48 @@ export function updateRowFromBackground(row, backgroundRow, cardId, addQty, list
     row.querySelector('.btn-group');
 
   if (serverActions && liveActions) {
-    const itemMatch =
-      serverActions.innerHTML.match(/ReturnRow=(\d+)/i) ||
-      serverActions.innerHTML.match(/ItemID=(\d+)/i);
-    if (itemMatch) {
-      const compositeId = itemMatch[1].startsWith(cardId)
-        ? `nActions${itemMatch[1]}`
-        : `nActions${cardId}${itemMatch[1]}`;
-      liveActions.id = compositeId;
-      Log(`Quick Add Grid: Set context menu element ID to '${compositeId}' from return parameter.`, 'info', 'server');
+    let resolvedId = null;
+
+    // Strategy 1: Check serverActions.id or nested div[id^="nActions"] id if it contains specific item record id
+    const serverActionsId = serverActions.id || serverActions.querySelector('div[id^="nActions"]')?.id;
+    if (serverActionsId && serverActionsId !== `nActions${cardId}` && serverActionsId !== 'nActions') {
+      resolvedId = serverActionsId;
+    }
+
+    // Strategy 2: Extract target ID from ColdFusion.navigate('...', 'nActions...') call in Remove link
+    if (!resolvedId) {
+      const cfMatch = serverActions.innerHTML.match(/ColdFusion\.navigate\([^,]+,\s*['"](nActions\d+)['"]/i);
+      if (cfMatch) {
+        resolvedId = cfMatch[1];
+      }
+    }
+
+    // Strategy 3: Extract non-zero ItemID parameter from ItemID=123456
+    if (!resolvedId) {
+      const itemMatch = serverActions.innerHTML.match(/ItemID=([1-9]\d*)/i);
+      if (itemMatch) {
+        const itemId = itemMatch[1];
+        resolvedId = itemId.startsWith(cardId) ? `nActions${itemId}` : `nActions${cardId}${itemId}`;
+      }
+    }
+
+    // Strategy 4: Fallback to non-zero ReturnRow parameter
+    if (!resolvedId) {
+      const returnMatch = serverActions.innerHTML.match(/ReturnRow=([1-9]\d*)/i);
+      if (returnMatch) {
+        const rowId = returnMatch[1];
+        resolvedId = rowId.startsWith(cardId) ? `nActions${rowId}` : `nActions${cardId}${rowId}`;
+      }
+    }
+
+    if (resolvedId) {
+      liveActions.id = resolvedId;
+      Log(`Quick Add Grid: Set context menu element ID to '${resolvedId}'.`, 'info', 'server');
     } else if (serverActions.id) {
       liveActions.id = serverActions.id;
       Log(`Quick Add Grid: Set context menu element ID to '${serverActions.id}'.`, 'info', 'server');
     }
+
     liveActions.innerHTML = serverActions.innerHTML;
     Log(`Quick Add Grid: Synced context menu innerHTML for CardID: ${cardId}.`, 'debug', 'server');
   }

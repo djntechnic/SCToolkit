@@ -8,7 +8,8 @@ import {
   getSportType,
   buildQuickAddPayload,
   injectRowQuickAdd,
-  initQuickAddGridEnhancer
+  initQuickAddGridEnhancer,
+  updateRowFromBackground
 } from '../src/modules/quickAddGridEnhancer.js';
 import { resetContracts } from '../src/core/contracts.js';
 
@@ -259,6 +260,53 @@ test('injectRowQuickAdd: native checkbox change event triggers quick add and upd
   const liveBadge = row.querySelector('td:nth-child(1) .badge');
   assert.ok(liveBadge);
   assert.equal(liveBadge.textContent.trim(), '1');
+});
+
+test('updateRowFromBackground: extracts target ID from ColdFusion.navigate call when ReturnRow=0', async () => {
+  const dom = new JSDOM(`
+    <html>
+      <body>
+        <table>
+          <tr class="collection_row">
+            <td></td>
+            <td>101</td>
+            <td><div id="nActions12629825"><ul class="dropdown-menu"></ul></div></td>
+            <td><a href="/ViewCard.cfm/sid/100/cid/12629825/101-Card">Card Link</a></td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `);
+
+  const serverDom = new JSDOM(`
+    <html>
+      <body>
+        <table>
+          <tr class="collection_row table-info" bgcolor="#D9EDF7">
+            <td><span class="badge">1</span></td>
+            <td>101</td>
+            <td>
+              <div id="nActions12629825">
+                <ul class="dropdown-menu">
+                  <li><a href="/CollectionEdit.cfm?SetID=100&CardID=12629825&ItemID=985194316&ReturnRow=0">Edit</a></li>
+                  <li><a href="javascript:ColdFusion.navigate('/CollectionRemoveQ.cfm?SetID=100&CardID=12629825&ItemID=985194316','nActions12629825985194316'); change2(this);">Remove</a></li>
+                </ul>
+              </div>
+            </td>
+            <td><a href="/ViewCard.cfm/sid/100/cid/12629825/101-Card">Card Link</a></td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `);
+
+  const row = dom.window.document.querySelector('table tr');
+  const serverRow = serverDom.window.document.querySelector('table tr');
+
+  updateRowFromBackground(row, serverRow, '12629825', '1', 'G');
+
+  const updatedDiv = row.querySelector('#nActions12629825985194316');
+  assert.ok(updatedDiv, 'Expected element ID to be updated to nActions12629825985194316 despite ReturnRow=0');
 });
 
 
