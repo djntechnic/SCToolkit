@@ -5930,10 +5930,17 @@ button.tk-add-btn {
         setTimeout(update, 50);
       }
     };
+    const handleCustomEvent = () => setTimeout(update, 50);
     document.addEventListener("change", handleEvent, true);
     document.addEventListener("input", handleEvent, true);
     document.addEventListener("click", handleEvent, true);
-    boundListeners.push({ type: "change", fn: handleEvent }, { type: "input", fn: handleEvent }, { type: "click", fn: handleEvent });
+    document.addEventListener("sctk:collection-changed", handleCustomEvent, true);
+    boundListeners.push(
+      { type: "change", fn: handleEvent },
+      { type: "input", fn: handleEvent },
+      { type: "click", fn: handleEvent },
+      { type: "sctk:collection-changed", fn: handleCustomEvent }
+    );
     const targetArea = document.querySelector("#main-content-area") || document.querySelector("#content") || document.body;
     if (targetArea && typeof MutationObserver !== "undefined") {
       let debounceTimer = null;
@@ -6312,9 +6319,12 @@ button.tk-add-btn {
     const liveActions = row.querySelector('div[id^="nActions"]') || row.querySelector(`#nActions${cardId}`) || row.querySelector(".btn-group");
     if (serverActions && liveActions) {
       let resolvedId = null;
-      const serverActionsId = serverActions.id || serverActions.querySelector('div[id^="nActions"]')?.id;
-      if (serverActionsId && serverActionsId !== `nActions${cardId}` && serverActionsId !== "nActions") {
-        resolvedId = serverActionsId;
+      const removeLink = serverActions.querySelector('a[href*="Remove"]') || serverActions.querySelector('a[onclick*="Remove"]');
+      if (removeLink) {
+        const cfMatch = removeLink.outerHTML.match(/ColdFusion\.navigate\([^,]+,\s*['"](nActions\d+)['"]/i);
+        if (cfMatch) {
+          resolvedId = cfMatch[1];
+        }
       }
       if (!resolvedId) {
         const cfMatch = serverActions.innerHTML.match(/ColdFusion\.navigate\([^,]+,\s*['"](nActions\d+)['"]/i);
@@ -6323,29 +6333,64 @@ button.tk-add-btn {
         }
       }
       if (!resolvedId) {
-        const itemMatch = serverActions.innerHTML.match(/ItemID=([1-9]\d*)/i);
-        if (itemMatch) {
-          const itemId = itemMatch[1];
-          resolvedId = itemId.startsWith(cardId) ? `nActions${itemId}` : `nActions${cardId}${itemId}`;
+        const serverActionsId = serverActions.id || serverActions.querySelector('div[id^="nActions"]')?.id;
+        if (serverActionsId && serverActionsId !== "nActions") {
+          resolvedId = serverActionsId;
         }
       }
       if (!resolvedId) {
-        const returnMatch = serverActions.innerHTML.match(/ReturnRow=([1-9]\d*)/i);
-        if (returnMatch) {
-          const rowId = returnMatch[1];
-          resolvedId = rowId.startsWith(cardId) ? `nActions${rowId}` : `nActions${cardId}${rowId}`;
-        }
+        resolvedId = `nActions${cardId}`;
       }
       if (resolvedId) {
         liveActions.id = resolvedId;
         Log(`Quick Add Grid: Set context menu element ID to '${resolvedId}'.`, "info", "server");
-      } else if (serverActions.id) {
-        liveActions.id = serverActions.id;
-        Log(`Quick Add Grid: Set context menu element ID to '${serverActions.id}'.`, "info", "server");
       }
       liveActions.innerHTML = serverActions.innerHTML;
       Log(`Quick Add Grid: Synced context menu innerHTML for CardID: ${cardId}.`, "debug", "server");
+      const liveRemoveLink = liveActions.querySelector('a[href*="Remove"]') || liveActions.querySelector('a[onclick*="Remove"]');
+      if (liveRemoveLink && !liveRemoveLink.dataset.sctkRemoveWired) {
+        liveRemoveLink.dataset.sctkRemoveWired = "true";
+        liveRemoveLink.addEventListener("click", () => {
+          Log(`Quick Add Grid: Remove clicked for CardID: ${cardId}. Resetting row state...`, "info", "server");
+          setTimeout(() => {
+            resetRowToUncollected(row, cardId);
+          }, 350);
+        });
+      }
     }
+  }
+  function resetRowToUncollected(row, cardId) {
+    if (!row) return;
+    row.className = "collection_row";
+    row.removeAttribute("bgcolor");
+    row.style.backgroundColor = "";
+    row.setAttribute("onmouseout", "this.bgColor='#F7F9F9';");
+    row.setAttribute("onmouseover", "this.bgColor='#FFCC00';");
+    const liveQtyCell = row.querySelector("td:nth-child(1)");
+    if (liveQtyCell) {
+      liveQtyCell.innerHTML = "";
+    }
+    const liveStatusCell = row.querySelector(".tk-inline-add")?.parentElement || row.querySelector("td:nth-child(4)");
+    if (liveStatusCell) {
+      const customUI = liveStatusCell.querySelector(".tk-inline-add");
+      const checkboxHtml = `<label><input type="checkbox" class="form-check-input" style="transform: scale(1.4); margin: 3px;"></label>`;
+      liveStatusCell.innerHTML = checkboxHtml;
+      if (customUI) {
+        liveStatusCell.appendChild(customUI);
+        const qtyInput = customUI.querySelector(".tk-qty-input");
+        if (qtyInput) qtyInput.value = "1";
+      }
+    }
+    if (window.SCToolkit?.modules?.collectionQuantityCounter?.init) {
+      try {
+        window.SCToolkit.modules.collectionQuantityCounter.init();
+      } catch (err) {
+        Log(`Quick Add Grid: Could not update counter: ${err.message}`, "debug");
+      }
+    } else if (typeof window !== "undefined" && typeof window.CustomEvent !== "undefined") {
+      document.dispatchEvent(new window.CustomEvent("sctk:collection-changed"));
+    }
+    Log(`Quick Add Grid: Row for CardID ${cardId} reset to uncollected state.`, "info", "server");
   }
   function initQuickAddGridEnhancer() {
     const ok = assertContract("quickAddGridEnhancer", [

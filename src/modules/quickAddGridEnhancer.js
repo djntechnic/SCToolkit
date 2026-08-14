@@ -378,13 +378,16 @@ export function updateRowFromBackground(row, backgroundRow, cardId, addQty, list
   if (serverActions && liveActions) {
     let resolvedId = null;
 
-    // Strategy 1: Check serverActions.id or nested div[id^="nActions"] id if it contains specific item record id
-    const serverActionsId = serverActions.id || serverActions.querySelector('div[id^="nActions"]')?.id;
-    if (serverActionsId && serverActionsId !== `nActions${cardId}` && serverActionsId !== 'nActions') {
-      resolvedId = serverActionsId;
+    // Strategy 1 (Highest Priority): Target ID specified by ColdFusion.navigate in the Remove link
+    const removeLink = serverActions.querySelector('a[href*="Remove"]') || serverActions.querySelector('a[onclick*="Remove"]');
+    if (removeLink) {
+      const cfMatch = removeLink.outerHTML.match(/ColdFusion\.navigate\([^,]+,\s*['"](nActions\d+)['"]/i);
+      if (cfMatch) {
+        resolvedId = cfMatch[1];
+      }
     }
 
-    // Strategy 2: Extract target ID from ColdFusion.navigate('...', 'nActions...') call in Remove link
+    // Strategy 2: Any ColdFusion.navigate call in serverActions
     if (!resolvedId) {
       const cfMatch = serverActions.innerHTML.match(/ColdFusion\.navigate\([^,]+,\s*['"](nActions\d+)['"]/i);
       if (cfMatch) {
@@ -392,35 +395,91 @@ export function updateRowFromBackground(row, backgroundRow, cardId, addQty, list
       }
     }
 
-    // Strategy 3: Extract non-zero ItemID parameter from ItemID=123456
+    // Strategy 3: Check serverActions.id or nested div[id^="nActions"] id if present
     if (!resolvedId) {
-      const itemMatch = serverActions.innerHTML.match(/ItemID=([1-9]\d*)/i);
-      if (itemMatch) {
-        const itemId = itemMatch[1];
-        resolvedId = itemId.startsWith(cardId) ? `nActions${itemId}` : `nActions${cardId}${itemId}`;
+      const serverActionsId = serverActions.id || serverActions.querySelector('div[id^="nActions"]')?.id;
+      if (serverActionsId && serverActionsId !== 'nActions') {
+        resolvedId = serverActionsId;
       }
     }
 
-    // Strategy 4: Fallback to non-zero ReturnRow parameter
+    // Strategy 4: Fallback to nActions + cardId
     if (!resolvedId) {
-      const returnMatch = serverActions.innerHTML.match(/ReturnRow=([1-9]\d*)/i);
-      if (returnMatch) {
-        const rowId = returnMatch[1];
-        resolvedId = rowId.startsWith(cardId) ? `nActions${rowId}` : `nActions${cardId}${rowId}`;
-      }
+      resolvedId = `nActions${cardId}`;
     }
 
     if (resolvedId) {
       liveActions.id = resolvedId;
       Log(`Quick Add Grid: Set context menu element ID to '${resolvedId}'.`, 'info', 'server');
-    } else if (serverActions.id) {
-      liveActions.id = serverActions.id;
-      Log(`Quick Add Grid: Set context menu element ID to '${serverActions.id}'.`, 'info', 'server');
     }
 
     liveActions.innerHTML = serverActions.innerHTML;
     Log(`Quick Add Grid: Synced context menu innerHTML for CardID: ${cardId}.`, 'debug', 'server');
+
+    // Attach click listener to Remove link inside liveActions to reset row state on removal
+    const liveRemoveLink = liveActions.querySelector('a[href*="Remove"]') || liveActions.querySelector('a[onclick*="Remove"]');
+    if (liveRemoveLink && !liveRemoveLink.dataset.sctkRemoveWired) {
+      liveRemoveLink.dataset.sctkRemoveWired = 'true';
+      liveRemoveLink.addEventListener('click', () => {
+        Log(`Quick Add Grid: Remove clicked for CardID: ${cardId}. Resetting row state...`, 'info', 'server');
+        setTimeout(() => {
+          resetRowToUncollected(row, cardId);
+        }, 350);
+      });
+    }
   }
+}
+
+/**
+ * Resets a card row back to uncollected state after removal.
+ *
+ * @param {HTMLTableRowElement} row
+ * @param {string} cardId
+ */
+export function resetRowToUncollected(row, cardId) {
+  if (!row) return;
+
+  // 1. Reset row background & hover styling
+  row.className = 'collection_row';
+  row.removeAttribute('bgcolor');
+  row.style.backgroundColor = '';
+  row.setAttribute('onmouseout', "this.bgColor='#F7F9F9';");
+  row.setAttribute('onmouseover', "this.bgColor='#FFCC00';");
+
+  // 2. Clear Column 1 (Quantity Badge)
+  const liveQtyCell = row.querySelector('td:nth-child(1)');
+  if (liveQtyCell) {
+    liveQtyCell.innerHTML = '';
+  }
+
+  // 3. Reset Column 4 (Status Cell) to checkbox + .tk-inline-add
+  const liveStatusCell =
+    row.querySelector('.tk-inline-add')?.parentElement ||
+    row.querySelector('td:nth-child(4)');
+  if (liveStatusCell) {
+    const customUI = liveStatusCell.querySelector('.tk-inline-add');
+    const checkboxHtml = `<label><input type="checkbox" class="form-check-input" style="transform: scale(1.4); margin: 3px;"></label>`;
+    liveStatusCell.innerHTML = checkboxHtml;
+
+    if (customUI) {
+      liveStatusCell.appendChild(customUI);
+      const qtyInput = customUI.querySelector('.tk-qty-input');
+      if (qtyInput) qtyInput.value = '1';
+    }
+  }
+
+  // 4. Trigger Collection Quantity Counter update if active
+  if (window.SCToolkit?.modules?.collectionQuantityCounter?.init) {
+    try {
+      window.SCToolkit.modules.collectionQuantityCounter.init();
+    } catch (err) {
+      Log(`Quick Add Grid: Could not update counter: ${err.message}`, 'debug');
+    }
+  } else if (typeof window !== 'undefined' && typeof window.CustomEvent !== 'undefined') {
+    document.dispatchEvent(new window.CustomEvent('sctk:collection-changed'));
+  }
+
+  Log(`Quick Add Grid: Row for CardID ${cardId} reset to uncollected state.`, 'info', 'server');
 }
 
 /**

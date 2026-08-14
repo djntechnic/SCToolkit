@@ -393,10 +393,17 @@ export function initCollectionQuantityCounter() {
     }
   };
 
+  const handleCustomEvent = () => setTimeout(update, 50);
   document.addEventListener('change', handleEvent, true);
   document.addEventListener('input', handleEvent, true);
   document.addEventListener('click', handleEvent, true);
-  boundListeners.push({ type: 'change', fn: handleEvent }, { type: 'input', fn: handleEvent }, { type: 'click', fn: handleEvent });
+  document.addEventListener('sctk:collection-changed', handleCustomEvent, true);
+  boundListeners.push(
+    { type: 'change', fn: handleEvent },
+    { type: 'input', fn: handleEvent },
+    { type: 'click', fn: handleEvent },
+    { type: 'sctk:collection-changed', fn: handleCustomEvent }
+  );
 
   // 2. MutationObserver for DOM changes (AJAX updates, row color change, ColdFusion navigate)
   const targetArea = document.querySelector('#main-content-area') || document.querySelector('#content') || document.body;
