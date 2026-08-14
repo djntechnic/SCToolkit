@@ -209,8 +209,20 @@ export function injectRowQuickAdd(row, context = {}) {
             // 2. Update Column 1 (Quantity Badge / Icon)
             const serverQtyCell = backgroundRow.querySelector('td:nth-child(1)');
             const liveQtyCell = row.querySelector('td:nth-child(1)');
-            if (serverQtyCell && liveQtyCell) {
-              liveQtyCell.innerHTML = serverQtyCell.innerHTML;
+            if (liveQtyCell) {
+              const serverBadge = serverQtyCell?.querySelector('.badge');
+              if (serverBadge) {
+                liveQtyCell.innerHTML = serverQtyCell.innerHTML;
+              } else {
+                const existingBadge = liveQtyCell.querySelector('.badge');
+                const addedNum = parseInt(addQty, 10) || 1;
+                if (existingBadge) {
+                  const currentQty = parseInt(existingBadge.textContent.trim(), 10) || 0;
+                  existingBadge.textContent = String(currentQty + addedNum);
+                } else {
+                  liveQtyCell.innerHTML = `<span class="badge bg-primary">${addedNum}</span>`;
+                }
+              }
             }
 
             // 3. Update Column 4 (Status / Checkbox Cell) preserving .tk-inline-add
@@ -218,9 +230,26 @@ export function injectRowQuickAdd(row, context = {}) {
               row.querySelector('.tk-inline-add')?.parentElement ||
               row.querySelector('td:nth-child(4)');
             const serverStatusCell = backgroundRow.querySelector('td:nth-child(4)');
-            if (liveStatusCell && serverStatusCell) {
+            if (liveStatusCell) {
               const customUI = liveStatusCell.querySelector('.tk-inline-add');
-              liveStatusCell.innerHTML = serverStatusCell.innerHTML;
+              const hasStatusIcon =
+                serverStatusCell &&
+                (serverStatusCell.querySelector('img, i, svg, .fa-handshake, .fa-heart, .fa-box') ||
+                  (!serverStatusCell.querySelector('input[type="checkbox"]') &&
+                    serverStatusCell.textContent.trim() !== ''));
+
+              if (hasStatusIcon) {
+                liveStatusCell.innerHTML = serverStatusCell.innerHTML;
+              } else {
+                let iconHtml = '<i class="fa-solid fa-box text-primary" title="In Collection"></i>';
+                if (listContext === 'S') {
+                  iconHtml = '<i class="fa-solid fa-handshake text-success" title="For Sale / Trade"></i>';
+                } else if (listContext === 'W') {
+                  iconHtml = '<i class="fa-solid fa-heart text-danger" title="On Wantlist"></i>';
+                }
+                liveStatusCell.innerHTML = iconHtml;
+              }
+
               if (customUI) {
                 liveStatusCell.appendChild(customUI);
               }

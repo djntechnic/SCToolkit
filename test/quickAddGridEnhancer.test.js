@@ -195,6 +195,10 @@ test('injectRowQuickAdd: click handler dispatches POST and updates row color, ba
   assert.equal(row.getAttribute('bgcolor'), '#d4edda');
   assert.equal(row.className, 'collection_row table-success');
 
+  const liveBadge = row.querySelector('td:nth-child(1) .badge');
+  assert.ok(liveBadge, 'Expected quantity badge in Column 1');
+  assert.equal(liveBadge.textContent.trim(), '1');
+
   const updatedActions = row.querySelector('#nActions5555598518');
   assert.ok(updatedActions, 'Expected element with updated ID nActions5555598518');
   assert.ok(updatedActions.innerHTML.includes('Add Another to Collection'));
