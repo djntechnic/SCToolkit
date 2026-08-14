@@ -138,3 +138,66 @@ test('initQuickAddGridEnhancer: initializes module and injects controls into car
   const injectedContainers = dom.window.document.querySelectorAll('.tk-inline-add');
   assert.equal(injectedContainers.length, 1);
 });
+
+test('injectRowQuickAdd: click handler dispatches POST and updates row color, badge, and context menu', async () => {
+  const dom = new JSDOM(
+    `<!DOCTYPE html>
+    <html>
+      <body>
+        <table>
+          <tbody>
+            <tr class="collection_row" bgcolor="#FFFFFF">
+              <td></td>
+              <td>101</td>
+              <td><div id="nActions55555"><ul class="dropdown-menu"><li>Add to Collection</li></ul></div></td>
+              <td>
+                <a href="/ViewCard.cfm/sid/100/cid/55555/101-Shohei-Ohtani">Card Link</a>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </body>
+    </html>`,
+    { url: 'https://www.tcdb.com/ViewCollectionForSaleTrade.cfm/sid/100' }
+  );
+
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.DOMParser = dom.window.DOMParser;
+  globalThis.fetch = async () => ({
+    ok: true,
+    text: async () => `
+      <html>
+        <body>
+          <table>
+            <tr class="collection_row table-success" bgcolor="#d4edda">
+              <td><span class="badge">1</span></td>
+              <td>101</td>
+              <td><div id="nActions55555"><ul class="dropdown-menu"><li>Add Another to Collection</li><li>Remove</li></ul></div></td>
+              <td><a href="/ViewCard.cfm/sid/100/cid/55555/101-Shohei-Ohtani">Card Link</a></td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `
+  });
+
+  const row = dom.window.document.querySelector('table tr');
+  injectRowQuickAdd(row, { listContext: 'S', contextSetId: '100', sportType: 'Baseball' });
+
+  const btn = row.querySelector('.tk-add-btn');
+  assert.ok(btn);
+
+  btn.click();
+  // Wait for promise microtask resolution
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.equal(row.getAttribute('bgcolor'), '#d4edda');
+  assert.equal(row.className, 'collection_row table-success');
+
+  const liveActions = row.querySelector('#nActions55555');
+  assert.ok(liveActions);
+  assert.ok(liveActions.innerHTML.includes('Add Another to Collection'));
+  assert.ok(liveActions.innerHTML.includes('Remove'));
+});
+

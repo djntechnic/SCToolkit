@@ -183,20 +183,53 @@ export function injectRowQuickAdd(row, context = {}) {
         if (backgroundCardLink) {
           const backgroundRow = backgroundCardLink.closest('tr');
 
-          // Update Column 1 (Quantity Badge)
-          const serverQtyCell = backgroundRow ? backgroundRow.querySelector('td:nth-child(1)') : null;
-          const liveQtyCell = row.querySelector('td:nth-child(1)');
-          if (serverQtyCell && liveQtyCell) {
-            liveQtyCell.innerHTML = serverQtyCell.innerHTML;
-          }
+          if (backgroundRow) {
+            // 1. Update row color/background class & style
+            if (backgroundRow.getAttribute('class')) {
+              row.className = backgroundRow.className;
+            }
+            if (backgroundRow.hasAttribute('bgcolor')) {
+              row.setAttribute('bgcolor', backgroundRow.getAttribute('bgcolor'));
+            } else if (row.hasAttribute('bgcolor')) {
+              row.removeAttribute('bgcolor');
+            }
+            if (backgroundRow.hasAttribute('style')) {
+              row.setAttribute('style', backgroundRow.getAttribute('style'));
+            }
+            if (backgroundRow.style.backgroundColor) {
+              row.style.backgroundColor = backgroundRow.style.backgroundColor;
+            }
 
-          // Update Column 4 (Context Menu / Icons)
-          const serverMenuCell = backgroundRow ? backgroundRow.querySelector('td:nth-child(4)') : null;
-          const liveMenuCell = row.querySelector('td:nth-child(4)');
-          if (serverMenuCell && liveMenuCell) {
-            const customUI = liveMenuCell.querySelector('.tk-inline-add');
-            liveMenuCell.innerHTML = serverMenuCell.innerHTML;
-            if (customUI) liveMenuCell.appendChild(customUI);
+            // 2. Update Column 1 (Quantity Badge / Icon)
+            const serverQtyCell = backgroundRow.querySelector('td:nth-child(1)');
+            const liveQtyCell = row.querySelector('td:nth-child(1)');
+            if (serverQtyCell && liveQtyCell) {
+              liveQtyCell.innerHTML = serverQtyCell.innerHTML;
+            }
+
+            // 3. Update Context Menu (#nActions{cardId} or .btn-group or dropdown)
+            const serverActions =
+              backgroundRow.querySelector(`#nActions${cardId}`) ||
+              backgroundRow.querySelector('.btn-group');
+            const liveActions =
+              row.querySelector(`#nActions${cardId}`) ||
+              row.querySelector('.btn-group');
+
+            if (serverActions && liveActions) {
+              liveActions.innerHTML = serverActions.innerHTML;
+            } else {
+              const serverMenuCell =
+                backgroundRow.querySelector('td:nth-child(5)') ||
+                backgroundRow.querySelector('td:nth-child(4)');
+              const liveMenuCell =
+                row.querySelector('td:nth-child(5)') ||
+                row.querySelector('td:nth-child(4)');
+              if (serverMenuCell && liveMenuCell) {
+                const customUI = liveMenuCell.querySelector('.tk-inline-add');
+                liveMenuCell.innerHTML = serverMenuCell.innerHTML;
+                if (customUI) liveMenuCell.appendChild(customUI);
+              }
+            }
           }
         } else {
           Log(`Quick Add Grid: CardID ${cardId} not found in response DOM.`, 'warn', 'server');

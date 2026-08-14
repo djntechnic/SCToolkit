@@ -403,71 +403,94 @@ export const SETTINGS_CSS = `
 
 /* Quick Add Grid Enhancer */
 .tk-inline-add {
-    display: flex;
-    align-items: stretch;
-    margin-top: 6px;
-    margin-bottom: 2px;
-    opacity: 0.9;
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    margin-top: 4px !important;
+    margin-bottom: 2px !important;
+    width: max-content !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    vertical-align: middle !important;
+    opacity: 0.95;
     transition: opacity 0.2s ease-in-out;
-    width: max-content;
 }
 .tk-inline-add:hover {
     opacity: 1;
 }
 .tk-qty-input {
-    width: 24px;
-    text-align: center;
-    border: 1px solid var(--tk-accent);
-    border-right: none;
-    border-radius: var(--tk-radius-sm) 0 0 var(--tk-radius-sm);
-    font-size: 11px;
-    font-family: var(--tk-font-mono);
-    padding: 2px 0;
-    outline: none;
-    background: var(--tk-bg-elevated);
-    color: var(--tk-text);
-    box-sizing: border-box;
-    height: 22px;
+    width: 28px !important;
+    min-width: 28px !important;
+    max-width: 28px !important;
+    flex: 0 0 28px !important;
+    height: 22px !important;
+    text-align: center !important;
+    border: 1px solid var(--tk-border-strong) !important;
+    border-right: none !important;
+    border-radius: var(--tk-radius-sm) 0 0 var(--tk-radius-sm) !important;
+    font-size: 11px !important;
+    font-family: var(--tk-font-mono) !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    outline: none !important;
+    background: var(--tk-bg-elevated) !important;
+    color: var(--tk-text) !important;
+    box-sizing: border-box !important;
+    line-height: 20px !important;
+    -moz-appearance: textfield;
+}
+.tk-qty-input::-webkit-outer-spin-button,
+.tk-qty-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 .tk-qty-input:focus {
-    border-color: var(--tk-teal);
+    border-color: var(--tk-accent) !important;
 }
 .tk-add-btn {
-    background: var(--tk-accent);
-    color: #ffffff;
-    border: 1px solid var(--tk-accent);
-    border-radius: 0 var(--tk-radius-sm) var(--tk-radius-sm) 0;
-    padding: 0 8px;
-    font-size: 11px;
-    font-family: var(--tk-font-ui);
-    font-weight: 700;
-    cursor: pointer;
-    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
-    box-sizing: border-box;
-    height: 22px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 24px !important;
+    min-width: 24px !important;
+    max-width: 24px !important;
+    flex: 0 0 24px !important;
+    height: 22px !important;
+    background: var(--tk-accent) !important;
+    color: #ffffff !important;
+    border: 1px solid var(--tk-accent) !important;
+    border-radius: 0 var(--tk-radius-sm) var(--tk-radius-sm) 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 12px !important;
+    font-family: var(--tk-font-ui) !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    user-select: none !important;
 }
 .tk-add-btn:hover:not(:disabled) {
-    background: var(--tk-blue);
-    border-color: var(--tk-blue);
+    background: var(--tk-blue) !important;
+    border-color: var(--tk-blue) !important;
 }
 .tk-add-btn:disabled {
-    background: var(--tk-border-strong);
-    border-color: var(--tk-border-strong);
-    color: var(--tk-text-muted);
-    cursor: not-allowed;
+    background: var(--tk-border-strong) !important;
+    border-color: var(--tk-border-strong) !important;
+    color: var(--tk-text-muted) !important;
+    cursor: not-allowed !important;
 }
 .tk-add-btn.tk-add-btn-success {
-    background: var(--tk-green);
-    border-color: var(--tk-green);
-    color: #ffffff;
+    background: var(--tk-green) !important;
+    border-color: var(--tk-green) !important;
+    color: #ffffff !important;
 }
 .tk-add-btn.tk-add-btn-error {
-    background: var(--tk-red);
-    border-color: var(--tk-red);
-    color: #ffffff;
+    background: var(--tk-red) !important;
+    border-color: var(--tk-red) !important;
+    color: #ffffff !important;
 }
 `;
 
