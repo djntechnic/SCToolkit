@@ -8,7 +8,9 @@ import {
   getSportType,
   buildQuickAddPayload,
   injectRowQuickAdd,
-  initQuickAddGridEnhancer
+  initQuickAddGridEnhancer,
+  patchNativeChange2,
+  handleCardRemoval
 } from '../src/modules/quickAddGridEnhancer.js';
 import { resetContracts } from '../src/core/contracts.js';
 
@@ -203,6 +205,55 @@ test('injectRowQuickAdd: click handler dispatches POST and updates row color, ba
   assert.ok(updatedActions, 'Expected element with updated ID nActions5555598518');
   assert.ok(updatedActions.innerHTML.includes('Add Another to Collection'));
   assert.ok(updatedActions.innerHTML.includes('Remove'));
+});
+
+test('patchNativeChange2: wraps window.change2 to prevent unhandled TypeError', () => {
+  const dom = new JSDOM(`<!DOCTYPE html><html><body></body></html>`);
+  global.window = dom.window;
+
+  dom.window.change2 = function () {
+    const el = undefined;
+    el.checked = false; // Intentionally throws TypeError
+  };
+
+  patchNativeChange2();
+
+  assert.equal(typeof dom.window.change2, 'function');
+  assert.equal(dom.window.change2._sctkWrapped, true);
+
+  // Assert calling it does not throw
+  assert.doesNotThrow(() => {
+    dom.window.change2();
+  });
+});
+
+test('handleCardRemoval: resets row to uncollected state when qty is 1', () => {
+  const dom = new JSDOM(`
+    <html>
+      <body>
+        <table>
+          <tr class="collection_row table-success" bgcolor="#9DFF9D">
+            <td><span class="badge bg-primary">1</span></td>
+            <td>101</td>
+            <td><div id="nActions55555"></div></td>
+            <td><i class="fa-solid fa-handshake"></i><a href="/ViewCard.cfm/sid/100/cid/55555/101-Card">Card Link</a></td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `);
+
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  const row = dom.window.document.querySelector('table tr');
+  handleCardRemoval(row, '55555');
+
+  assert.equal(row.getAttribute('bgcolor'), null);
+  const liveBadge = row.querySelector('td:nth-child(1) .badge');
+  assert.equal(liveBadge, null, 'Badge should be removed');
+  const checkbox = row.querySelector('input[type="checkbox"]');
+  assert.ok(checkbox, 'Checkbox should be restored in Column 4');
 });
 
 

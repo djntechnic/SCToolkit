@@ -6288,12 +6288,95 @@ button.tk-add-btn {
       Log(`Quick Add Grid [Card ${cardId}]: Could not locate serverActions or liveActions container.`, "warn", "server");
     }
   }
+  function resetRowToUncollected(row, cardId) {
+    if (!row) return;
+    row.className = "collection_row";
+    row.removeAttribute("bgcolor");
+    row.style.backgroundColor = "";
+    row.setAttribute("onmouseout", "this.bgColor='#F7F9F9';");
+    row.setAttribute("onmouseover", "this.bgColor='#FFCC00';");
+    const liveQtyCell = row.querySelector("td:nth-child(1)");
+    if (liveQtyCell) {
+      liveQtyCell.innerHTML = "";
+    }
+    const liveStatusCell = row.querySelector(".tk-inline-add")?.parentElement || row.querySelector("td:nth-child(4)");
+    if (liveStatusCell) {
+      const customUI = liveStatusCell.querySelector(".tk-inline-add");
+      const checkboxHtml = `<label><input type="checkbox" class="form-check-input" style="transform: scale(1.4); margin: 3px;"></label>`;
+      liveStatusCell.innerHTML = checkboxHtml;
+      if (customUI) {
+        liveStatusCell.appendChild(customUI);
+        const qtyInput = customUI.querySelector(".tk-qty-input");
+        if (qtyInput) qtyInput.value = "1";
+      }
+    }
+    if (window.SCToolkit?.modules?.collectionQuantityCounter?.init) {
+      try {
+        window.SCToolkit.modules.collectionQuantityCounter.init();
+      } catch (err) {
+        Log(`Quick Add Grid: Could not update counter: ${err.message}`, "debug");
+      }
+    } else if (typeof window !== "undefined" && typeof window.CustomEvent !== "undefined") {
+      document.dispatchEvent(new window.CustomEvent("sctk:collection-changed"));
+    }
+    Log(`Quick Add Grid [Card ${cardId}]: Row reset to uncollected state.`, "info", "server");
+  }
+  function patchNativeChange2() {
+    if (typeof window !== "undefined" && typeof window.change2 === "function" && !window.change2._sctkWrapped) {
+      const originalChange2 = window.change2;
+      window.change2 = function(...args) {
+        try {
+          return originalChange2.apply(this, args);
+        } catch (err) {
+          Log(`Quick Add Grid: Suppressed native change2 error (checkbox missing from DOM): ${err.message}`, "debug", "server");
+        }
+      };
+      window.change2._sctkWrapped = true;
+      Log("Quick Add Grid: Patched window.change2 error handler.", "debug", "server");
+    }
+  }
+  function handleCardRemoval(row, cardId) {
+    if (!row) return;
+    const liveQtyCell = row.querySelector("td:nth-child(1)");
+    const existingBadge = liveQtyCell?.querySelector(".badge");
+    if (existingBadge) {
+      const currentQty = parseInt(existingBadge.textContent.trim(), 10) || 1;
+      if (currentQty > 1) {
+        existingBadge.textContent = String(currentQty - 1);
+        Log(`Quick Add Grid [Card ${cardId}]: Decremented quantity badge to ${currentQty - 1}.`, "info", "server");
+      } else {
+        resetRowToUncollected(row, cardId);
+      }
+    } else {
+      resetRowToUncollected(row, cardId);
+    }
+  }
+  if (typeof document !== "undefined" && !document._sctkRemoveListenerWired) {
+    document._sctkRemoveListenerWired = true;
+    document.addEventListener("click", (e) => {
+      patchNativeChange2();
+      const removeLink = e.target?.closest?.('a[href*="CollectionRemove"], a[onclick*="CollectionRemove"], a[href*="RemoveQ"]');
+      if (removeLink) {
+        const row = removeLink.closest("tr");
+        if (row) {
+          const cardLink = row.querySelector('a[href*="/cid/"]');
+          const cardIdMatch = cardLink?.href.match(/\/cid\/(\d+)/i);
+          const cardId = cardIdMatch ? cardIdMatch[1] : "";
+          Log(`Quick Add Grid: Detected Remove click for CardID ${cardId}. Scheduling row cleanup...`, "info", "server");
+          setTimeout(() => {
+            handleCardRemoval(row, cardId);
+          }, 300);
+        }
+      }
+    });
+  }
   function initQuickAddGridEnhancer() {
     const ok = assertContract("quickAddGridEnhancer", [
       { selector: "table tr", label: "table rows" },
       { selector: 'a[href*="/cid/"]', label: "card links", optional: true }
     ]);
     if (!ok) return;
+    patchNativeChange2();
     const listContext = getListContext();
     const contextSetId = getContextSetId();
     const sportType = getSportType();

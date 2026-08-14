@@ -393,6 +393,72 @@ export function resetRowToUncollected(row, cardId) {
 }
 
 /**
+ * Safety patch for TCDB's native window.change2 function to suppress unhandled
+ * TypeErrors when native checkboxes are absent from the DOM.
+ */
+export function patchNativeChange2() {
+  if (typeof window !== 'undefined' && typeof window.change2 === 'function' && !window.change2._sctkWrapped) {
+    const originalChange2 = window.change2;
+    window.change2 = function (...args) {
+      try {
+        return originalChange2.apply(this, args);
+      } catch (err) {
+        Log(`Quick Add Grid: Suppressed native change2 error (checkbox missing from DOM): ${err.message}`, 'debug', 'server');
+      }
+    };
+    window.change2._sctkWrapped = true;
+    Log('Quick Add Grid: Patched window.change2 error handler.', 'debug', 'server');
+  }
+}
+
+/**
+ * Handles card removal updates on a live table row.
+ *
+ * @param {HTMLTableRowElement} row
+ * @param {string} cardId
+ */
+export function handleCardRemoval(row, cardId) {
+  if (!row) return;
+
+  const liveQtyCell = row.querySelector('td:nth-child(1)');
+  const existingBadge = liveQtyCell?.querySelector('.badge');
+
+  if (existingBadge) {
+    const currentQty = parseInt(existingBadge.textContent.trim(), 10) || 1;
+    if (currentQty > 1) {
+      existingBadge.textContent = String(currentQty - 1);
+      Log(`Quick Add Grid [Card ${cardId}]: Decremented quantity badge to ${currentQty - 1}.`, 'info', 'server');
+    } else {
+      resetRowToUncollected(row, cardId);
+    }
+  } else {
+    resetRowToUncollected(row, cardId);
+  }
+}
+
+// Global removal click listener
+if (typeof document !== 'undefined' && !document._sctkRemoveListenerWired) {
+  document._sctkRemoveListenerWired = true;
+  document.addEventListener('click', (e) => {
+    patchNativeChange2();
+    const removeLink = e.target?.closest?.('a[href*="CollectionRemove"], a[onclick*="CollectionRemove"], a[href*="RemoveQ"]');
+    if (removeLink) {
+      const row = removeLink.closest('tr');
+      if (row) {
+        const cardLink = row.querySelector('a[href*="/cid/"]');
+        const cardIdMatch = cardLink?.href.match(/\/cid\/(\d+)/i);
+        const cardId = cardIdMatch ? cardIdMatch[1] : '';
+
+        Log(`Quick Add Grid: Detected Remove click for CardID ${cardId}. Scheduling row cleanup...`, 'info', 'server');
+        setTimeout(() => {
+          handleCardRemoval(row, cardId);
+        }, 300);
+      }
+    }
+  });
+}
+
+/**
  * Initialize Quick Add Grid Enhancer module.
  */
 export function initQuickAddGridEnhancer() {
@@ -402,6 +468,8 @@ export function initQuickAddGridEnhancer() {
   ]);
 
   if (!ok) return;
+
+  patchNativeChange2();
 
   const listContext = getListContext();
   const contextSetId = getContextSetId();
