@@ -20,6 +20,7 @@ import { initCollectionQuantityCounter } from '../modules/collectionQuantityCoun
 import { initSetHierarchyExport } from '../modules/setHierarchyExport.js';
 import { initCollectionDefaulter } from '../modules/collectionDefaulter.js';
 import { initSetDropdownSearchEnhancer } from '../modules/setDropdownSearchEnhancer.js';
+import { initQuickAddGridEnhancer } from '../modules/quickAddGridEnhancer.js';
 
 /**
  * @typedef {object} ModuleDefinition
@@ -116,6 +117,13 @@ export const ModuleRegistry = [
     name: 'Collection Defaulter',
     description: 'Automatically selects a preferred Collection on the ViewCollection (Add / Update) page.',
     init: initCollectionDefaulter,
+    isAsync: false
+  },
+  {
+    id: 'quickAddGridEnhancer',
+    name: 'Quick Add Grid Enhancer',
+    description: 'Injects styled inline quantity inputs and quick-add buttons across Collection, Wantlist, and For Sale/Trade views.',
+    init: initQuickAddGridEnhancer,
     isAsync: false
   }
 ];

@@ -125,6 +125,15 @@ export const DEFAULT_CONFIG = {
       urlMatch: [{ pattern: "/viewcollection\\.cfm", exclude: false }],
       actions: {}
     },
+    quickAddGridEnhancer: {
+      enabled: true,
+      urlMatch: [
+        { pattern: "/viewcollection\\.cfm", exclude: false },
+        { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
+        { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
+      ],
+      actions: {}
+    },
   },
   global: {
     exportBaseDelayMs: EXPORT_CONFIG.baseDelayMs,

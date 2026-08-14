@@ -455,6 +455,15 @@
         enabled: true,
         urlMatch: [{ pattern: "/viewcollection\\.cfm", exclude: false }],
         actions: {}
+      },
+      quickAddGridEnhancer: {
+        enabled: true,
+        urlMatch: [
+          { pattern: "/viewcollection\\.cfm", exclude: false },
+          { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
+          { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false }
+        ],
+        actions: {}
       }
     },
     global: {
@@ -3251,6 +3260,75 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     .tk-route-row { flex-wrap: wrap; }
     .tk-route-row input[type="text"] { flex-basis: 100%; }
 }
+
+/* Quick Add Grid Enhancer */
+.tk-inline-add {
+    display: flex;
+    align-items: stretch;
+    margin-top: 6px;
+    margin-bottom: 2px;
+    opacity: 0.9;
+    transition: opacity 0.2s ease-in-out;
+    width: max-content;
+}
+.tk-inline-add:hover {
+    opacity: 1;
+}
+.tk-qty-input {
+    width: 24px;
+    text-align: center;
+    border: 1px solid var(--tk-accent);
+    border-right: none;
+    border-radius: var(--tk-radius-sm) 0 0 var(--tk-radius-sm);
+    font-size: 11px;
+    font-family: var(--tk-font-mono);
+    padding: 2px 0;
+    outline: none;
+    background: var(--tk-bg-elevated);
+    color: var(--tk-text);
+    box-sizing: border-box;
+    height: 22px;
+}
+.tk-qty-input:focus {
+    border-color: var(--tk-teal);
+}
+.tk-add-btn {
+    background: var(--tk-accent);
+    color: #ffffff;
+    border: 1px solid var(--tk-accent);
+    border-radius: 0 var(--tk-radius-sm) var(--tk-radius-sm) 0;
+    padding: 0 8px;
+    font-size: 11px;
+    font-family: var(--tk-font-ui);
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+    box-sizing: border-box;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.tk-add-btn:hover:not(:disabled) {
+    background: var(--tk-blue);
+    border-color: var(--tk-blue);
+}
+.tk-add-btn:disabled {
+    background: var(--tk-border-strong);
+    border-color: var(--tk-border-strong);
+    color: var(--tk-text-muted);
+    cursor: not-allowed;
+}
+.tk-add-btn.tk-add-btn-success {
+    background: var(--tk-green);
+    border-color: var(--tk-green);
+    color: #ffffff;
+}
+.tk-add-btn.tk-add-btn-error {
+    background: var(--tk-red);
+    border-color: var(--tk-red);
+    color: #ffffff;
+}
 `;
 
   // src/ui/dropdown.js
@@ -5937,6 +6015,181 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     }
   }
 
+  // src/modules/quickAddGridEnhancer.js
+  function getListContext(pathname = window.location.pathname) {
+    const lowerPath = pathname.toLowerCase();
+    if (lowerPath.includes("wantlist")) return "W";
+    if (lowerPath.includes("forsaletrade")) return "S";
+    return "G";
+  }
+  function getContextSetId(pathname = window.location.pathname, search = window.location.search) {
+    const pathMatch = pathname.match(/\/sid\/(\d+)/i);
+    if (pathMatch) return pathMatch[1];
+    const urlParams = new URLSearchParams(search);
+    return urlParams.get("SetID") || "";
+  }
+  function getSportType(search = window.location.search) {
+    const breadcrumb = document.querySelector(".breadcrumb, #topnav");
+    if (breadcrumb) {
+      const typeMatch = breadcrumb.textContent.match(
+        /(Baseball|Basketball|Football|Hockey|Soccer|Racing|Non-Sport)/i
+      );
+      if (typeMatch) return typeMatch[1];
+    }
+    const urlParams = new URLSearchParams(search);
+    return urlParams.get("sp") || "Baseball";
+  }
+  function buildQuickAddPayload({
+    cardId,
+    quantity,
+    listContext = getListContext(),
+    contextSetId = getContextSetId(),
+    sportType = getSportType(),
+    search = window.location.search,
+    href = window.location.href
+  }) {
+    const urlParams = new URLSearchParams(search);
+    const refererUrl = href.split("?")[0];
+    return new URLSearchParams({
+      SetID: contextSetId,
+      CardID: cardId,
+      iID: "",
+      Type: sportType,
+      sReferer: refererUrl,
+      ReturnRow: "0",
+      Filter: urlParams.get("Filter") || "",
+      sTeamID: urlParams.get("sTeamID") || "",
+      PageIndex: urlParams.get("PageIndex") || "1",
+      ColType: "1",
+      sYear: "0",
+      sTeam: "",
+      sCardNum: "",
+      sNote: "",
+      sSetName: "",
+      BasicID: urlParams.get("BasicID") || "",
+      MultiID: urlParams.get("MultiID") || "",
+      AddTo: listContext,
+      Quantity: quantity
+    });
+  }
+  function injectRowQuickAdd(row, context = {}) {
+    const cardLink = row.querySelector('a[href*="/cid/"]');
+    if (!cardLink) return false;
+    const href = cardLink.getAttribute("href") || "";
+    const cidMatch = href.match(/\/cid\/(\d+)/i);
+    if (!cidMatch) return false;
+    const cardId = cidMatch[1];
+    const targetCell = row.querySelector("td:nth-child(4)") || cardLink.closest("td");
+    if (!targetCell || targetCell.querySelector(".tk-inline-add")) return false;
+    const container = document.createElement("div");
+    container.className = "tk-inline-add";
+    const qtyInput = document.createElement("input");
+    qtyInput.type = "number";
+    qtyInput.className = "tk-qty-input";
+    qtyInput.value = "1";
+    qtyInput.min = "1";
+    const actionBtn = document.createElement("button");
+    actionBtn.type = "button";
+    actionBtn.className = "tk-add-btn";
+    actionBtn.textContent = "+";
+    actionBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const addQty = qtyInput.value || "1";
+      const listContext = context.listContext || getListContext();
+      Log(
+        `Quick Add Grid: Executing POST for CardID: ${cardId} | Qty: ${addQty} | List: ${listContext}`,
+        "info",
+        "server"
+      );
+      const payload = buildQuickAddPayload({
+        cardId,
+        quantity: addQty,
+        listContext,
+        contextSetId: context.contextSetId || getContextSetId(),
+        sportType: context.sportType || getSportType()
+      });
+      actionBtn.disabled = true;
+      actionBtn.textContent = "...";
+      actionBtn.classList.remove("tk-add-btn-success", "tk-add-btn-error");
+      try {
+        const response = await fetch("/CollectionAddM2.cfm", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "XMLHttpRequest",
+            Referer: window.location.href
+          },
+          body: payload.toString()
+        });
+        const responseText = await response.text();
+        if (response.ok && !responseText.includes("<title>Error") && !responseText.includes("Login")) {
+          Log(`Quick Add Grid: Server response 200 OK for CardID: ${cardId}. Updating DOM...`, "debug", "server");
+          const virtualDOM = new DOMParser().parseFromString(responseText, "text/html");
+          const backgroundCardLink = virtualDOM.querySelector(`a[href*="/cid/${cardId}"]`);
+          if (backgroundCardLink) {
+            const backgroundRow = backgroundCardLink.closest("tr");
+            const serverQtyCell = backgroundRow ? backgroundRow.querySelector("td:nth-child(1)") : null;
+            const liveQtyCell = row.querySelector("td:nth-child(1)");
+            if (serverQtyCell && liveQtyCell) {
+              liveQtyCell.innerHTML = serverQtyCell.innerHTML;
+            }
+            const serverMenuCell = backgroundRow ? backgroundRow.querySelector("td:nth-child(4)") : null;
+            const liveMenuCell = row.querySelector("td:nth-child(4)");
+            if (serverMenuCell && liveMenuCell) {
+              const customUI = liveMenuCell.querySelector(".tk-inline-add");
+              liveMenuCell.innerHTML = serverMenuCell.innerHTML;
+              if (customUI) liveMenuCell.appendChild(customUI);
+            }
+          } else {
+            Log(`Quick Add Grid: CardID ${cardId} not found in response DOM.`, "warn", "server");
+          }
+          actionBtn.textContent = "✓";
+          actionBtn.classList.add("tk-add-btn-success");
+          setTimeout(() => {
+            actionBtn.textContent = "+";
+            actionBtn.classList.remove("tk-add-btn-success");
+            actionBtn.disabled = false;
+            qtyInput.value = "1";
+          }, 2e3);
+        } else {
+          throw new Error("Transaction rejected by server");
+        }
+      } catch (err) {
+        Log(`Quick Add Grid: Request failed for CardID ${cardId}: ${err.message}`, "error", "server");
+        actionBtn.disabled = false;
+        actionBtn.textContent = "Err";
+        actionBtn.classList.add("tk-add-btn-error");
+      }
+    });
+    container.appendChild(qtyInput);
+    container.appendChild(actionBtn);
+    targetCell.appendChild(container);
+    return true;
+  }
+  function initQuickAddGridEnhancer() {
+    const ok = assertContract("quickAddGridEnhancer", [
+      { selector: "table tr", label: "table rows" },
+      { selector: 'a[href*="/cid/"]', label: "card links", optional: true }
+    ]);
+    if (!ok) return;
+    const listContext = getListContext();
+    const contextSetId = getContextSetId();
+    const sportType = getSportType();
+    Log(
+      `Quick Add Grid Enhancer initialized (Context: ${listContext}, SetID: ${contextSetId || "N/A"}, Sport: ${sportType})`,
+      "info"
+    );
+    const rows = document.querySelectorAll("table tr");
+    let injectedCount = 0;
+    rows.forEach((row) => {
+      if (injectRowQuickAdd(row, { listContext, contextSetId, sportType })) {
+        injectedCount++;
+      }
+    });
+    Log(`Quick Add Grid Enhancer: Injected quick-add controls into ${injectedCount} row(s).`, "debug");
+  }
+
   // src/core/registry.js
   var ModuleRegistry = [
     {
@@ -6020,6 +6273,13 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       name: "Collection Defaulter",
       description: "Automatically selects a preferred Collection on the ViewCollection (Add / Update) page.",
       init: initCollectionDefaulter,
+      isAsync: false
+    },
+    {
+      id: "quickAddGridEnhancer",
+      name: "Quick Add Grid Enhancer",
+      description: "Injects styled inline quantity inputs and quick-add buttons across Collection, Wantlist, and For Sale/Trade views.",
+      init: initQuickAddGridEnhancer,
       isAsync: false
     }
   ];

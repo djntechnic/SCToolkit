@@ -400,4 +400,74 @@ export const SETTINGS_CSS = `
     .tk-route-row { flex-wrap: wrap; }
     .tk-route-row input[type="text"] { flex-basis: 100%; }
 }
+
+/* Quick Add Grid Enhancer */
+.tk-inline-add {
+    display: flex;
+    align-items: stretch;
+    margin-top: 6px;
+    margin-bottom: 2px;
+    opacity: 0.9;
+    transition: opacity 0.2s ease-in-out;
+    width: max-content;
+}
+.tk-inline-add:hover {
+    opacity: 1;
+}
+.tk-qty-input {
+    width: 24px;
+    text-align: center;
+    border: 1px solid var(--tk-accent);
+    border-right: none;
+    border-radius: var(--tk-radius-sm) 0 0 var(--tk-radius-sm);
+    font-size: 11px;
+    font-family: var(--tk-font-mono);
+    padding: 2px 0;
+    outline: none;
+    background: var(--tk-bg-elevated);
+    color: var(--tk-text);
+    box-sizing: border-box;
+    height: 22px;
+}
+.tk-qty-input:focus {
+    border-color: var(--tk-teal);
+}
+.tk-add-btn {
+    background: var(--tk-accent);
+    color: #ffffff;
+    border: 1px solid var(--tk-accent);
+    border-radius: 0 var(--tk-radius-sm) var(--tk-radius-sm) 0;
+    padding: 0 8px;
+    font-size: 11px;
+    font-family: var(--tk-font-ui);
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+    box-sizing: border-box;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.tk-add-btn:hover:not(:disabled) {
+    background: var(--tk-blue);
+    border-color: var(--tk-blue);
+}
+.tk-add-btn:disabled {
+    background: var(--tk-border-strong);
+    border-color: var(--tk-border-strong);
+    color: var(--tk-text-muted);
+    cursor: not-allowed;
+}
+.tk-add-btn.tk-add-btn-success {
+    background: var(--tk-green);
+    border-color: var(--tk-green);
+    color: #ffffff;
+}
+.tk-add-btn.tk-add-btn-error {
+    background: var(--tk-red);
+    border-color: var(--tk-red);
+    color: #ffffff;
+}
 `;
+
