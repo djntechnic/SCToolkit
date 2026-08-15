@@ -105,6 +105,66 @@ export function buildQuickAddPayload({
 }
 
 /**
+ * Check if a row represents a collected / added card item.
+ *
+ * @param {HTMLTableRowElement} row
+ * @returns {boolean}
+ */
+export function isRowCollected(row) {
+  if (!row) return false;
+
+  // 1. Column 1 quantity badge exists
+  const qtyCell = row.querySelector('td:nth-child(1)');
+  if (qtyCell?.querySelector('.badge')) return true;
+
+  // 2. Column 4 status icon exists (handshake, heart, box, img, svg)
+  const statusCell = row.querySelector('td:nth-child(4)');
+  if (statusCell) {
+    if (statusCell.querySelector('img, svg, .fa-handshake, .fa-heart, .fa-box')) return true;
+    const checkbox = statusCell.querySelector('input[type="checkbox"]');
+    if (checkbox?.checked) return true;
+  }
+
+  // 3. Row background indicates collected status (e.g. green table-success or blue table-info or bgcolor)
+  if (
+    row.classList.contains('table-success') ||
+    row.classList.contains('table-info') ||
+    row.classList.contains('table-danger')
+  ) {
+    return true;
+  }
+  const bg = (row.getAttribute('bgcolor') || row.style.backgroundColor || '').toLowerCase();
+  if (bg && bg !== '#ffffff' && bg !== '#f7f9f9' && bg !== 'rgb(247, 249, 249)' && bg !== 'transparent') {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Synchronizes visibility of native checkbox vs custom .tk-inline-add control based on collected status.
+ *
+ * @param {HTMLTableRowElement} row
+ */
+export function syncRowControlVisibility(row) {
+  if (!row) return;
+
+  const customUI = row.querySelector('.tk-inline-add');
+  const nativeCheckbox = row.querySelector('td:nth-child(4) input[type="checkbox"]');
+  const nativeLabel = nativeCheckbox?.closest('label') || nativeCheckbox;
+
+  const collected = isRowCollected(row);
+
+  if (collected) {
+    if (nativeLabel) nativeLabel.style.display = 'none';
+    if (customUI) customUI.style.display = 'inline-flex';
+  } else {
+    if (nativeLabel) nativeLabel.style.display = '';
+    if (customUI) customUI.style.display = 'none';
+  }
+}
+
+/**
  * Process single card row to inject inline quantity input and submit button.
  *
  * @param {HTMLTableRowElement} row
@@ -218,7 +278,28 @@ export function injectRowQuickAdd(row, context = {}) {
   container.appendChild(qtyInput);
   container.appendChild(actionBtn);
   targetCell.appendChild(container);
+
+  // Wire native checkbox change listener to toggle custom UI on first add
+  const nativeCheckbox = targetCell.querySelector('input[type="checkbox"]');
+  if (nativeCheckbox && !nativeCheckbox.dataset.sctkVisWired) {
+    nativeCheckbox.dataset.sctkVisWired = 'true';
+    nativeCheckbox.addEventListener('change', () => {
+      if (nativeCheckbox.checked) {
+        Log(`Quick Add Grid [Card ${cardId}]: Native checkbox checked. Toggling control visibility...`, 'info', 'server');
+        setTimeout(() => {
+          syncRowControlVisibility(row);
+          if (window.SCToolkit?.modules?.collectionQuantityCounter?.init) {
+            window.SCToolkit.modules.collectionQuantityCounter.init();
+          } else if (typeof window !== 'undefined' && typeof window.CustomEvent !== 'undefined') {
+            document.dispatchEvent(new window.CustomEvent('sctk:collection-changed'));
+          }
+        }, 350);
+      }
+    });
+  }
+
   row.dataset.quickAddInjected = 'true';
+  syncRowControlVisibility(row);
   return true;
 }
 
@@ -338,6 +419,8 @@ export function updateRowFromBackground(row, backgroundRow, cardId, addQty, list
   } else {
     Log(`Quick Add Grid [Card ${cardId}]: Could not locate serverActions or liveActions container.`, 'warn', 'server');
   }
+
+  syncRowControlVisibility(row);
 }
 
 /**
@@ -377,6 +460,8 @@ export function resetRowToUncollected(row, cardId) {
       if (qtyInput) qtyInput.value = '1';
     }
   }
+
+  syncRowControlVisibility(row);
 
   // 4. Trigger Collection Quantity Counter update if active
   if (window.SCToolkit?.modules?.collectionQuantityCounter?.init) {

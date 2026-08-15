@@ -10,7 +10,9 @@ import {
   injectRowQuickAdd,
   initQuickAddGridEnhancer,
   patchNativeChange2,
-  handleCardRemoval
+  handleCardRemoval,
+  isRowCollected,
+  syncRowControlVisibility
 } from '../src/modules/quickAddGridEnhancer.js';
 import { resetContracts } from '../src/core/contracts.js';
 
@@ -26,13 +28,15 @@ function makeCardTableDom(url = 'https://www.tcdb.com/ViewCollection.cfm/sid/100
             <tr>
               <td><span class="badge">1</span></td>
               <td>1</td>
-              <td>Mike Trout</td>
+              <td><div id="nActions123"></div></td>
+              <td><i class="fa-solid fa-handshake"></i></td>
               <td><a href="/Person.cfm/pid/123/Mike-Trout">Mike Trout</a></td>
             </tr>
             <tr>
-              <td><span class="badge">0</span></td>
+              <td></td>
               <td>101</td>
-              <td>Shohei Ohtani</td>
+              <td><div id="nActions55555"></div></td>
+              <td><label><input type="checkbox" class="form-check-input"></label></td>
               <td>
                 <a href="/ViewCard.cfm/sid/100/cid/55555/101-Shohei-Ohtani">Card Link</a>
               </td>
@@ -247,6 +251,7 @@ test('handleCardRemoval: resets row to uncollected state when qty is 1', () => {
   global.document = dom.window.document;
 
   const row = dom.window.document.querySelector('table tr');
+  injectRowQuickAdd(row);
   handleCardRemoval(row, '55555');
 
   assert.equal(row.getAttribute('bgcolor'), null);
@@ -254,6 +259,65 @@ test('handleCardRemoval: resets row to uncollected state when qty is 1', () => {
   assert.equal(liveBadge, null, 'Badge should be removed');
   const checkbox = row.querySelector('input[type="checkbox"]');
   assert.ok(checkbox, 'Checkbox should be restored in Column 4');
+  const customUI = row.querySelector('.tk-inline-add');
+  assert.equal(customUI.style.display, 'none', 'Custom UI should be hidden after removal');
+});
+
+test('control visibility: hides custom UI when card is uncollected on ViewCollection / Wantlist / ForSale views', () => {
+  const views = [
+    'https://www.tcdb.com/ViewCollection.cfm/sid/100',
+    'https://www.tcdb.com/ViewCollectionWantlist.cfm/sid/100',
+    'https://www.tcdb.com/ViewCollectionForSaleTrade.cfm/sid/100'
+  ];
+
+  views.forEach((url) => {
+    const dom = makeCardTableDom(url);
+    global.window = dom.window;
+    global.document = dom.window.document;
+
+    const row = dom.window.document.querySelectorAll('table tr')[1];
+    injectRowQuickAdd(row);
+
+    const customUI = row.querySelector('.tk-inline-add');
+    const checkbox = row.querySelector('input[type="checkbox"]');
+
+    assert.ok(customUI, 'Custom UI should be injected');
+    assert.equal(isRowCollected(row), false, `isRowCollected should return false for uncollected card at ${url}`);
+    assert.equal(customUI.style.display, 'none', `Custom UI should be hidden on uncollected card for ${url}`);
+    assert.equal(checkbox.style.display, '', `Native checkbox should be visible on uncollected card for ${url}`);
+  });
+});
+
+test('control visibility: shows custom UI when card is collected on ViewCollection / Wantlist / ForSale views', () => {
+  const dom = new JSDOM(`
+    <html>
+      <body>
+        <table>
+          <tr class="collection_row table-success" bgcolor="#9DFF9D">
+            <td><span class="badge bg-primary">1</span></td>
+            <td>101</td>
+            <td><div id="nActions101"></div></td>
+            <td><i class="fa-solid fa-handshake"></i><a href="/ViewCard.cfm/sid/100/cid/101/101-Card">Card Link</a></td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `);
+
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  const row = dom.window.document.querySelector('table tr');
+  assert.equal(isRowCollected(row), true, 'isRowCollected should return true for collected card');
+
+  injectRowQuickAdd(row);
+
+  const customUI = row.querySelector('.tk-inline-add');
+  assert.equal(customUI.style.display, 'inline-flex', 'Custom UI should be visible for collected card');
+
+  // Manually test syncRowControlVisibility toggle
+  syncRowControlVisibility(row);
+  assert.equal(customUI.style.display, 'inline-flex');
 });
 
 

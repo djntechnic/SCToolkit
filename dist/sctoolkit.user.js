@@ -6111,6 +6111,39 @@ button.tk-add-btn {
       Quantity: quantity
     });
   }
+  function isRowCollected(row) {
+    if (!row) return false;
+    const qtyCell = row.querySelector("td:nth-child(1)");
+    if (qtyCell?.querySelector(".badge")) return true;
+    const statusCell = row.querySelector("td:nth-child(4)");
+    if (statusCell) {
+      if (statusCell.querySelector("img, svg, .fa-handshake, .fa-heart, .fa-box")) return true;
+      const checkbox = statusCell.querySelector('input[type="checkbox"]');
+      if (checkbox?.checked) return true;
+    }
+    if (row.classList.contains("table-success") || row.classList.contains("table-info") || row.classList.contains("table-danger")) {
+      return true;
+    }
+    const bg = (row.getAttribute("bgcolor") || row.style.backgroundColor || "").toLowerCase();
+    if (bg && bg !== "#ffffff" && bg !== "#f7f9f9" && bg !== "rgb(247, 249, 249)" && bg !== "transparent") {
+      return true;
+    }
+    return false;
+  }
+  function syncRowControlVisibility(row) {
+    if (!row) return;
+    const customUI = row.querySelector(".tk-inline-add");
+    const nativeCheckbox = row.querySelector('td:nth-child(4) input[type="checkbox"]');
+    const nativeLabel = nativeCheckbox?.closest("label") || nativeCheckbox;
+    const collected = isRowCollected(row);
+    if (collected) {
+      if (nativeLabel) nativeLabel.style.display = "none";
+      if (customUI) customUI.style.display = "inline-flex";
+    } else {
+      if (nativeLabel) nativeLabel.style.display = "";
+      if (customUI) customUI.style.display = "none";
+    }
+  }
   function injectRowQuickAdd(row, context = {}) {
     const cardLink = row.querySelector('a[href*="/cid/"]');
     if (!cardLink) return false;
@@ -6200,7 +6233,25 @@ button.tk-add-btn {
     container.appendChild(qtyInput);
     container.appendChild(actionBtn);
     targetCell.appendChild(container);
+    const nativeCheckbox = targetCell.querySelector('input[type="checkbox"]');
+    if (nativeCheckbox && !nativeCheckbox.dataset.sctkVisWired) {
+      nativeCheckbox.dataset.sctkVisWired = "true";
+      nativeCheckbox.addEventListener("change", () => {
+        if (nativeCheckbox.checked) {
+          Log(`Quick Add Grid [Card ${cardId}]: Native checkbox checked. Toggling control visibility...`, "info", "server");
+          setTimeout(() => {
+            syncRowControlVisibility(row);
+            if (window.SCToolkit?.modules?.collectionQuantityCounter?.init) {
+              window.SCToolkit.modules.collectionQuantityCounter.init();
+            } else if (typeof window !== "undefined" && typeof window.CustomEvent !== "undefined") {
+              document.dispatchEvent(new window.CustomEvent("sctk:collection-changed"));
+            }
+          }, 350);
+        }
+      });
+    }
     row.dataset.quickAddInjected = "true";
+    syncRowControlVisibility(row);
     return true;
   }
   function updateRowFromBackground(row, backgroundRow, cardId, addQty, listContext) {
@@ -6287,6 +6338,7 @@ button.tk-add-btn {
     } else {
       Log(`Quick Add Grid [Card ${cardId}]: Could not locate serverActions or liveActions container.`, "warn", "server");
     }
+    syncRowControlVisibility(row);
   }
   function resetRowToUncollected(row, cardId) {
     if (!row) return;
@@ -6310,6 +6362,7 @@ button.tk-add-btn {
         if (qtyInput) qtyInput.value = "1";
       }
     }
+    syncRowControlVisibility(row);
     if (window.SCToolkit?.modules?.collectionQuantityCounter?.init) {
       try {
         window.SCToolkit.modules.collectionQuantityCounter.init();
