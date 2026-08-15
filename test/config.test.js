@@ -190,3 +190,15 @@ test('configToXml and xmlToConfig: round-trip preserves all settings', () => {
 test('xmlToConfig: throws descriptive error on invalid XML', () => {
   assert.throws(() => xmlToConfig('<invalid xml>'), /XML Parse Error|Invalid XML/);
 });
+
+test('hotlinks: default config contains Top, Bottom, and Search hotlinks', () => {
+  const hotlinks = DEFAULT_CONFIG.global.hotlinks;
+  assert.ok(Array.isArray(hotlinks));
+  assert.equal(hotlinks.length, 3);
+  assert.equal(hotlinks[0].id, 'top');
+  assert.equal(hotlinks[1].id, 'bottom');
+  assert.equal(hotlinks[2].id, 'search');
+  assert.equal(hotlinks[2].url, 'https://www.tcdb.com/AdvancedSearch.cfm');
+  assert.equal(hotlinks[2].tooltip, 'Perform Advanced Search');
+  assert.equal(hotlinks[2].placement, 3);
+});

@@ -17,6 +17,13 @@ test('extractSid: case-insensitive', () => {
   assert.equal(extractSid('/Checklist.cfm/SID/99/'), '99');
 });
 
+test('extractSid: SetID parameter and Forum path form', () => {
+  assert.equal(extractSid('ChangeLog.cfm?SetID=209616'), '209616');
+  assert.equal(extractSid('ChangeLog.cfm/SetID/209616'), '209616');
+  assert.equal(extractSid('Forum.cfm/Page/S/ID/209616/2019-Topps-Allen-&-Ginter-X'), '209616');
+  assert.equal(extractSid('Forum.cfm/S/ID/209616/2019-Topps-Allen-&-Ginter-X'), '209616');
+});
+
 test('extractSid: absent or empty input yields null', () => {
   assert.equal(extractSid('/Person.cfm/pid/4'), null);
   assert.equal(extractSid(''), null);
@@ -73,6 +80,21 @@ test('extractParentSid: returns null on base set page where only currentSid exis
     </div>
   `);
   assert.equal(extractParentSid(dom.window.document, '10000'), null);
+});
+
+test('extractParentSid: ignores links inside #sctk-toolbar (e.g. pinned sets)', () => {
+  const dom = new JSDOM(`
+    <div id="sctk-toolbar">
+      <div id="tk-pinned">
+        <a class="tk-pin-title" href="https://www.tcdb.com/ViewSet.cfm/sid/560650/2025-Topps-Update">2025 Topps Update</a>
+        <a href="/Inserts.cfm/sid/560650/#InsertSets">INS</a>
+      </div>
+    </div>
+    <div class="menu-linksV">
+      <a href="/ViewSet.cfm/sid/198281/2019-Topps-Allen-&-Ginter">Overview</a>
+    </div>
+  `);
+  assert.equal(extractParentSid(dom.window.document, '198281'), null);
 });
 
 test('deriveSetYear: the href wins when it carries a year', () => {

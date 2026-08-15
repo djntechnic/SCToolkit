@@ -172,10 +172,10 @@ Access the Settings Modal by clicking the **gear icon** in the top toolbar or us
    - Manage pinned sets globally.
    - **Toggle On/Off**: Enable or disable individual pinned sets.
    - **Reorder**: Drag-and-drop rows or use ↑ / ↓ buttons to rearrange pinned set ordering.
-3. **Badges Tab**:
-   - Independently configure **Toolbar Badges** and **Injected Set Link Badges**.
-   - **Toggle On/Off**: Enable or disable specific action buttons (Checklist, Inserts, Parallels, For Sale, Multi, Wantlist, Pin, CSV, Hierarchy).
-   - **Reorder**: Drag-and-drop or use ↑ / ↓ buttons to rearrange button display order live.
+3. **Badges & Hotlinks Tab**:
+   - Independently configure **Toolbar Badges**, **Injected Set Link Badges**, and **Toolbar Hotlinks**.
+   - **Toggle On/Off**: Enable or disable specific action buttons (Checklist, Inserts, Parallels, For Sale, Multi, Wantlist, Pin, CSV, Hierarchy) and center toolbar hotlinks (`Top`, `Bottom`, `Search`, or custom URLs).
+   - **Reorder**: Drag-and-drop or use ↑ / ↓ buttons to rearrange display order live across all badge and hotlink groups.
 4. **Modules Tab**:
    - Lists all 10 modules in alphabetical accordion cards.
    - Expand any module to toggle its master switch, view its target description, toggle sub-actions, or edit its regex route patterns directly.

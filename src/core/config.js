@@ -202,6 +202,37 @@ export const DEFAULT_CONFIG = {
       { key: 'MULTI', enabled: true },
       { key: 'WANTLIST', enabled: true }
     ],
+    hotlinks: [
+      {
+        id: 'top',
+        url: '#top',
+        text: 'Top',
+        tooltip: 'Scroll to top of page',
+        placement: 1,
+        enabled: true,
+        icon: 'chevronUp',
+        action: 'scrollToTop'
+      },
+      {
+        id: 'bottom',
+        url: '#bottom',
+        text: 'Bottom',
+        tooltip: 'Scroll to bottom of page',
+        placement: 2,
+        enabled: true,
+        icon: 'chevronDown',
+        action: 'scrollToBottom'
+      },
+      {
+        id: 'search',
+        url: 'https://www.tcdb.com/AdvancedSearch.cfm',
+        text: 'Search',
+        tooltip: 'Perform Advanced Search',
+        placement: 3,
+        enabled: true,
+        icon: 'search'
+      }
+    ],
   },
 };
 

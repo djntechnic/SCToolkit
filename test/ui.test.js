@@ -263,18 +263,22 @@ test('cleanDocTitle: ViewAll.cfm / ViewAllC.cfm', () => {
 test('cleanDocTitle: ViewSet.cfm', () => {
   assert.equal(
     cleanDocTitle('2022 Bowman Baseball - Trading Card Database'),
-    '2022 Bowman Baseball'
+    '2022 Bowman'
   );
 });
 
 test('cleanDocTitle: Inserts.cfm', () => {
   assert.equal(
     cleanDocTitle('2022 Bowman Baseball - Inserts and Related Sets - Trading Card Database'),
-    '2022 Bowman Baseball'
+    '2022 Bowman'
   );
   assert.equal(
     cleanDocTitle('2022 Bowman Baseball - Inserts and Related Sets'),
-    '2022 Bowman Baseball'
+    '2022 Bowman'
+  );
+  assert.equal(
+    cleanDocTitle('2019 Topps Allen & Ginter Baseball - Inserts and Related Sets | Trading Card Database'),
+    '2019 Topps Allen & Ginter'
   );
 });
 
@@ -283,9 +287,40 @@ test('cleanDocTitle: Checklist.cfm', () => {
     cleanDocTitle('2022 Bowman - Bowman Buybacks Autographs'),
     '2022 Bowman - Bowman Buybacks Autographs'
   );
+  assert.equal(
+    cleanDocTitle('2019 Topps Allen & Ginter Baseball | Trading Card Database'),
+    '2019 Topps Allen & Ginter'
+  );
 });
 
-test('cleanDocTitle: ViewCollectionForSaleTrade.cfm / CollectionAddMultiplesText.cfm / ViewCollectionWantlist.cfm', () => {
+test('cleanDocTitle: all fixture set sub-page titles', () => {
+  assert.equal(cleanDocTitle('2019 Topps Allen & Ginter X Baseball Forum | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Packaging - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Rookies - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('2019 Topps Allen & Ginter X Baseball - Teams | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('External Links - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Errors / Variations - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Contributors - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Collection Summary - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Pricing - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Hall of Famers - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Comments - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Sell Sheets / Ads - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Videos - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Glossary - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('2019 Topps Allen & Ginter X Baseball - Gallery | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('2019 Topps Allen & Ginter X Baseball - Card Rankings | Trading Card Database'), '2019 Topps Allen & Ginter X');
+});
+
+test('cleanDocTitle: ViewCollection*.cfm / Rookies.cfm / CollectionAddMultiplesText.cfm', () => {
+  assert.equal(
+    cleanDocTitle('Collection - 2019 Topps Allen & Ginter Baseball | Trading Card Database'),
+    '2019 Topps Allen & Ginter'
+  );
+  assert.equal(
+    cleanDocTitle('Rookies - 2019 Topps Allen & Ginter Baseball | Trading Card Database'),
+    '2019 Topps Allen & Ginter'
+  );
   assert.equal(
     cleanDocTitle('Collection - 2022 Bowman - Bowman Buybacks Autographs'),
     '2022 Bowman - Bowman Buybacks Autographs'

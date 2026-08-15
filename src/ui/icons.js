@@ -106,6 +106,11 @@ export const ICONS = {
     strokeWidth: 2,
     body: '<path d="M12 12V3"/><path d="m8 8 4 4 4-4"/><path d="M4 16h16"/><path d="M4 16v4"/><path d="M12 16v4"/><path d="M20 16v4"/>',
   },
+  search: {
+    size: 12,
+    strokeWidth: 2,
+    body: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  },
 };
 
 /** DOM id of the injected sprite, so a second injection can be skipped. */

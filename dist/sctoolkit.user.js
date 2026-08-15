@@ -531,6 +531,37 @@
         { key: "FOR_SALE", enabled: true },
         { key: "MULTI", enabled: true },
         { key: "WANTLIST", enabled: true }
+      ],
+      hotlinks: [
+        {
+          id: "top",
+          url: "#top",
+          text: "Top",
+          tooltip: "Scroll to top of page",
+          placement: 1,
+          enabled: true,
+          icon: "chevronUp",
+          action: "scrollToTop"
+        },
+        {
+          id: "bottom",
+          url: "#bottom",
+          text: "Bottom",
+          tooltip: "Scroll to bottom of page",
+          placement: 2,
+          enabled: true,
+          icon: "chevronDown",
+          action: "scrollToBottom"
+        },
+        {
+          id: "search",
+          url: "https://www.tcdb.com/AdvancedSearch.cfm",
+          text: "Search",
+          tooltip: "Perform Advanced Search",
+          placement: 3,
+          enabled: true,
+          icon: "search"
+        }
       ]
     }
   };
@@ -963,6 +994,11 @@
       size: 12,
       strokeWidth: 2,
       body: '<path d="M12 12V3"/><path d="m8 8 4 4 4-4"/><path d="M4 16h16"/><path d="M4 16v4"/><path d="M12 16v4"/><path d="M20 16v4"/>'
+    },
+    search: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'
     }
   };
   var SPRITE_ID = "sctk-icon-sprite";
@@ -984,6 +1020,57 @@
     const def = ICONS[name];
     if (!def) return "";
     return `<svg class="tk-icon" width="${def.size}" height="${def.size}" aria-hidden="true"><use href="#${symbolId(name)}"/></svg>`;
+  }
+
+  // src/core/sid.js
+  function extractSid(url) {
+    if (!url) return null;
+    const str = String(url);
+    const match = str.match(/(?:sid|setid)[=/](\d+)/i) || str.match(/\/(?:page\/s|s)\/id\/(\d+)/i);
+    return match ? match[1] : null;
+  }
+  function extractParentSid(doc = document, currentSid = null) {
+    if (!doc || typeof doc.querySelector !== "function") return null;
+    const getHref = (el) => (el ? el.getAttribute ? el.getAttribute("href") || el.href : el.href : "") || "";
+    const isToolkitEl = (el) => !!(el && el.closest && el.closest("#sctk-toolbar, [data-sctk], .sctk-element, .tk-dropdown, .tk-pin-item, .tk-injected-badge-group"));
+    const candidateAnchors = Array.from(
+      doc.querySelectorAll(
+        '.menu-linksV a, .menu-listV a, #offcanvas a, #content a[href*="ViewSet.cfm/sid/"], a[href*="ViewSet.cfm/sid/"]'
+      )
+    ).filter((a) => !isToolkitEl(a));
+    const overviewLink = candidateAnchors.find((a) => {
+      const text = (a.textContent || "").trim().toLowerCase();
+      const href = getHref(a).toLowerCase();
+      return text.includes("overview") && (href.includes("viewset.cfm/sid/") || href.includes("viewset.cfm?sid="));
+    });
+    if (overviewLink) {
+      const sid = extractSid(getHref(overviewLink));
+      if (sid && sid !== currentSid) return sid;
+    }
+    const menuAnchors = Array.from(
+      doc.querySelectorAll(".menu-linksV a, .menu-listV a, #offcanvas a")
+    ).filter((a) => !isToolkitEl(a));
+    for (const link of menuAnchors) {
+      const sid = extractSid(getHref(link));
+      if (sid && sid !== currentSid) return sid;
+    }
+    const breadcrumbLinks = Array.from(
+      doc.querySelectorAll(
+        '.breadcrumb a[href*="/sid/"], .breadcrumb a[href*="sid="], ol.breadcrumb a[href*="/sid/"], ul.breadcrumb a[href*="/sid/"], nav a[href*="/sid/"]'
+      )
+    ).filter((a) => !isToolkitEl(a));
+    for (const link of breadcrumbLinks) {
+      const sid = extractSid(getHref(link));
+      if (sid && sid !== currentSid) return sid;
+    }
+    const headerLink = doc.querySelector(
+      '#setname-content h1 a[href*="/sid/"], #main-content-area h1 a[href*="/sid/"]'
+    );
+    if (headerLink && !isToolkitEl(headerLink)) {
+      const sid = extractSid(getHref(headerLink));
+      if (sid && sid !== currentSid) return sid;
+    }
+    return null;
   }
 
   // src/core/routes.js
@@ -1019,7 +1106,7 @@
      * predicates rather than re-listing the same seven path fragments, so adding
      * a set-scoped route cannot leave this out of date.
      */
-    isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()),
+    isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()) || !!extractSid(typeof window !== "undefined" ? window.location.href : ""),
     hasPagination: (root = document) => !path().includes("addmultiples") && (!!root.querySelector(".pagination") || Routes.isSetPage() || Routes.isCollection() || Routes.isPlayerCollection())
   };
 
@@ -1277,50 +1364,6 @@
       installFilter(scope);
     }
     observeChecklistFilter();
-  }
-
-  // src/core/sid.js
-  function extractSid(url) {
-    if (!url) return null;
-    const match = String(url).match(/sid[=/](\d+)/i);
-    return match ? match[1] : null;
-  }
-  function extractParentSid(doc = document, currentSid = null) {
-    if (!doc || typeof doc.querySelector !== "function") return null;
-    const getHref = (el) => (el ? el.getAttribute ? el.getAttribute("href") || el.href : el.href : "") || "";
-    const candidateAnchors = Array.from(
-      doc.querySelectorAll(
-        '.menu-linksV a, .menu-listV a, #offcanvas a, #content a[href*="ViewSet.cfm/sid/"], a[href*="ViewSet.cfm/sid/"]'
-      )
-    );
-    const overviewLink = candidateAnchors.find((a) => {
-      const text = (a.textContent || "").trim().toLowerCase();
-      const href = getHref(a).toLowerCase();
-      return text.includes("overview") || href.includes("viewset.cfm/sid/");
-    });
-    if (overviewLink) {
-      const sid = extractSid(getHref(overviewLink));
-      if (sid && sid !== currentSid) return sid;
-    }
-    for (const link of candidateAnchors) {
-      const sid = extractSid(getHref(link));
-      if (sid && sid !== currentSid) return sid;
-    }
-    const breadcrumbLinks = doc.querySelectorAll(
-      '.breadcrumb a[href*="/sid/"], .breadcrumb a[href*="sid="], ol.breadcrumb a[href*="/sid/"], ul.breadcrumb a[href*="/sid/"], nav a[href*="/sid/"]'
-    );
-    for (const link of breadcrumbLinks) {
-      const sid = extractSid(getHref(link));
-      if (sid && sid !== currentSid) return sid;
-    }
-    const headerLink = doc.querySelector(
-      '#setname-content h1 a[href*="/sid/"], #main-content-area h1 a[href*="/sid/"]'
-    );
-    if (headerLink) {
-      const sid = extractSid(getHref(headerLink));
-      if (sid && sid !== currentSid) return sid;
-    }
-    return null;
   }
 
   // src/data/csv.js
@@ -3437,9 +3480,16 @@ button.tk-add-btn {
   function cleanDocTitle(rawTitle) {
     let t = (rawTitle !== void 0 ? rawTitle : typeof document !== "undefined" ? document.title : "") || "";
     t = t.replace(/\s*([|-])\s*(Trading Card Database|TCDB).*/i, "");
-    t = t.replace(/^(Collection(\s+[^-\n]+)?|.*?'s\s+Collection)\s*-\s*/i, "");
     t = t.replace(
-      /\s*-\s*(Inserts and Related Sets|Inserts & Related Sets|Inserts|Checklist|Overview|Cards|For Sale\/Trade|For Sale|Trade|Wantlist|Add Multiples(\s+Text)?|Add\/Edit|Member Ratings|Ratings|User Comments|Comments|Price Guide|Trivia|Gallery|Errors\s*\/\s*Variations|Packaging|Documentation)\s*$/i,
+      /^(Collection(\s+[^-\n]+)?|.*?'s\s+Collection|Rookies|Errors(\s*\/\s*Variations)?|Gallery|Packaging|Trivia|Comments|Member\s+Ratings|Ratings|Price\s+Guide|Pricing|Overview|Hall\s+of\s+(?:Famers|Teams|Fame)|Teams|Coaches|Umpires|External\s+Links|Contributors|Sell\s+Sheets(\s*\/\s*Ads)?|Videos|Glossary|Card\s+Rankings)\s*-\s*/i,
+      ""
+    );
+    t = t.replace(
+      /\s*(?:-\s*|\b(?:Baseball|Basketball|Football|Hockey|Soccer|Racing|Golf|Boxing|MMA|Wrestling|Bowling|Tennis|Track\s+(?:&|and)\s+Field|Multi-Sport|Non-Sport|Gaming|College)\s+)?(Inserts and Related Sets|Inserts & Related Sets|Inserts|Checklist|Overview|Cards|For Sale\/Trade|For Sale|Trade|Wantlist|Add Multiples(\s+Text)?|Add\/Edit|Member Ratings|Ratings|User Comments|Comments|Price Guide|Pricing|Trivia|Gallery|Errors\s*\/\s*Variations|Packaging|Documentation|Teams|External Links|Contributors|Sell Sheets(\s*\/\s*Ads)?|Videos|Glossary|Card Rankings|Forum)\s*$/i,
+      ""
+    );
+    t = t.replace(
+      /\s+\b(Baseball|Basketball|Football|Hockey|Soccer|Racing|Golf|Boxing|MMA|Wrestling|Bowling|Tennis|Track\s+(?:&|and)\s+Field|Multi-Sport|Non-Sport|Gaming|College)\b(?=\s*-|\s*$)(?!\s+Sets\b)/i,
       ""
     );
     t = t.replace(/\s*[-|:/]\s*$/g, "");
@@ -3605,27 +3655,38 @@ button.tk-add-btn {
       if (!container) return;
       container.innerHTML = "";
       const currentSid = extractSid(window.location.href);
-      const scrollTopBtn = document.createElement("button");
-      scrollTopBtn.type = "button";
-      scrollTopBtn.className = "tk-scroll-btn";
-      scrollTopBtn.innerHTML = `${icon("chevronUp")}<span>Top</span>`;
-      scrollTopBtn.title = "Scroll to top of page";
-      scrollTopBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
-      container.appendChild(scrollTopBtn);
-      const scrollBottomBtn = document.createElement("button");
-      scrollBottomBtn.type = "button";
-      scrollBottomBtn.className = "tk-scroll-btn";
-      scrollBottomBtn.innerHTML = `${icon("chevronDown")}<span>Bottom</span>`;
-      scrollBottomBtn.title = "Scroll to bottom of page";
-      scrollBottomBtn.addEventListener("click", () => {
-        const footer = document.querySelector("#bottomnav, footer, #footer, .footer");
-        if (footer) {
-          footer.scrollIntoView({ behavior: "smooth", block: "start" });
+      const rawHotlinks = Config.global?.hotlinks || [];
+      const hotlinks = Array.isArray(rawHotlinks) ? [...rawHotlinks] : [];
+      hotlinks.filter((hl) => hl.enabled !== false).sort((a, b) => Number(a.placement || 0) - Number(b.placement || 0)).forEach((hl) => {
+        const isAction = hl.action || hl.url === "#top" || hl.url === "#bottom";
+        const el = document.createElement(isAction ? "button" : "a");
+        el.className = "tk-scroll-btn tk-hotlink-btn";
+        el.title = hl.tooltip || hl.text || "";
+        if (isAction) {
+          el.type = "button";
+          el.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (hl.action === "scrollToTop" || hl.url === "#top") {
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            } else if (hl.action === "scrollToBottom" || hl.url === "#bottom") {
+              const footer = document.querySelector("#bottomnav, footer, #footer, .footer");
+              if (footer) {
+                footer.scrollIntoView({ behavior: "smooth", block: "start" });
+              } else {
+                window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+              }
+            } else if (hl.url) {
+              window.location.href = Utils.toFullUrl(hl.url);
+            }
+          });
         } else {
-          window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+          el.href = Utils.toFullUrl(hl.url);
         }
+        const iconName = hl.icon || (hl.id === "top" ? "chevronUp" : hl.id === "bottom" ? "chevronDown" : hl.id === "search" ? "search" : null);
+        const iconHtml = iconName ? icon(iconName) : "";
+        el.innerHTML = `${iconHtml}<span>${Utils.escape.html(hl.text || "")}</span>`;
+        container.appendChild(el);
       });
-      container.appendChild(scrollBottomBtn);
       if (Routes.isCardPage()) {
         const titleNode = document.querySelector("#setname-content h1") || document.querySelector("#main-content-area h1");
         const subTitleNode = document.querySelector("#setname-content h3") || document.querySelector("#main-content-area h3");
@@ -3648,13 +3709,36 @@ button.tk-add-btn {
       }
       if (currentSid && Routes.isSetPage()) {
         let setName = cleanDocTitle();
-        if (!setName) {
-          const setHeader = document.querySelector("#setname-content h1") || document.querySelector("#main-content-area h2") || document.querySelector("#main-content-area h1");
+        const genericLabels = [
+          "change log",
+          "forum",
+          "change log prices",
+          "recently added",
+          "inaccuracy reports",
+          "sctoolkit active",
+          "set view"
+        ];
+        if (!setName || genericLabels.includes(setName.toLowerCase())) {
+          const setHeader = document.querySelector("#setname-content h1") || document.querySelector("#main-content-area h2") || document.querySelector("#main-content-area h1") || document.querySelector("h1.site");
           const subHeader = document.querySelector("#setname-content h3") || document.querySelector("#main-content-area h3");
-          if (setHeader && !setHeader.innerText.toLowerCase().includes("set links")) {
+          if (setHeader && !setHeader.innerText.toLowerCase().includes("set links") && !setHeader.innerText.toLowerCase().includes("change log")) {
             setName = setHeader.innerText.replace(/\s*-\s*Cards$/i, "").trim();
           }
-          if (subHeader && !setName.includes(subHeader.innerText.trim())) {
+          if (!setName || genericLabels.includes(setName.toLowerCase())) {
+            const viewSetLink = document.querySelector(`a[href*="ViewSet.cfm/sid/${currentSid}"], a[href*="ViewSet.cfm?sid=${currentSid}"], a[href*="/sid/${currentSid}/"]`);
+            if (viewSetLink) {
+              const titleAttr = viewSetLink.getAttribute("title");
+              if (titleAttr && titleAttr.toLowerCase().startsWith("navigate to ")) {
+                setName = titleAttr.replace(/^navigate to /i, "").trim();
+              } else {
+                const linkText = viewSetLink.innerText.trim();
+                if (linkText && !genericLabels.includes(linkText.toLowerCase()) && linkText !== "View") {
+                  setName = cleanDocTitle(linkText);
+                }
+              }
+            }
+          }
+          if (subHeader && setName && !setName.includes(subHeader.innerText.trim())) {
             setName += (setName ? " - " : "") + subHeader.innerText.trim();
           }
         }
@@ -6404,24 +6488,26 @@ button.tk-add-btn {
       resetRowToUncollected(row, cardId);
     }
   }
-  if (typeof document !== "undefined" && !document._sctkRemoveListenerWired) {
-    document._sctkRemoveListenerWired = true;
-    document.addEventListener("click", (e) => {
-      patchNativeChange2();
-      const removeLink = e.target?.closest?.('a[href*="CollectionRemove"], a[onclick*="CollectionRemove"], a[href*="RemoveQ"]');
-      if (removeLink) {
-        const row = removeLink.closest("tr");
-        if (row) {
-          const cardLink = row.querySelector('a[href*="/cid/"]');
-          const cardIdMatch = cardLink?.href.match(/\/cid\/(\d+)/i);
-          const cardId = cardIdMatch ? cardIdMatch[1] : "";
-          Log(`Quick Add Grid: Detected Remove click for CardID ${cardId}. Scheduling row cleanup...`, "info", "server");
-          setTimeout(() => {
-            handleCardRemoval(row, cardId);
-          }, 300);
+  function setupRemoveListener() {
+    if (typeof document !== "undefined" && !document._sctkRemoveListenerWired) {
+      document._sctkRemoveListenerWired = true;
+      document.addEventListener("click", (e) => {
+        patchNativeChange2();
+        const removeLink = e.target?.closest?.('a[href*="CollectionRemove"], a[onclick*="CollectionRemove"], a[href*="RemoveQ"]');
+        if (removeLink) {
+          const row = removeLink.closest("tr");
+          if (row) {
+            const cardLink = row.querySelector('a[href*="/cid/"]');
+            const cardIdMatch = cardLink?.href.match(/\/cid\/(\d+)/i);
+            const cardId = cardIdMatch ? cardIdMatch[1] : "";
+            Log(`Quick Add Grid: Detected Remove click for CardID ${cardId}. Scheduling row cleanup...`, "info", "server");
+            setTimeout(() => {
+              handleCardRemoval(row, cardId);
+            }, 300);
+          }
         }
-      }
-    });
+      });
+    }
   }
   function initQuickAddGridEnhancer() {
     const ok = assertContract("quickAddGridEnhancer", [
@@ -6430,6 +6516,7 @@ button.tk-add-btn {
     ]);
     if (!ok) return;
     patchNativeChange2();
+    setupRemoveListener();
     const listContext = getListContext();
     const contextSetId = getContextSetId();
     const sportType = getSportType();
@@ -6813,7 +6900,7 @@ button.tk-add-btn {
       const badgesTab = document.createElement("button");
       badgesTab.type = "button";
       badgesTab.className = "tk-settings-tab";
-      badgesTab.textContent = "Badges";
+      badgesTab.textContent = "Badges & Hotlinks";
       tabBar.append(globalTab, pinsTab, badgesTab, routesTab, regexTab, routeTesterTab, diagTab);
       const content = document.createElement("div");
       content.id = "tk-settings-tab-content";
@@ -7020,12 +7107,12 @@ button.tk-add-btn {
       pane.id = "tk-settings-badges";
       const title = document.createElement("div");
       title.className = "tk-settings-section-title";
-      title.textContent = "Badge Configuration";
+      title.textContent = "Badges & Hotlinks Configuration";
       pane.appendChild(title);
       const hint = document.createElement("div");
       hint.className = "tk-settings-hint";
       hint.style.marginBottom = "12px";
-      hint.textContent = "Toggle individual action badges on/off and drag rows (or use the ↑↓ buttons) to set their order. Changes apply immediately to the toolbar and injected set-link badges.";
+      hint.textContent = "Configure toolbar action badges, set-link badges, and center-toolbar hotlinks (Top, Bottom, Search, or custom links). Changes apply immediately to the toolbar and page actions.";
       pane.appendChild(hint);
       const buildSection = (sectionTitle, configKey, onApply) => {
         const section = document.createElement("div");
@@ -7155,6 +7242,228 @@ button.tk-add-btn {
         rebuild();
         return section;
       };
+      const buildHotlinksSection = (onApply) => {
+        const section = document.createElement("div");
+        section.style.cssText = "margin-top:24px;border-top:1px solid var(--tk-border);padding-top:16px;margin-bottom:20px;";
+        const secTitle = document.createElement("div");
+        secTitle.style.cssText = "font-family:var(--tk-font-mono);font-size:11px;font-weight:700;color:var(--tk-teal);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;";
+        secTitle.textContent = "Toolbar Hotlinks Configuration";
+        section.appendChild(secTitle);
+        const secHint = document.createElement("div");
+        secHint.className = "tk-settings-hint";
+        secHint.style.marginBottom = "12px";
+        secHint.textContent = "Configure center toolbar shortcut hotlinks (Top, Bottom, Search, or custom links). Set Link Text, Link URL, Tooltip, Placement order, and Enable/Disable status.";
+        section.appendChild(secHint);
+        const list = document.createElement("div");
+        list.className = "tk-hotlinks-config-list";
+        section.appendChild(list);
+        const flush = () => {
+          SettingsUI._persist();
+          onApply();
+        };
+        const rebuild = () => {
+          list.innerHTML = "";
+          const hotlinks = Config.global.hotlinks || [];
+          hotlinks.forEach((hl, idx) => {
+            const card = document.createElement("div");
+            card.className = "tk-pin-config-row" + (hl.enabled === false ? " tk-pin-disabled" : "");
+            card.style.cssText = "background:var(--tk-bg-base);border:1px solid var(--tk-border);border-radius:var(--tk-radius-sm);padding:10px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;";
+            card.draggable = true;
+            const topRow = document.createElement("div");
+            topRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--tk-border);padding-bottom:6px;";
+            const leftHeader = document.createElement("div");
+            leftHeader.style.cssText = "display:inline-flex;align-items:center;gap:6px;";
+            const handle = document.createElement("span");
+            handle.className = "tk-pin-drag-handle";
+            handle.title = "Drag to reorder";
+            handle.innerHTML = "&#9776;";
+            handle.setAttribute("aria-hidden", "true");
+            leftHeader.appendChild(handle);
+            const toggle = document.createElement("input");
+            toggle.type = "checkbox";
+            toggle.className = "tk-pin-config-toggle";
+            toggle.checked = hl.enabled !== false;
+            toggle.title = toggle.checked ? "Disable hotlink" : "Enable hotlink";
+            toggle.addEventListener("change", () => {
+              hl.enabled = toggle.checked;
+              card.classList.toggle("tk-pin-disabled", !toggle.checked);
+              flush();
+            });
+            leftHeader.appendChild(toggle);
+            const nameWrap = document.createElement("span");
+            nameWrap.className = "tk-pin-config-name";
+            nameWrap.style.cssText = "font-family:var(--tk-font-mono);font-size:11px;font-weight:700;color:var(--tk-text);";
+            nameWrap.textContent = hl.text || hl.id || `Hotlink ${idx + 1}`;
+            leftHeader.appendChild(nameWrap);
+            topRow.appendChild(leftHeader);
+            const actions = document.createElement("span");
+            actions.className = "tk-pin-config-actions";
+            const upBtn = document.createElement("button");
+            upBtn.type = "button";
+            upBtn.className = "tk-pin-reorder-btn";
+            upBtn.title = "Move up";
+            upBtn.setAttribute("aria-label", `Move ${hl.text || hl.id} up`);
+            upBtn.innerHTML = "&#8593;";
+            upBtn.disabled = idx === 0;
+            upBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              if (idx === 0) return;
+              const arr = Config.global.hotlinks || [];
+              [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+              arr.forEach((item, i) => {
+                item.placement = i + 1;
+              });
+              Config.global.hotlinks = arr;
+              flush();
+              rebuild();
+            });
+            const downBtn = document.createElement("button");
+            downBtn.type = "button";
+            downBtn.className = "tk-pin-reorder-btn";
+            downBtn.title = "Move down";
+            downBtn.setAttribute("aria-label", `Move ${hl.text || hl.id} down`);
+            downBtn.innerHTML = "&#8595;";
+            downBtn.disabled = idx === hotlinks.length - 1;
+            downBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              if (idx === hotlinks.length - 1) return;
+              const arr = Config.global.hotlinks || [];
+              [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+              arr.forEach((item, i) => {
+                item.placement = i + 1;
+              });
+              Config.global.hotlinks = arr;
+              flush();
+              rebuild();
+            });
+            actions.appendChild(upBtn);
+            actions.appendChild(downBtn);
+            if (hl.id !== "top" && hl.id !== "bottom" && hl.id !== "search") {
+              const delBtn = document.createElement("button");
+              delBtn.type = "button";
+              delBtn.className = "tk-pin-remove-btn";
+              delBtn.title = "Remove hotlink";
+              delBtn.innerHTML = icon("x");
+              delBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                Config.global.hotlinks.splice(idx, 1);
+                (Config.global.hotlinks || []).forEach((item, i) => {
+                  item.placement = i + 1;
+                });
+                flush();
+                rebuild();
+              });
+              actions.appendChild(delBtn);
+            }
+            topRow.appendChild(actions);
+            card.appendChild(topRow);
+            card.addEventListener("dragstart", (e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", String(idx));
+              setTimeout(() => card.classList.add("tk-pin-row-dragging"), 0);
+            });
+            card.addEventListener("dragend", () => {
+              card.classList.remove("tk-pin-row-dragging");
+              list.querySelectorAll(".tk-pin-row-drag-over").forEach((r) => r.classList.remove("tk-pin-row-drag-over"));
+            });
+            card.addEventListener("dragover", (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              list.querySelectorAll(".tk-pin-row-drag-over").forEach((r) => r.classList.remove("tk-pin-row-drag-over"));
+              card.classList.add("tk-pin-row-drag-over");
+            });
+            card.addEventListener("dragleave", () => {
+              card.classList.remove("tk-pin-row-drag-over");
+            });
+            card.addEventListener("drop", (e) => {
+              e.preventDefault();
+              card.classList.remove("tk-pin-row-drag-over");
+              const srcIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+              if (isNaN(srcIdx) || srcIdx === idx) return;
+              const arr = Config.global.hotlinks || [];
+              const [moved] = arr.splice(srcIdx, 1);
+              arr.splice(idx, 0, moved);
+              arr.forEach((item, i) => {
+                item.placement = i + 1;
+              });
+              Config.global.hotlinks = arr;
+              flush();
+              rebuild();
+            });
+            const fieldsRow = document.createElement("div");
+            fieldsRow.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1.5fr;gap:8px;";
+            const textGroup = document.createElement("div");
+            const textLabel = document.createElement("label");
+            textLabel.style.cssText = "display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;";
+            textLabel.textContent = "Link Text";
+            const textInput = document.createElement("input");
+            textInput.type = "text";
+            textInput.value = hl.text || "";
+            textInput.style.cssText = "width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;";
+            textInput.addEventListener("change", () => {
+              hl.text = textInput.value.trim();
+              flush();
+            });
+            textGroup.appendChild(textLabel);
+            textGroup.appendChild(textInput);
+            const urlGroup = document.createElement("div");
+            const urlLabel = document.createElement("label");
+            urlLabel.style.cssText = "display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;";
+            urlLabel.textContent = "Link URL (relative/full)";
+            const urlInput = document.createElement("input");
+            urlInput.type = "text";
+            urlInput.value = hl.url || "";
+            urlInput.style.cssText = "width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;";
+            urlInput.addEventListener("change", () => {
+              hl.url = urlInput.value.trim();
+              flush();
+            });
+            urlGroup.appendChild(urlLabel);
+            urlGroup.appendChild(urlInput);
+            const tooltipGroup = document.createElement("div");
+            const tooltipLabel = document.createElement("label");
+            tooltipLabel.style.cssText = "display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;";
+            tooltipLabel.textContent = "Link Tooltip";
+            const tooltipInput = document.createElement("input");
+            tooltipInput.type = "text";
+            tooltipInput.value = hl.tooltip || "";
+            tooltipInput.style.cssText = "width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;";
+            tooltipInput.addEventListener("change", () => {
+              hl.tooltip = tooltipInput.value.trim();
+              flush();
+            });
+            tooltipGroup.appendChild(tooltipLabel);
+            tooltipGroup.appendChild(tooltipInput);
+            fieldsRow.appendChild(textGroup);
+            fieldsRow.appendChild(urlGroup);
+            fieldsRow.appendChild(tooltipGroup);
+            card.appendChild(fieldsRow);
+            list.appendChild(card);
+          });
+          const addBtn = document.createElement("button");
+          addBtn.type = "button";
+          addBtn.className = "sctk-btn";
+          addBtn.style.cssText = "margin-top:4px;font-size:10px;padding:4px 10px;";
+          addBtn.textContent = "+ Add Custom Hotlink";
+          addBtn.addEventListener("click", () => {
+            if (!Config.global.hotlinks) Config.global.hotlinks = [];
+            const nextPlacement = Config.global.hotlinks.length + 1;
+            Config.global.hotlinks.push({
+              id: `custom_${Date.now()}`,
+              text: "Link",
+              url: "/",
+              tooltip: "Custom link",
+              placement: nextPlacement,
+              enabled: true
+            });
+            flush();
+            rebuild();
+          });
+          list.appendChild(addBtn);
+        };
+        rebuild();
+        return section;
+      };
       pane.appendChild(buildSection(
         "Toolbar Badges",
         "toolbarBadges",
@@ -7165,6 +7474,7 @@ button.tk-add-btn {
         "setLinkBadges",
         () => reinjectSetActions()
       ));
+      pane.appendChild(buildHotlinksSection(() => Toolbar.renderCenterContext()));
       return pane;
     },
     _buildModulesPane: () => {

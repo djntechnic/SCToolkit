@@ -320,4 +320,33 @@ test('control visibility: shows custom UI when card is collected on ViewCollecti
   assert.equal(customUI.style.display, 'inline-flex');
 });
 
+test('remove listener: only wires when initQuickAddGridEnhancer is called', () => {
+  const dom = new JSDOM(`
+    <html>
+      <body>
+        <table>
+          <tr class="collection_row table-success" bgcolor="#9DFF9D">
+            <td><span class="badge bg-primary">1</span></td>
+            <td>101</td>
+            <td><div id="nActions101"><a href="/CollectionRemove.cfm?cid=101">Remove</a></div></td>
+            <td><i class="fa-solid fa-handshake"></i><a href="/ViewCard.cfm/sid/100/cid/101/101-Card">Card Link</a></td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `);
+
+  global.window = dom.window;
+  global.document = dom.window.document;
+
+  // Before init: listener should not be wired
+  assert.equal(dom.window.document._sctkRemoveListenerWired, undefined);
+
+  resetContracts();
+  initQuickAddGridEnhancer();
+
+  // After init: listener should be wired
+  assert.equal(dom.window.document._sctkRemoveListenerWired, true);
+});
+
 

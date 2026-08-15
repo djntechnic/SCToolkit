@@ -209,7 +209,7 @@ export const SettingsUI = {
     const badgesTab = document.createElement('button');
     badgesTab.type = 'button';
     badgesTab.className = 'tk-settings-tab';
-    badgesTab.textContent = 'Badges';
+    badgesTab.textContent = 'Badges & Hotlinks';
 
     tabBar.append(globalTab, pinsTab, badgesTab, routesTab, regexTab, routeTesterTab, diagTab);
 
@@ -462,15 +462,15 @@ export const SettingsUI = {
 
     const title = document.createElement('div');
     title.className = 'tk-settings-section-title';
-    title.textContent = 'Badge Configuration';
+    title.textContent = 'Badges & Hotlinks Configuration';
     pane.appendChild(title);
 
     const hint = document.createElement('div');
     hint.className = 'tk-settings-hint';
     hint.style.marginBottom = '12px';
     hint.textContent =
-      'Toggle individual action badges on/off and drag rows (or use the ↑↓ buttons) to set their order. ' +
-      'Changes apply immediately to the toolbar and injected set-link badges.';
+      'Configure toolbar action badges, set-link badges, and center-toolbar hotlinks (Top, Bottom, Search, or custom links). ' +
+      'Changes apply immediately to the toolbar and page actions.';
     pane.appendChild(hint);
 
     /**
@@ -637,6 +637,259 @@ export const SettingsUI = {
       return section;
     };
 
+    const buildHotlinksSection = (onApply) => {
+      const section = document.createElement('div');
+      section.style.cssText = 'margin-top:24px;border-top:1px solid var(--tk-border);padding-top:16px;margin-bottom:20px;';
+
+      const secTitle = document.createElement('div');
+      secTitle.style.cssText = 'font-family:var(--tk-font-mono);font-size:11px;font-weight:700;color:var(--tk-teal);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;';
+      secTitle.textContent = 'Toolbar Hotlinks Configuration';
+      section.appendChild(secTitle);
+
+      const secHint = document.createElement('div');
+      secHint.className = 'tk-settings-hint';
+      secHint.style.marginBottom = '12px';
+      secHint.textContent = 'Configure center toolbar shortcut hotlinks (Top, Bottom, Search, or custom links). Set Link Text, Link URL, Tooltip, Placement order, and Enable/Disable status.';
+      section.appendChild(secHint);
+
+      const list = document.createElement('div');
+      list.className = 'tk-hotlinks-config-list';
+      section.appendChild(list);
+
+      const flush = () => {
+        SettingsUI._persist();
+        onApply();
+      };
+
+      const rebuild = () => {
+        list.innerHTML = '';
+        const hotlinks = Config.global.hotlinks || [];
+
+        hotlinks.forEach((hl, idx) => {
+          const card = document.createElement('div');
+          card.className = 'tk-pin-config-row' + (hl.enabled === false ? ' tk-pin-disabled' : '');
+          card.style.cssText = 'background:var(--tk-bg-base);border:1px solid var(--tk-border);border-radius:var(--tk-radius-sm);padding:10px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;';
+          card.draggable = true;
+
+          const topRow = document.createElement('div');
+          topRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--tk-border);padding-bottom:6px;';
+
+          const leftHeader = document.createElement('div');
+          leftHeader.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
+
+          // --- Drag handle ---
+          const handle = document.createElement('span');
+          handle.className = 'tk-pin-drag-handle';
+          handle.title = 'Drag to reorder';
+          handle.innerHTML = '&#9776;';
+          handle.setAttribute('aria-hidden', 'true');
+          leftHeader.appendChild(handle);
+
+          // --- Enable toggle ---
+          const toggle = document.createElement('input');
+          toggle.type = 'checkbox';
+          toggle.className = 'tk-pin-config-toggle';
+          toggle.checked = hl.enabled !== false;
+          toggle.title = toggle.checked ? 'Disable hotlink' : 'Enable hotlink';
+          toggle.addEventListener('change', () => {
+            hl.enabled = toggle.checked;
+            card.classList.toggle('tk-pin-disabled', !toggle.checked);
+            flush();
+          });
+          leftHeader.appendChild(toggle);
+
+          const nameWrap = document.createElement('span');
+          nameWrap.className = 'tk-pin-config-name';
+          nameWrap.style.cssText = 'font-family:var(--tk-font-mono);font-size:11px;font-weight:700;color:var(--tk-text);';
+          nameWrap.textContent = hl.text || hl.id || `Hotlink ${idx + 1}`;
+          leftHeader.appendChild(nameWrap);
+
+          topRow.appendChild(leftHeader);
+
+          // --- Actions (Up / Down / Delete) ---
+          const actions = document.createElement('span');
+          actions.className = 'tk-pin-config-actions';
+
+          const upBtn = document.createElement('button');
+          upBtn.type = 'button';
+          upBtn.className = 'tk-pin-reorder-btn';
+          upBtn.title = 'Move up';
+          upBtn.setAttribute('aria-label', `Move ${hl.text || hl.id} up`);
+          upBtn.innerHTML = '&#8593;';
+          upBtn.disabled = idx === 0;
+          upBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (idx === 0) return;
+            const arr = Config.global.hotlinks || [];
+            [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+            arr.forEach((item, i) => { item.placement = i + 1; });
+            Config.global.hotlinks = arr;
+            flush();
+            rebuild();
+          });
+
+          const downBtn = document.createElement('button');
+          downBtn.type = 'button';
+          downBtn.className = 'tk-pin-reorder-btn';
+          downBtn.title = 'Move down';
+          downBtn.setAttribute('aria-label', `Move ${hl.text || hl.id} down`);
+          downBtn.innerHTML = '&#8595;';
+          downBtn.disabled = idx === hotlinks.length - 1;
+          downBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (idx === hotlinks.length - 1) return;
+            const arr = Config.global.hotlinks || [];
+            [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+            arr.forEach((item, i) => { item.placement = i + 1; });
+            Config.global.hotlinks = arr;
+            flush();
+            rebuild();
+          });
+
+          actions.appendChild(upBtn);
+          actions.appendChild(downBtn);
+
+          if (hl.id !== 'top' && hl.id !== 'bottom' && hl.id !== 'search') {
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'tk-pin-remove-btn';
+            delBtn.title = 'Remove hotlink';
+            delBtn.innerHTML = icon('x');
+            delBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              Config.global.hotlinks.splice(idx, 1);
+              (Config.global.hotlinks || []).forEach((item, i) => { item.placement = i + 1; });
+              flush();
+              rebuild();
+            });
+            actions.appendChild(delBtn);
+          }
+
+          topRow.appendChild(actions);
+          card.appendChild(topRow);
+
+          // HTML5 drag-and-drop support
+          card.addEventListener('dragstart', (e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(idx));
+            setTimeout(() => card.classList.add('tk-pin-row-dragging'), 0);
+          });
+
+          card.addEventListener('dragend', () => {
+            card.classList.remove('tk-pin-row-dragging');
+            list.querySelectorAll('.tk-pin-row-drag-over').forEach((r) => r.classList.remove('tk-pin-row-drag-over'));
+          });
+
+          card.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            list.querySelectorAll('.tk-pin-row-drag-over').forEach((r) => r.classList.remove('tk-pin-row-drag-over'));
+            card.classList.add('tk-pin-row-drag-over');
+          });
+
+          card.addEventListener('dragleave', () => {
+            card.classList.remove('tk-pin-row-drag-over');
+          });
+
+          card.addEventListener('drop', (e) => {
+            e.preventDefault();
+            card.classList.remove('tk-pin-row-drag-over');
+            const srcIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+            if (isNaN(srcIdx) || srcIdx === idx) return;
+            const arr = Config.global.hotlinks || [];
+            const [moved] = arr.splice(srcIdx, 1);
+            arr.splice(idx, 0, moved);
+            arr.forEach((item, i) => { item.placement = i + 1; });
+            Config.global.hotlinks = arr;
+            flush();
+            rebuild();
+          });
+
+          const fieldsRow = document.createElement('div');
+          fieldsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1.5fr 1.5fr;gap:8px;';
+
+          // Text Group
+          const textGroup = document.createElement('div');
+          const textLabel = document.createElement('label');
+          textLabel.style.cssText = 'display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;';
+          textLabel.textContent = 'Link Text';
+          const textInput = document.createElement('input');
+          textInput.type = 'text';
+          textInput.value = hl.text || '';
+          textInput.style.cssText = 'width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;';
+          textInput.addEventListener('change', () => {
+            hl.text = textInput.value.trim();
+            flush();
+          });
+          textGroup.appendChild(textLabel);
+          textGroup.appendChild(textInput);
+
+          // URL Group
+          const urlGroup = document.createElement('div');
+          const urlLabel = document.createElement('label');
+          urlLabel.style.cssText = 'display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;';
+          urlLabel.textContent = 'Link URL (relative/full)';
+          const urlInput = document.createElement('input');
+          urlInput.type = 'text';
+          urlInput.value = hl.url || '';
+          urlInput.style.cssText = 'width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;';
+          urlInput.addEventListener('change', () => {
+            hl.url = urlInput.value.trim();
+            flush();
+          });
+          urlGroup.appendChild(urlLabel);
+          urlGroup.appendChild(urlInput);
+
+          // Tooltip Group
+          const tooltipGroup = document.createElement('div');
+          const tooltipLabel = document.createElement('label');
+          tooltipLabel.style.cssText = 'display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;';
+          tooltipLabel.textContent = 'Link Tooltip';
+          const tooltipInput = document.createElement('input');
+          tooltipInput.type = 'text';
+          tooltipInput.value = hl.tooltip || '';
+          tooltipInput.style.cssText = 'width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;';
+          tooltipInput.addEventListener('change', () => {
+            hl.tooltip = tooltipInput.value.trim();
+            flush();
+          });
+          tooltipGroup.appendChild(tooltipLabel);
+          tooltipGroup.appendChild(tooltipInput);
+
+          fieldsRow.appendChild(textGroup);
+          fieldsRow.appendChild(urlGroup);
+          fieldsRow.appendChild(tooltipGroup);
+          card.appendChild(fieldsRow);
+
+          list.appendChild(card);
+        });
+
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'sctk-btn';
+        addBtn.style.cssText = 'margin-top:4px;font-size:10px;padding:4px 10px;';
+        addBtn.textContent = '+ Add Custom Hotlink';
+        addBtn.addEventListener('click', () => {
+          if (!Config.global.hotlinks) Config.global.hotlinks = [];
+          const nextPlacement = Config.global.hotlinks.length + 1;
+          Config.global.hotlinks.push({
+            id: `custom_${Date.now()}`,
+            text: 'Link',
+            url: '/',
+            tooltip: 'Custom link',
+            placement: nextPlacement,
+            enabled: true
+          });
+          flush();
+          rebuild();
+        });
+        list.appendChild(addBtn);
+      };
+
+      rebuild();
+      return section;
+    };
+
     pane.appendChild(buildSection(
       'Toolbar Badges',
       'toolbarBadges',
@@ -648,6 +901,8 @@ export const SettingsUI = {
       'setLinkBadges',
       () => reinjectSetActions()
     ));
+
+    pane.appendChild(buildHotlinksSection(() => Toolbar.renderCenterContext()));
 
     return pane;
   },

@@ -521,26 +521,33 @@ export function handleCardRemoval(row, cardId) {
   }
 }
 
-// Global removal click listener
-if (typeof document !== 'undefined' && !document._sctkRemoveListenerWired) {
-  document._sctkRemoveListenerWired = true;
-  document.addEventListener('click', (e) => {
-    patchNativeChange2();
-    const removeLink = e.target?.closest?.('a[href*="CollectionRemove"], a[onclick*="CollectionRemove"], a[href*="RemoveQ"]');
-    if (removeLink) {
-      const row = removeLink.closest('tr');
-      if (row) {
-        const cardLink = row.querySelector('a[href*="/cid/"]');
-        const cardIdMatch = cardLink?.href.match(/\/cid\/(\d+)/i);
-        const cardId = cardIdMatch ? cardIdMatch[1] : '';
+/**
+ * Wire global remove link click listener for Quick Add Grid row cleanup.
+ *
+ * Only invoked during module initialization so top-level side effects do not run
+ * when the module is disabled.
+ */
+export function setupRemoveListener() {
+  if (typeof document !== 'undefined' && !document._sctkRemoveListenerWired) {
+    document._sctkRemoveListenerWired = true;
+    document.addEventListener('click', (e) => {
+      patchNativeChange2();
+      const removeLink = e.target?.closest?.('a[href*="CollectionRemove"], a[onclick*="CollectionRemove"], a[href*="RemoveQ"]');
+      if (removeLink) {
+        const row = removeLink.closest('tr');
+        if (row) {
+          const cardLink = row.querySelector('a[href*="/cid/"]');
+          const cardIdMatch = cardLink?.href.match(/\/cid\/(\d+)/i);
+          const cardId = cardIdMatch ? cardIdMatch[1] : '';
 
-        Log(`Quick Add Grid: Detected Remove click for CardID ${cardId}. Scheduling row cleanup...`, 'info', 'server');
-        setTimeout(() => {
-          handleCardRemoval(row, cardId);
-        }, 300);
+          Log(`Quick Add Grid: Detected Remove click for CardID ${cardId}. Scheduling row cleanup...`, 'info', 'server');
+          setTimeout(() => {
+            handleCardRemoval(row, cardId);
+          }, 300);
+        }
       }
-    }
-  });
+    });
+  }
 }
 
 /**
@@ -555,6 +562,7 @@ export function initQuickAddGridEnhancer() {
   if (!ok) return;
 
   patchNativeChange2();
+  setupRemoveListener();
 
   const listContext = getListContext();
   const contextSetId = getContextSetId();
