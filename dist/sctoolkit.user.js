@@ -212,10 +212,11 @@
      * @param {string} url
      * @param {boolean} [inBackground=true]
      */
-    openInTab(url, inBackground = true) {
+    openInTab(url, inBackground = true, winContext = null) {
+      const win = winContext || (typeof window !== "undefined" ? window : null);
       const fullUrl = Utils.toFullUrl(url);
       const gmType = typeof GM_openInTab;
-      const winType = typeof window;
+      const winType = typeof win;
       const grants = typeof GM_info !== "undefined" ? GM_info?.script?.grant?.join(", ") : "undefined";
       Log(`Granted APIs: ${grants}`, "debug");
       Log(
@@ -259,13 +260,13 @@
           Log(`openInTab: GM.openInTab failed: ${err?.message || err}`, "debug");
         }
       }
-      if (typeof window !== "undefined" && window.open) {
+      if (win && win.open) {
         Log("openInTab: falling back to window.open", "debug");
-        const win = window.open(fullUrl, "_blank");
-        if (win && inBackground) {
+        const openedWin = win.open(fullUrl, "_blank");
+        if (openedWin && inBackground) {
           try {
-            win.blur();
-            if (typeof window.focus === "function") window.focus();
+            openedWin.blur();
+            if (typeof win.focus === "function") win.focus();
           } catch (err) {
             Log(
               `openInTab: window.blur/focus failed: ${err?.message || err}`,
@@ -580,6 +581,7 @@
       cardFormatterTSVTemplate: "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}",
       cardFormatterIgnoredTags: "ASR, LL, TC, CL",
       cardFormatterOutputMode: "popover",
+      cardFormatterLinkTarget: "background",
       cardFormatterPopoverDurationMs: 4e3,
       cardFormatterShowCopy: true,
       cardFormatterShowTSV: true,
@@ -2783,7 +2785,7 @@
     }
     return `${year} ${pName}`;
   }
-  function resolveSportFromDocument2(doc = typeof document !== "undefined" ? document : null) {
+  function resolveSportFromDocument(doc = typeof document !== "undefined" ? document : null) {
     if (!doc) return "Baseball";
     const sportBreadcrumb = doc.querySelector('.breadcrumb a[href*="/sp/"], ol.breadcrumb li a[href*="/sp/"]');
     if (sportBreadcrumb) {
@@ -2798,7 +2800,7 @@
     if (match) return decodeURIComponent(match[1]);
     return "Baseball";
   }
-  function resolveYearFromDocument2(setName = "", doc = typeof document !== "undefined" ? document : null) {
+  function resolveYearFromDocument(setName = "", doc = typeof document !== "undefined" ? document : null) {
     if (doc) {
       const yearBreadcrumb = doc.querySelector('.breadcrumb a[href*="/year/"], ol.breadcrumb li a[href*="/year/"]');
       if (yearBreadcrumb) {
@@ -2827,8 +2829,8 @@
     return setName.replace(yearRegex, "").trim();
   }
   function exportSingleParentSetHierarchy(setId, setName, options = {}) {
-    const sport = options.sport || resolveSportFromDocument2();
-    const year = options.year || resolveYearFromDocument2(setName);
+    const sport = options.sport || resolveSportFromDocument();
+    const year = options.year || resolveYearFromDocument(setName);
     const cleanSetName = stripYearPrefix(setName, year);
     const category = options.category || "Major Releases";
     const hasHideDiv = options.hasHideDiv !== void 0 ? options.hasHideDiv : true;
@@ -2941,8 +2943,8 @@
       cssClass: "tk-badge-link-y",
       title: "View All Sets for Year in Collection",
       getUrl: (sid, parentSid, doc = typeof document !== "undefined" ? document : null) => {
-        const sport = resolveSportFromDocument2(doc);
-        const year = resolveYearFromDocument2("", doc);
+        const sport = resolveSportFromDocument(doc);
+        const year = resolveYearFromDocument("", doc);
         return `/ViewAllC.cfm/sp/${encodeURIComponent(sport)}/year/${encodeURIComponent(year)}`;
       }
     },
@@ -3336,10 +3338,15 @@
 .tk-toast-message ul, .tk-toast-message ol { text-align: left; margin: 3px 0 0 0; padding-left: 16px; }
 .tk-toast-message li { text-align: left; margin-bottom: 2px; }
 
-/* Card Name Formatter Popover */
+/* Player Quick Links / Card Name Formatter */
 .tk-formatter-popover { position: absolute; z-index: 200000; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 4px 8px; box-shadow: var(--tk-shadow-elevated); font-family: var(--tk-font-ui); font-size: 11px; display: flex; align-items: center; gap: 8px; }
 .tk-popover-label { font-family: var(--tk-font-mono); white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 .tk-formatter-popover .sctk-btn { height: 20px; padding: 0 6px; }
+
+.tk-player-quick-links-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 2px; line-height: 1; }
+.sctk-inline-btn, .sctk-inline-btn:visited { display: inline-flex; align-items: center; justify-content: center; gap: 2px; background: var(--tk-bg-elevated); color: var(--tk-text-muted); border: 1px solid var(--tk-border-strong); border-radius: 2px; padding: 0 2px; height: 12px; min-width: 12px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 8px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; text-decoration: none !important; }
+.sctk-inline-btn:hover:not(:disabled), .sctk-inline-btn:hover:not(:disabled):visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: var(--tk-text); text-decoration: none !important; }
+.sctk-inline-btn svg { width: 8px; height: 8px; flex-shrink: 0; }
 
 /* Quantity Counter Widget */
 .sctk-qty-counter { font-family: var(--tk-font-ui); font-size: 11.5px; color: var(--tk-text); background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-left: 3px solid var(--tk-accent); border-radius: var(--tk-radius-sm); padding: 5px 10px; box-shadow: var(--tk-shadow-elevated); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; user-select: none; pointer-events: auto; }
@@ -4094,8 +4101,8 @@ button.tk-add-btn {
         }
         const nextEl = parentLi ? parentLi.nextElementSibling : null;
         const hasHideDiv = !!(nextEl && nextEl.tagName === "DIV" && nextEl.id.startsWith("hideDiv"));
-        const sport = resolveSportFromDocument2();
-        const year = resolveYearFromDocument2(setName);
+        const sport = resolveSportFromDocument();
+        const year = resolveYearFromDocument(setName);
         exportSingleParentSetHierarchy(setId, setName, { sport, year, category, hasHideDiv });
       },
       displayMode: Config.global?.setButtonDisplay || "both"
@@ -5747,7 +5754,7 @@ button.tk-add-btn {
 
   // src/modules/cardNameFormatter.js
   function getToolbarTitle(doc = document) {
-    let rawTitle = doc ? doc.title : "";
+    const rawTitle = doc ? doc.title : "";
     let title = cleanDocTitle(rawTitle);
     const genericLabels = [
       "",
@@ -5778,6 +5785,10 @@ button.tk-add-btn {
       }
     }
     return title;
+  }
+  function isActionLink(a) {
+    const href = a?.href || "";
+    return href.includes("CollectionAdd") || href.includes("CollectionEdit") || href.includes("CollectionWant") || href.includes("CollectionStatus") || href.includes("CollectionMove") || href.includes("CollectionRemove") || href.includes("SalesLinks") || href.includes("MODE=") || href.includes("Team.cfm") || href.includes("Person.cfm");
   }
   var CardMetadataExtractor = {
     /**
@@ -5826,19 +5837,15 @@ button.tk-add-btn {
       let cardLink = null;
       const cardLinks = Array.from(
         row.querySelectorAll(
-          'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="cid="]'
+          'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]'
         )
+      ).filter(
+        (a) => !a.querySelector("img") && !a.querySelector("i") && a.textContent.trim().length > 0 && !isActionLink(a)
       );
-      for (const link of cardLinks) {
-        if (link.querySelector("img")) continue;
-        const text = link.textContent.trim();
-        if (text) {
-          cardNo = text;
-          cardLink = link;
-          break;
-        }
-      }
-      if (!cardNo) {
+      if (cardLinks.length > 0) {
+        cardNo = cardLinks[0].textContent.trim();
+        cardLink = cardLinks[0];
+      } else {
         const firstTd = row.querySelector("td");
         if (firstTd) {
           const text = firstTd.textContent.trim();
@@ -5875,11 +5882,8 @@ button.tk-add-btn {
       let playerName = "";
       if (personLink) {
         playerName = personLink.textContent.trim();
-      } else if (cardLinks.length >= 2 && !cardLinks[1].querySelector("img")) {
-        const secondText = cardLinks[1].textContent.trim();
-        if (secondText && secondText !== cardNo) {
-          playerName = secondText;
-        }
+      } else if (cardLinks.length >= 2) {
+        playerName = cardLinks[1].textContent.trim();
       }
       if (!playerName && subjectTd) {
         let rawName = subjectTd.textContent.replace(/\s+/g, " ").trim();
@@ -5947,7 +5951,7 @@ button.tk-add-btn {
      */
     compile: function(template, tokens) {
       if (!tokens || !template) return "";
-      let isTSV = template.includes("	") || template.includes("\\t");
+      const isTSV = template.includes("	") || template.includes("\\t");
       let result = template.replace(/\\t/g, "	");
       if (!tokens.CardNo) {
         result = result.replace(/#\{CardNo\}/g, "{CardNo}");
@@ -6065,7 +6069,8 @@ button.tk-add-btn {
           brefBtn.setAttribute("aria-label", "Search Baseball Reference");
           brefBtn.addEventListener("click", () => {
             const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
-            win.open(brefUrl, "_blank", "noopener,noreferrer");
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(brefUrl, inBackground, win);
           });
           popover.appendChild(brefBtn);
         }
@@ -6078,7 +6083,8 @@ button.tk-add-btn {
           googleBtn.setAttribute("aria-label", "Search Google");
           googleBtn.addEventListener("click", () => {
             const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
-            win.open(googleUrl, "_blank", "noopener,noreferrer");
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(googleUrl, inBackground, win);
           });
           popover.appendChild(googleBtn);
         }
@@ -6104,9 +6110,185 @@ button.tk-add-btn {
       if (existing) existing.remove();
     }
   };
+  function renderInlineQuickLinks(doc = document) {
+    const targetDoc = doc || (typeof document !== "undefined" ? document : null);
+    if (!targetDoc) return;
+    const showCopy = Config.global.cardFormatterShowCopy !== false;
+    const showTSV = Config.global.cardFormatterShowTSV !== false;
+    const showBRef = Config.global.cardFormatterShowBRef !== false;
+    const showGoogle = Config.global.cardFormatterShowGoogle !== false;
+    if (!showCopy && !showTSV && !showBRef && !showGoogle) return;
+    const win = targetDoc.defaultView || (typeof window !== "undefined" ? window : null);
+    const rows = targetDoc.querySelectorAll("tr, .yourcol-item");
+    rows.forEach((row) => {
+      if (row.querySelector("th")) return;
+      if (row.closest?.(
+        ".col-md-3, .col-md-4, nav, #topnav, #sctk-toolbar, .menu-linksV, .dropdown-menu, .modal"
+      ))
+        return;
+      const personLink = row.querySelector('a[href*="Person.cfm"]');
+      const cardLinks = Array.from(
+        row.querySelectorAll(
+          'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]'
+        )
+      ).filter(
+        (a) => !a.querySelector("img") && !a.querySelector("i") && a.textContent.trim().length > 0 && !isActionLink(a)
+      );
+      let targetCell = null;
+      let targetNode = null;
+      if (personLink) {
+        targetNode = personLink;
+        targetCell = personLink.closest("td");
+      } else if (cardLinks.length >= 2) {
+        targetNode = cardLinks[1];
+        targetCell = cardLinks[1].closest("td");
+      } else if (cardLinks.length === 1) {
+        const cardNoTd = cardLinks[0].closest("td");
+        if (cardNoTd && cardNoTd.nextElementSibling && !cardNoTd.nextElementSibling.querySelector('a[href*="Team.cfm"]')) {
+          targetCell = cardNoTd.nextElementSibling;
+          targetNode = targetCell.querySelector("a") || cardLinks[0];
+        } else {
+          targetNode = cardLinks[0];
+          targetCell = cardNoTd;
+        }
+      }
+      if (!targetCell) return;
+      const existingContainers = row.querySelectorAll(
+        ".tk-player-quick-links-inline"
+      );
+      existingContainers.forEach((c) => {
+        if (c.parentElement !== targetCell) {
+          c.remove();
+        }
+      });
+      if (targetCell.querySelector(".tk-player-quick-links-inline")) return;
+      const evalNode = targetNode || targetCell;
+      const fakeSelection = {
+        isCollapsed: false,
+        anchorNode: evalNode.firstChild || evalNode,
+        toString: () => evalNode.textContent.trim()
+      };
+      const tokens = CardMetadataExtractor.extract(fakeSelection, targetDoc);
+      if (!tokens || !tokens.PlayerName) return;
+      const template = Config.global.cardFormatterTemplate || "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
+      const formatted = CardMetadataExtractor.compile(template, tokens);
+      const inlineContainer = targetDoc.createElement("div");
+      inlineContainer.className = "tk-player-quick-links-inline";
+      if (showCopy && formatted) {
+        const copyBtn = targetDoc.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "sctk-inline-btn";
+        copyBtn.innerHTML = icon("copy");
+        copyBtn.title = "Copy formatted text";
+        copyBtn.setAttribute("aria-label", "Copy formatted text");
+        copyBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const writePromise = win?.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(formatted) : Promise.resolve();
+          writePromise.then(() => {
+            copyBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied: <b>${Utils.escape.html(formatted)}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => {
+              copyBtn.innerHTML = icon("copy");
+            }, 1200);
+          }).catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+        });
+        inlineContainer.appendChild(copyBtn);
+      }
+      if (showTSV) {
+        const tsvBtn = targetDoc.createElement("button");
+        tsvBtn.type = "button";
+        tsvBtn.className = "sctk-inline-btn";
+        tsvBtn.innerHTML = icon("tsv");
+        tsvBtn.title = "Copy tab-separated values (TSV)";
+        tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
+        tsvBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens);
+          const writePromise = win?.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(tsvLine) : Promise.resolve();
+          writePromise.then(() => {
+            tsvBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied TSV: <b>${Utils.escape.html(tsvLine)}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => {
+              tsvBtn.innerHTML = icon("tsv");
+            }, 1200);
+          }).catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+        });
+        inlineContainer.appendChild(tsvBtn);
+      }
+      const playerName = tokens.PlayerName;
+      if (playerName) {
+        const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+        if (showBRef) {
+          const brefBtn = targetDoc.createElement("button");
+          brefBtn.type = "button";
+          brefBtn.className = "sctk-inline-btn";
+          brefBtn.innerHTML = icon("bref");
+          brefBtn.title = "Search Baseball Reference";
+          brefBtn.setAttribute("aria-label", "Search Baseball Reference");
+          brefBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(brefUrl, inBackground, win);
+          });
+          inlineContainer.appendChild(brefBtn);
+        }
+        if (showGoogle) {
+          const googleBtn = targetDoc.createElement("button");
+          googleBtn.type = "button";
+          googleBtn.className = "sctk-inline-btn";
+          googleBtn.innerHTML = icon("google");
+          googleBtn.title = "Search Google";
+          googleBtn.setAttribute("aria-label", "Search Google");
+          googleBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(googleUrl, inBackground, win);
+          });
+          inlineContainer.appendChild(googleBtn);
+        }
+      }
+      if (inlineContainer.childElementCount > 0) {
+        targetCell.appendChild(inlineContainer);
+      }
+    });
+  }
+  var activeObserver = null;
   function initCardNameFormatter() {
-    Log("Initializing Card Name Formatter module", "info");
+    Log("Initializing Player Quick Links module", "info");
+    if (activeObserver) {
+      activeObserver.disconnect();
+      activeObserver = null;
+    }
+    if (Config.global.cardFormatterOutputMode === "inline") {
+      renderInlineQuickLinks(document);
+      const targetArea = document.querySelector("#main-content-area") || document.querySelector("#content") || document.body;
+      if (targetArea && typeof MutationObserver !== "undefined") {
+        const debouncedRender = debounce(() => {
+          renderInlineQuickLinks(document);
+        }, 150);
+        activeObserver = new MutationObserver(debouncedRender);
+        activeObserver.observe(targetArea, { childList: true, subtree: true });
+      }
+      return;
+    }
     const handleSelection = debounce(() => {
+      if (Config.global.cardFormatterOutputMode === "inline") {
+        FormattedCopyPopover.hide();
+        return;
+      }
       const selection = window.getSelection();
       if (!selection || selection.isCollapsed) {
         FormattedCopyPopover.hide();
@@ -6160,7 +6342,7 @@ button.tk-add-btn {
   }
 
   // src/modules/collectionQuantityCounter.js
-  var activeObserver = null;
+  var activeObserver2 = null;
   var boundListeners = [];
   function countCollectionQuantities(root = document) {
     let distinctQtyCount = 0;
@@ -6438,17 +6620,17 @@ button.tk-add-btn {
     const targetArea = document.querySelector("#main-content-area") || document.querySelector("#content") || document.body;
     if (targetArea && typeof MutationObserver !== "undefined") {
       let debounceTimer = null;
-      activeObserver = new MutationObserver(() => {
+      activeObserver2 = new MutationObserver(() => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(update, 100);
       });
-      activeObserver.observe(targetArea, { childList: true, subtree: true, attributes: true });
+      activeObserver2.observe(targetArea, { childList: true, subtree: true, attributes: true });
     }
   }
   function cleanupCollectionQuantityCounter() {
-    if (activeObserver) {
-      activeObserver.disconnect();
-      activeObserver = null;
+    if (activeObserver2) {
+      activeObserver2.disconnect();
+      activeObserver2 = null;
     }
     boundListeners.forEach(({ type, fn }) => {
       document.removeEventListener(type, fn, true);
@@ -7003,8 +7185,8 @@ button.tk-add-btn {
     },
     {
       id: "cardNameFormatter",
-      name: "Card Name Formatter",
-      description: "Dynamically extracts card metadata based on text selection and formats/copies card strings according to a customizable template.",
+      name: "Player Quick Links",
+      description: "Dynamically extracts card metadata and adds quick copy/search links (Baseball Reference, Google) via floating popover, inline buttons, or direct copy.",
       init: initCardNameFormatter,
       isAsync: false
     },
@@ -8110,9 +8292,10 @@ button.tk-add-btn {
       const outputModeLabel = document.createElement("label");
       outputModeLabel.textContent = "Output Mode";
       const outputModeSelect = document.createElement("select");
-      outputModeSelect.title = "popover: show floating copy button near text. clipboard: auto-copy to clipboard.";
+      outputModeSelect.title = "popover: show floating copy button near text. inline: render small buttons below card/player. clipboard: auto-copy to clipboard.";
       [
         { value: "popover", label: "Floating Popover" },
+        { value: "inline", label: "Inline Buttons" },
         { value: "clipboard", label: "Auto-Copy to Clipboard" }
       ].forEach(({ value, label }) => {
         const opt = document.createElement("option");
@@ -8127,6 +8310,28 @@ button.tk-add-btn {
         SettingsUI._persist();
       });
       outputModeField.append(outputModeLabel, outputModeSelect);
+      const linkTargetField = document.createElement("div");
+      linkTargetField.className = "tk-settings-field";
+      const linkTargetLabel = document.createElement("label");
+      linkTargetLabel.textContent = "Link Opening Target";
+      const linkTargetSelect = document.createElement("select");
+      linkTargetSelect.title = "Specify whether external links (Baseball Reference & Google) open in background tab or focused tab.";
+      [
+        { value: "background", label: "New Tab (Background)" },
+        { value: "focus", label: "New Tab with Focus" }
+      ].forEach(({ value, label }) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        if ((Config.global.cardFormatterLinkTarget || "background") === value) opt.selected = true;
+        linkTargetSelect.appendChild(opt);
+      });
+      linkTargetSelect.addEventListener("change", () => {
+        Config.global.cardFormatterLinkTarget = linkTargetSelect.value;
+        Log(`Config change: global.cardFormatterLinkTarget = ${linkTargetSelect.value}`, "info");
+        SettingsUI._persist();
+      });
+      linkTargetField.append(linkTargetLabel, linkTargetSelect);
       const popoverDurationField = document.createElement("div");
       popoverDurationField.className = "tk-settings-field";
       const popoverDurationLabel = document.createElement("label");
@@ -8196,16 +8401,16 @@ button.tk-add-btn {
         const showGoogle = showGoogleCheckbox.checked;
         const hasSearch = showBRef || showGoogle;
         if (hasSearch || showTSV) {
-          outputModeSelect.value = "popover";
-          outputModeSelect.disabled = true;
-          outputModeSelect.title = "Floating Popover is required when TSV or search actions are enabled.";
-          if (Config.global.cardFormatterOutputMode !== "popover") {
+          outputModeSelect.disabled = false;
+          outputModeSelect.title = "Choose Floating Popover or Inline Buttons mode for active actions.";
+          if (Config.global.cardFormatterOutputMode === "clipboard") {
             Config.global.cardFormatterOutputMode = "popover";
-            Log("Config change: global.cardFormatterOutputMode = popover (required by active actions)", "info");
+            outputModeSelect.value = "popover";
+            Log("Config change: global.cardFormatterOutputMode = popover (clipboard invalid for active actions)", "info");
           }
         } else if (showCopy) {
           outputModeSelect.disabled = false;
-          outputModeSelect.title = "popover: show floating copy button near text. clipboard: auto-copy to clipboard.";
+          outputModeSelect.title = "popover: show floating copy popover. inline: render inline buttons. clipboard: auto-copy.";
         } else {
           outputModeSelect.value = "clipboard";
           outputModeSelect.disabled = true;
@@ -8250,9 +8455,9 @@ button.tk-add-btn {
       updateOutputModeState();
       pane.appendChild(
         SettingsUI._buildCollapsibleSection(
-          "Card Name Formatter Settings",
-          [templateField, tsvTemplateField, ignoredTagsField, outputModeField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
-          "Configure custom copy templates, floating popover output modes, and search actions.",
+          "Player Quick Links Settings",
+          [templateField, tsvTemplateField, ignoredTagsField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
+          "Configure custom copy templates, output modes (popover, inline buttons, clipboard), link opening targets, and search actions.",
           false
         )
       );

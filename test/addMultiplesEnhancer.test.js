@@ -15,7 +15,6 @@ import {
   checkAndHandlePostReloadSuccess,
   showAddedDetailsModal,
   focusFirstQuantityField,
-  getSubmitButton,
   STORAGE_BATCH_KEY
 } from '../src/modules/addMultiplesEnhancer.js';
 import { InputIndex } from '../src/modules/inputOptimization.js';

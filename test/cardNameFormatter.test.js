@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { JSDOM } from 'jsdom';
 
-import { CardMetadataExtractor, FormattedCopyPopover } from '../src/modules/cardNameFormatter.js';
+import { CardMetadataExtractor, FormattedCopyPopover, renderInlineQuickLinks } from '../src/modules/cardNameFormatter.js';
 import { Config } from '../src/core/config.js';
 
-test('Config: contains default Card Name Formatter settings', () => {
+test('Config: contains default Player Quick Links settings', () => {
   assert.equal(Config.global.cardFormatterTemplate, '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}');
   assert.equal(Config.global.cardFormatterTSVTemplate, '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}');
   assert.equal(Config.global.cardFormatterIgnoredTags, 'ASR, LL, TC, CL');
   assert.equal(Config.global.cardFormatterOutputMode, 'popover');
+  assert.equal(Config.global.cardFormatterLinkTarget, 'background');
   assert.equal(Config.global.cardFormatterPopoverDurationMs, 4000);
   assert.equal(Config.global.cardFormatterShowCopy, true);
   assert.equal(Config.global.cardFormatterShowTSV, true);
@@ -441,4 +444,136 @@ test('FormattedCopyPopover.show: respects config settings to hide individual act
 
   FormattedCopyPopover.hide(mockDoc);
 });
+
+test('renderInlineQuickLinks: renders small in-line buttons across submitted fixtures without row height inflation', () => {
+  const fixtures = [
+    'ViewCollection.html',
+    'ViewCollectionForSaleTrade.html',
+    'ViewCollectionPWantlist.html',
+    'ViewCollectionWantlist.html',
+    'Collection.html',
+    'CollectionAddMultiplesText.html',
+    'CollectionAddMultiples.html',
+    'CollectionBrowse.html',
+    'ViewCollectionForSaleTrade-2019Bowman.html',
+    'ViewCollectionForSaleTrade-2019BowmanMulti.html'
+  ];
+
+  fixtures.forEach((file) => {
+    const filePath = path.join(process.cwd(), 'test/fixtures/submitted', file);
+    if (!fs.existsSync(filePath)) return;
+    const html = fs.readFileSync(filePath, 'utf8');
+    const dom = new JSDOM(html, { url: 'https://www.tcdb.com/ViewCollection.cfm' });
+    const mockDoc = dom.window.document;
+
+    renderInlineQuickLinks(mockDoc);
+
+    const inlineContainers = mockDoc.querySelectorAll('.tk-player-quick-links-inline');
+    if (file === 'Collection.html') {
+      assert.equal(inlineContainers.length, 0, 'Collection.html has no card rows');
+    } else {
+      assert.ok(inlineContainers.length > 0, `${file} should have inline quick link containers injected`);
+      const container = inlineContainers[0];
+      const buttons = container.querySelectorAll('button.sctk-inline-btn');
+      assert.equal(buttons.length, 4, `${file} row container should include 4 action buttons (copy, tsv, bref, google)`);
+
+      // Verify inline buttons container is placed under Player/Subject cell, not Team or Card No
+      const parentCellText = container.parentElement.textContent.replace('Add to Collection', '').trim();
+      assert.ok(
+        !parentCellText.includes('Twins') && !parentCellText.includes('Red Sox'),
+        `${file}: inline container should not be placed in team cell`
+      );
+    }
+  });
+});
+
+test('renderInlineQuickLinks: button click triggers clipboard copy and handles link opening', () => {
+  const dom = new JSDOM(`
+    <!DOCTYPE html>
+    <html>
+    <head><title>2023 Bowman Baseball Checklist | Trading Card Database</title></head>
+    <body>
+      <div id="main-content-area">
+        <table>
+          <tr>
+            <td><a href="ViewCard.cfm/sid/357729/cid/21211725">2</a></td>
+            <td><a href="Person.cfm/pid/1/Triston-Casas">Triston Casas</a> RC</td>
+            <td><a href="Team.cfm/tid/1/Boston-Red-Sox">Boston Red Sox</a></td>
+          </tr>
+        </table>
+      </div>
+    </body>
+    </html>
+  `, { url: 'https://www.tcdb.com/Checklist.cfm' });
+  const mockDoc = dom.window.document;
+
+  let writtenText = null;
+  Object.defineProperty(dom.window.navigator, 'clipboard', {
+    value: { writeText: async (txt) => { writtenText = txt; } },
+    configurable: true,
+    writable: true
+  });
+
+  Config.global.cardFormatterLinkTarget = 'focus';
+  renderInlineQuickLinks(mockDoc);
+
+  const container = mockDoc.querySelector('.tk-player-quick-links-inline');
+  assert.notEqual(container, null);
+
+  // Verify container is in td[1] (Player cell), not td[0] (Card No) or td[2] (Team)
+  const cellIndex = Array.from(container.parentElement.parentElement.children).indexOf(container.parentElement);
+  assert.equal(cellIndex, 1, 'Inline container must be injected into player/subject cell');
+
+  const buttons = container.querySelectorAll('button.sctk-inline-btn');
+  assert.equal(buttons.length, 4);
+
+  const copyBtn = buttons[0];
+  const tsvBtn = buttons[1];
+
+  copyBtn.click();
+  assert.ok(writtenText.includes('Triston Casas'));
+
+  tsvBtn.click();
+  assert.ok(writtenText.includes('\tTriston Casas\t'));
+
+  // Reset link target to background
+  Config.global.cardFormatterLinkTarget = 'background';
+});
+
+test('renderInlineQuickLinks: places container in player cell even when row has dropdown action links with CardID=', () => {
+  const dom = new JSDOM(`
+    <!DOCTYPE html>
+    <html>
+    <body>
+      <table>
+        <tr class="collection_row">
+          <td>1</td>
+          <td><img src="thumb.jpg"></td>
+          <td><button>v</button></td>
+          <td>
+            <a href="CollectionAddO.cfm?Type=Baseball&SetID=204993&CardID=13091014">Add to Collection</a>
+            <a href="CollectionAddOFST.cfm?Type=Baseball&SetID=204993&CardID=13091014">Add to For Sale</a>
+          </td>
+          <td><a href="ViewCard.cfm/sid/204993/cid/13091014">BCP-138</a></td>
+          <td><a href="ViewCard.cfm/sid/204993/cid/13091014">Alex Kirilloff</a></td>
+          <td><a href="ViewCard.cfm/sid/204993/cid/13091014">Minnesota Twins</a></td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `, { url: 'https://www.tcdb.com/ViewCollectionForSaleTrade.cfm/sid/204993' });
+  const mockDoc = dom.window.document;
+
+  renderInlineQuickLinks(mockDoc);
+
+  const container = mockDoc.querySelector('.tk-player-quick-links-inline');
+  assert.notEqual(container, null);
+
+  // Target cell should be td[5] (Alex Kirilloff), NOT td[3] (Action links dropdown)
+  const cellIndex = Array.from(container.parentElement.parentElement.children).indexOf(container.parentElement);
+  assert.equal(cellIndex, 5, 'Inline container must be injected into Player cell (td[5]), not dropdown cell (td[3])');
+  assert.ok(container.parentElement.textContent.includes('Alex Kirilloff'));
+});
+
+
 

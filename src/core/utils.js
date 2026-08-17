@@ -52,10 +52,11 @@ export const Utils = {
    * @param {string} url
    * @param {boolean} [inBackground=true]
    */
-  openInTab(url, inBackground = true) {
+  openInTab(url, inBackground = true, winContext = null) {
+    const win = winContext || (typeof window !== "undefined" ? window : null);
     const fullUrl = Utils.toFullUrl(url);
     const gmType = typeof GM_openInTab;
-    const winType = typeof window;
+    const winType = typeof win;
     const grants = typeof GM_info !== 'undefined' ? GM_info?.script?.grant?.join(', ') : 'undefined';
     Log(`Granted APIs: ${grants}`, 'debug');
     Log(
@@ -106,13 +107,13 @@ export const Utils = {
       }
     }
 
-    if (typeof window !== "undefined" && window.open) {
+    if (win && win.open) {
       Log("openInTab: falling back to window.open", "debug");
-      const win = window.open(fullUrl, "_blank");
-      if (win && inBackground) {
+      const openedWin = win.open(fullUrl, "_blank");
+      if (openedWin && inBackground) {
         try {
-          win.blur();
-          if (typeof window.focus === "function") window.focus();
+          openedWin.blur();
+          if (typeof win.focus === "function") win.focus();
         } catch (err) {
           Log(
             `openInTab: window.blur/focus failed: ${err?.message || err}`,

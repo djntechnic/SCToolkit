@@ -1155,9 +1155,10 @@ export const SettingsUI = {
     const outputModeLabel = document.createElement('label');
     outputModeLabel.textContent = 'Output Mode';
     const outputModeSelect = document.createElement('select');
-    outputModeSelect.title = 'popover: show floating copy button near text. clipboard: auto-copy to clipboard.';
+    outputModeSelect.title = 'popover: show floating copy button near text. inline: render small buttons below card/player. clipboard: auto-copy to clipboard.';
     [
       { value: 'popover', label: 'Floating Popover' },
+      { value: 'inline', label: 'Inline Buttons' },
       { value: 'clipboard', label: 'Auto-Copy to Clipboard' }
     ].forEach(({ value, label }) => {
       const opt = document.createElement('option');
@@ -1172,6 +1173,29 @@ export const SettingsUI = {
       SettingsUI._persist();
     });
     outputModeField.append(outputModeLabel, outputModeSelect);
+
+    const linkTargetField = document.createElement('div');
+    linkTargetField.className = 'tk-settings-field';
+    const linkTargetLabel = document.createElement('label');
+    linkTargetLabel.textContent = 'Link Opening Target';
+    const linkTargetSelect = document.createElement('select');
+    linkTargetSelect.title = 'Specify whether external links (Baseball Reference & Google) open in background tab or focused tab.';
+    [
+      { value: 'background', label: 'New Tab (Background)' },
+      { value: 'focus', label: 'New Tab with Focus' }
+    ].forEach(({ value, label }) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if ((Config.global.cardFormatterLinkTarget || 'background') === value) opt.selected = true;
+      linkTargetSelect.appendChild(opt);
+    });
+    linkTargetSelect.addEventListener('change', () => {
+      Config.global.cardFormatterLinkTarget = linkTargetSelect.value;
+      Log(`Config change: global.cardFormatterLinkTarget = ${linkTargetSelect.value}`, 'info');
+      SettingsUI._persist();
+    });
+    linkTargetField.append(linkTargetLabel, linkTargetSelect);
 
     const popoverDurationField = document.createElement('div');
     popoverDurationField.className = 'tk-settings-field';
@@ -1248,16 +1272,16 @@ export const SettingsUI = {
       const hasSearch = showBRef || showGoogle;
 
       if (hasSearch || showTSV) {
-        outputModeSelect.value = 'popover';
-        outputModeSelect.disabled = true;
-        outputModeSelect.title = 'Floating Popover is required when TSV or search actions are enabled.';
-        if (Config.global.cardFormatterOutputMode !== 'popover') {
+        outputModeSelect.disabled = false;
+        outputModeSelect.title = 'Choose Floating Popover or Inline Buttons mode for active actions.';
+        if (Config.global.cardFormatterOutputMode === 'clipboard') {
           Config.global.cardFormatterOutputMode = 'popover';
-          Log('Config change: global.cardFormatterOutputMode = popover (required by active actions)', 'info');
+          outputModeSelect.value = 'popover';
+          Log('Config change: global.cardFormatterOutputMode = popover (clipboard invalid for active actions)', 'info');
         }
       } else if (showCopy) {
         outputModeSelect.disabled = false;
-        outputModeSelect.title = 'popover: show floating copy button near text. clipboard: auto-copy to clipboard.';
+        outputModeSelect.title = 'popover: show floating copy popover. inline: render inline buttons. clipboard: auto-copy.';
       } else {
         outputModeSelect.value = 'clipboard';
         outputModeSelect.disabled = true;
@@ -1308,9 +1332,9 @@ export const SettingsUI = {
 
     pane.appendChild(
       SettingsUI._buildCollapsibleSection(
-        'Card Name Formatter Settings',
-        [templateField, tsvTemplateField, ignoredTagsField, outputModeField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
-        'Configure custom copy templates, floating popover output modes, and search actions.',
+        'Player Quick Links Settings',
+        [templateField, tsvTemplateField, ignoredTagsField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
+        'Configure custom copy templates, output modes (popover, inline buttons, clipboard), link opening targets, and search actions.',
         false
       )
     );

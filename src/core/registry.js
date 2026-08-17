@@ -93,8 +93,8 @@ export const ModuleRegistry = [
   },
   {
     id: 'cardNameFormatter',
-    name: 'Card Name Formatter',
-    description: 'Dynamically extracts card metadata based on text selection and formats/copies card strings according to a customizable template.',
+    name: 'Player Quick Links',
+    description: 'Dynamically extracts card metadata and adds quick copy/search links (Baseball Reference, Google) via floating popover, inline buttons, or direct copy.',
     init: initCardNameFormatter,
     isAsync: false
   },

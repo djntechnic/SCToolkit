@@ -255,10 +255,15 @@ export const TOOLBAR_CSS = `
 .tk-toast-message ul, .tk-toast-message ol { text-align: left; margin: 3px 0 0 0; padding-left: 16px; }
 .tk-toast-message li { text-align: left; margin-bottom: 2px; }
 
-/* Card Name Formatter Popover */
+/* Player Quick Links / Card Name Formatter */
 .tk-formatter-popover { position: absolute; z-index: 200000; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 4px 8px; box-shadow: var(--tk-shadow-elevated); font-family: var(--tk-font-ui); font-size: 11px; display: flex; align-items: center; gap: 8px; }
 .tk-popover-label { font-family: var(--tk-font-mono); white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 .tk-formatter-popover .sctk-btn { height: 20px; padding: 0 6px; }
+
+.tk-player-quick-links-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 2px; line-height: 1; }
+.sctk-inline-btn, .sctk-inline-btn:visited { display: inline-flex; align-items: center; justify-content: center; gap: 2px; background: var(--tk-bg-elevated); color: var(--tk-text-muted); border: 1px solid var(--tk-border-strong); border-radius: 2px; padding: 0 2px; height: 12px; min-width: 12px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 8px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; text-decoration: none !important; }
+.sctk-inline-btn:hover:not(:disabled), .sctk-inline-btn:hover:not(:disabled):visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: var(--tk-text); text-decoration: none !important; }
+.sctk-inline-btn svg { width: 8px; height: 8px; flex-shrink: 0; }
 
 /* Quantity Counter Widget */
 .sctk-qty-counter { font-family: var(--tk-font-ui); font-size: 11.5px; color: var(--tk-text); background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-left: 3px solid var(--tk-accent); border-radius: var(--tk-radius-sm); padding: 5px 10px; box-shadow: var(--tk-shadow-elevated); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; user-select: none; pointer-events: auto; }

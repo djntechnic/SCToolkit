@@ -174,6 +174,7 @@ export const DEFAULT_CONFIG = {
       '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}',
     cardFormatterIgnoredTags: 'ASR, LL, TC, CL',
     cardFormatterOutputMode: "popover",
+    cardFormatterLinkTarget: "background",
     cardFormatterPopoverDurationMs: 4000,
     cardFormatterShowCopy: true,
     cardFormatterShowTSV: true,

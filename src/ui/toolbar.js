@@ -10,7 +10,7 @@ import { Log } from '../core/log.js';
 import { Pins, SET_YEAR_REGEX } from '../core/storage.js';
 import { Utils } from '../core/utils.js';
 import { CurrentRun, cancelCurrentExport, exportSetCSV } from '../net/setExport.js';
-import { exportSingleParentSetHierarchy } from '../net/setHierarchyExport.js';
+import { exportSingleParentSetHierarchy, resolveSportFromDocument, resolveYearFromDocument } from '../net/setHierarchyExport.js';
 import { createBadge, renderBadgeSet, getToolbarBadges } from './badges.js';
 import { createBtn, injectStyle } from './dom.js';
 import { icon, installIconSprite } from './icons.js';
