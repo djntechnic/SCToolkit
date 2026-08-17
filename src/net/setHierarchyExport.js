@@ -264,32 +264,56 @@ export function buildFullSetNameTrunc(year, setName, childSetName) {
 /**
  * Resolves the sport name from the current document.
  *
+ * @param {Document} [doc]
  * @returns {string}
  */
-export function resolveSportFromDocument() {
-  const sportBreadcrumb = document.querySelector('ol.breadcrumb li a[href*="/sp/"]');
+export function resolveSportFromDocument(doc = typeof document !== 'undefined' ? document : null) {
+  if (!doc) return 'Baseball';
+  const sportBreadcrumb = doc.querySelector('.breadcrumb a[href*="/sp/"], ol.breadcrumb li a[href*="/sp/"]');
   if (sportBreadcrumb) {
-    const match = sportBreadcrumb.getAttribute('href').match(/\/sp\/([^/]+)/i);
+    const href = sportBreadcrumb.getAttribute('href') || '';
+    const match = href.match(/\/sp\/([^/?#]+)/i);
     if (match) return decodeURIComponent(match[1]);
-    return sportBreadcrumb.textContent.trim();
+    const text = sportBreadcrumb.textContent.trim();
+    if (text) return text;
   }
-  const match = document.URL.match(/\/sp\/([^/]+)/i);
+  const url = doc.URL || doc.location?.href || '';
+  const match = url.match(/\/sp\/([^/?#]+)/i);
   if (match) return decodeURIComponent(match[1]);
-  return 'Misc';
+  return 'Baseball';
 }
 
 /**
  * Resolves the year from the current document or set name.
  *
- * @param {string} setName
+ * @param {string} [setName='']
+ * @param {Document} [doc]
  * @returns {string}
  */
-export function resolveYearFromDocument(setName) {
-  const match = document.URL.match(/\/year\/([^/]+)/i);
-  if (match) return decodeURIComponent(match[1]);
-  const docTitle = document.title || '';
-  const yearMatch = docTitle.match(/\b(18|19|20)\d{2}\b/) || setName.match(/\b(18|19|20)\d{2}\b/);
-  if (yearMatch) return yearMatch[0];
+export function resolveYearFromDocument(setName = '', doc = typeof document !== 'undefined' ? document : null) {
+  if (doc) {
+    const yearBreadcrumb = doc.querySelector('.breadcrumb a[href*="/year/"], ol.breadcrumb li a[href*="/year/"]');
+    if (yearBreadcrumb) {
+      const href = yearBreadcrumb.getAttribute('href') || '';
+      const match = href.match(/\/year\/([^/?#]+)/i);
+      if (match) return decodeURIComponent(match[1]);
+      const textYear = yearBreadcrumb.textContent.trim().match(/\b(18|19|20)\d{2}\b/);
+      if (textYear) return textYear[0];
+    }
+    const url = doc.URL || doc.location?.href || '';
+    const match = url.match(/\/year\/([^/?#]+)/i);
+    if (match) return decodeURIComponent(match[1]);
+
+    const docTitle = doc.title || '';
+    const titleYear = docTitle.match(/\b(18|19|20)\d{2}\b/);
+    if (titleYear) return titleYear[0];
+  }
+
+  if (setName) {
+    const nameYear = setName.match(/\b(18|19|20)\d{2}\b/);
+    if (nameYear) return nameYear[0];
+  }
+
   return 'Misc';
 }
 

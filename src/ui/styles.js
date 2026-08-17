@@ -27,7 +27,9 @@ export const TOOLBAR_CSS = `
     --tk-teal: #0891b2;
     --tk-blue: #0353a4;
     --tk-violet: #7c3aed;
+    --tk-indigo: #6366f1;
     --tk-magenta: #db2777;
+    --tk-amber: #d97706;
     --tk-green: #059669;
     --tk-red: #dc2626;
 
@@ -62,7 +64,9 @@ export const TOOLBAR_CSS = `
     --tk-teal: #2dd4bf;
     --tk-blue: #0353a4;
     --tk-violet: #c084fc;
+    --tk-indigo: #818cf8;
     --tk-magenta: #f472b6;
+    --tk-amber: #fbbf24;
     --tk-green: #34d399;
     --tk-red: #f87171;
 
@@ -71,7 +75,8 @@ export const TOOLBAR_CSS = `
 
 /* Solid-fill badges need dark text against the brighter dark-mode accents. */
 :root[data-sctk-theme="dark"] .tk-badge-link-fs,
-:root[data-sctk-theme="dark"] .tk-badge-link-w { color: #16181b; }
+:root[data-sctk-theme="dark"] .tk-badge-link-w,
+:root[data-sctk-theme="dark"] .tk-badge-link-y:hover { color: #16181b; }
 :root[data-sctk-theme="dark"] .sctk-btn:hover:not(:disabled),
 :root[data-sctk-theme="dark"] #tk-center-context .tk-scroll-btn:hover { color: #ffffff; }
 
@@ -88,9 +93,9 @@ export const TOOLBAR_CSS = `
 
 /* Responsive Center Context Bar */
 #tk-center-context { flex-grow: 1; flex-shrink: 1; display: flex; align-items: center; justify-content: center; gap: 4px; overflow: hidden; min-width: 120px; padding: 0 4px; }
-#tk-center-context .tk-scroll-btn { background: var(--tk-bg-elevated); color: var(--tk-blue); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 6px 0 6px; height: 20px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; user-select: none; display: inline-flex; align-items: center; justify-content: center; gap: 3px; line-height: 1; box-sizing: border-box; }
-#tk-center-context .tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
-#tk-center-context .context-label { display: inline-flex; align-items: center; height: 20px; font-family: var(--tk-font-mono); font-weight: 600; color: var(--tk-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1; margin: 0 2px; padding-top: 1px; box-sizing: border-box; }
+#tk-center-context .tk-scroll-btn, #tk-center-context .tk-scroll-btn:visited { background: var(--tk-bg-elevated); color: var(--tk-blue); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 6px 0 6px; height: 20px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; user-select: none; display: inline-flex; align-items: center; justify-content: center; gap: 3px; line-height: 1; box-sizing: border-box; text-decoration: none !important; }
+#tk-center-context .tk-scroll-btn:hover, #tk-center-context .tk-scroll-btn:hover:visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; text-decoration: none !important; }
+#tk-center-context .context-label { display: inline-flex; align-items: center; height: 20px; font-family: var(--tk-font-mono); font-weight: 600; color: var(--tk-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1; margin: 0; padding-top: 1px; box-sizing: border-box; }
 
 /* Right-Aligned Status Bar */
 #tk-status-wrap { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; }
@@ -98,14 +103,14 @@ export const TOOLBAR_CSS = `
 #tk-status:hover { color: var(--tk-blue); text-decoration: underline; }
 :root[data-sctk-theme="dark"] #tk-status:hover { color: var(--tk-teal); }
 
-#tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #000000; border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 20px; margin-left: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; cursor: pointer; box-sizing: border-box; }
+#tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #000000; border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 20px; margin-left: 0; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; cursor: pointer; box-sizing: border-box; }
 #tk-settings-trigger.tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
 :root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #ffffff; border-color: var(--tk-border-strong); }
 :root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #ffffff; }
 
-.sctk-btn, .sctk-btn:visited { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 22px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; }
+.sctk-btn, .sctk-btn:visited { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 22px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; text-decoration: none !important; }
 .sctk-btn svg { flex-shrink: 0; }
-.sctk-btn:hover:not(:disabled), .sctk-btn:hover:not(:disabled):visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
+.sctk-btn:hover:not(:disabled), .sctk-btn:hover:not(:disabled):visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; text-decoration: none !important; }
 .sctk-btn-danger { border-color: var(--tk-red); color: var(--tk-red); }
 .sctk-btn-danger:hover:not(:disabled) { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
 .sctk-btn[hidden] { display: none; }
@@ -162,7 +167,8 @@ export const TOOLBAR_CSS = `
 #tk-overflow .tk-dropdown-content .sctk-btn { width: 100%; justify-content: flex-start; margin: 2px 0; }
 
 /* Compact Badge Styles */
-.sctk-badge, .sctk-badge:visited { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-family: var(--tk-font-mono); padding: 1px 5px 0 5px; height: 20px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
+.sctk-badge, .sctk-badge:visited { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-family: var(--tk-font-mono); padding: 1px 5px 0 5px; height: 20px; margin: 0; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; box-sizing: border-box; cursor: pointer; white-space: nowrap; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); color: var(--tk-text); }
+.sctk-badge:hover, .sctk-badge:hover:visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: var(--tk-accent); text-decoration: none !important; }
 
 .tk-badge-action, .tk-badge-action:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
 .tk-badge-action:hover, .tk-badge-action:hover:visited { background: var(--tk-blue); color: #ffffff; }
@@ -172,6 +178,9 @@ export const TOOLBAR_CSS = `
 
 .tk-badge-link-c, .tk-badge-link-c:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
 .tk-badge-link-c:hover, .tk-badge-link-c:hover:visited { background: var(--tk-blue); color: #ffffff; }
+
+.tk-badge-link-y, .tk-badge-link-y:visited { background: var(--tk-bg-elevated); border-color: var(--tk-amber); color: var(--tk-amber); }
+.tk-badge-link-y:hover, .tk-badge-link-y:hover:visited { background: var(--tk-amber); color: #ffffff; }
 
 .tk-badge-link-i, .tk-badge-link-i:visited { background: var(--tk-bg-elevated); border-color: var(--tk-violet); color: var(--tk-violet); }
 .tk-badge-link-i:hover, .tk-badge-link-i:hover:visited { background: var(--tk-violet); color: #ffffff; }
@@ -249,6 +258,7 @@ export const TOOLBAR_CSS = `
 /* Card Name Formatter Popover */
 .tk-formatter-popover { position: absolute; z-index: 200000; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 4px 8px; box-shadow: var(--tk-shadow-elevated); font-family: var(--tk-font-ui); font-size: 11px; display: flex; align-items: center; gap: 8px; }
 .tk-popover-label { font-family: var(--tk-font-mono); white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+.tk-formatter-popover .sctk-btn { height: 20px; padding: 0 6px; }
 
 /* Quantity Counter Widget */
 .sctk-qty-counter { font-family: var(--tk-font-ui); font-size: 11.5px; color: var(--tk-text); background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-left: 3px solid var(--tk-accent); border-radius: var(--tk-radius-sm); padding: 5px 10px; box-shadow: var(--tk-shadow-elevated); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; user-select: none; pointer-events: auto; }

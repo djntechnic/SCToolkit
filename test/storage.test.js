@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { deriveSetYear } from '../src/core/storage.js';
+import { deriveSetYear, Pins } from '../src/core/storage.js';
 import { extractSid, extractParentSid } from '../src/core/sid.js';
 import { JSDOM } from 'jsdom';
 
@@ -113,3 +113,23 @@ test('deriveSetYear: no year anywhere groups under Misc', () => {
   assert.equal(deriveSetYear('Example Promos'), 'Misc');
   assert.equal(deriveSetYear(''), 'Misc');
 });
+
+test('Pins.sort: sorts pins by year (ascending) and then set name (A-Z) with Misc at the end', () => {
+  const input = [
+    { id: '1', name: '2019 Topps Heritage', year: '2019' },
+    { id: '2', name: '2025 Topps Chrome', year: '2025' },
+    { id: '3', name: '2019 Bowman', year: '2019' },
+    { id: '4', name: '2025 Bowman Best', year: '2025' },
+    { id: '5', name: 'Misc Promo Set', year: 'Misc' }
+  ];
+
+  const sorted = Pins.sort(input);
+  assert.deepEqual(sorted.map((p) => p.name), [
+    '2019 Bowman',
+    '2019 Topps Heritage',
+    '2025 Bowman Best',
+    '2025 Topps Chrome',
+    'Misc Promo Set'
+  ]);
+});
+

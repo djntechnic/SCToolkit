@@ -4,6 +4,8 @@
  * Centralizes redundant string operations (year parsing, HTML/XML/CSV escaping).
  */
 
+import { Log } from "./log.js";
+
 const LEADING_YEAR_REGEX = /^(\d{4})/;
 
 export const Utils = {
@@ -14,15 +16,16 @@ export const Utils = {
    * @param {string} [href] e.g. "/Checklist.cfm/sid/123/2024"
    * @returns {string|null} four-digit year string, or null
    */
-  extractYear(text = '', href = '') {
+  extractYear(text = "", href = "") {
     if (href) {
-      const fromHref = href.match(/\/sid\/\d+\/(\d{4})/i)
-        || href.match(/sid=\d+.*?(\d{4})/i)
-        || href.match(/[?&]year=(\d{4})/i)
-        || href.match(/\/(\d{4})(?:[/-]|\b)/);
+      const fromHref =
+        href.match(/\/sid\/\d+\/(\d{4})/i) ||
+        href.match(/sid=\d+.*?(\d{4})/i) ||
+        href.match(/[?&]year=(\d{4})/i) ||
+        href.match(/\/(\d{4})(?:[/-]|\b)/);
       if (fromHref) return fromHref[1];
     }
-    const match = String(text || '').match(LEADING_YEAR_REGEX);
+    const match = String(text || "").match(LEADING_YEAR_REGEX);
     return match ? match[1] : null;
   },
 
@@ -32,13 +35,94 @@ export const Utils = {
    * @param {string} [path] e.g. "/Checklist.cfm/sid/311171/"
    * @returns {string} full URL e.g. "https://www.tcdb.com/Checklist.cfm/sid/311171/"
    */
-  toFullUrl(path = '') {
-    if (!path) return '';
-    if (path.startsWith('http://') || path.startsWith('https://')) return path;
-    const origin = (typeof window !== 'undefined' && window.location && window.location.origin)
-      ? window.location.origin
-      : 'https://www.tcdb.com';
-    return `${origin}${path.startsWith('/') ? '' : '/'}${path}`;
+  toFullUrl(path = "") {
+    if (!path) return "";
+    if (path.startsWith("http://") || path.startsWith("https://")) return path;
+    const origin =
+      typeof window !== "undefined" && window.location && window.location.origin
+        ? window.location.origin
+        : "https://www.tcdb.com";
+    return `${origin}${path.startsWith("/") ? "" : "/"}${path}`;
+  },
+
+  /**
+   * Open a URL in a new background tab (or foreground tab if requested).
+   * Falls back to window.open if GM_openInTab is unavailable.
+   *
+   * @param {string} url
+   * @param {boolean} [inBackground=true]
+   */
+  openInTab(url, inBackground = true) {
+    const fullUrl = Utils.toFullUrl(url);
+    const gmType = typeof GM_openInTab;
+    const winType = typeof window;
+    const grants = typeof GM_info !== 'undefined' ? GM_info?.script?.grant?.join(', ') : 'undefined';
+    Log(`Granted APIs: ${grants}`, 'debug');
+    Log(
+      `openInTab called: url='${url}', fullUrl='${fullUrl}', inBackground=${inBackground}, typeof GM_openInTab='${gmType}', typeof window='${winType}'`,
+      "debug",
+    );
+
+    if (typeof GM_openInTab === "function") {
+      try {
+        Log(
+          "openInTab: attempting GM_openInTab(url, { active, loadInBackground, insert })",
+          "debug",
+        );
+        GM_openInTab(fullUrl, {
+          active: !inBackground,
+          loadInBackground: inBackground,
+          insert: true,
+        });
+        return;
+      } catch (err) {
+        Log(
+          `openInTab: GM_openInTab(options) failed: ${err?.message || err}`,
+          "debug",
+        );
+        try {
+          Log("openInTab: attempting GM_openInTab(url, inBackground)", "debug");
+          GM_openInTab(fullUrl, inBackground);
+          return;
+        } catch (err2) {
+          Log(
+            `openInTab: GM_openInTab(url, bool) failed: ${err2?.message || err2}`,
+            "debug",
+          );
+          // Fallback to window.open
+        }
+      }
+    } else if (
+      typeof GM !== "undefined" &&
+      typeof GM.openInTab === "function"
+    ) {
+      try {
+        Log("openInTab: attempting GM.openInTab(url, !inBackground)", "debug");
+        GM.openInTab(fullUrl, inBackground);
+        return;
+      } catch (err) {
+        Log(`openInTab: GM.openInTab failed: ${err?.message || err}`, "debug");
+        // Fallback to window.open
+      }
+    }
+
+    if (typeof window !== "undefined" && window.open) {
+      Log("openInTab: falling back to window.open", "debug");
+      const win = window.open(fullUrl, "_blank");
+      if (win && inBackground) {
+        try {
+          win.blur();
+          if (typeof window.focus === "function") window.focus();
+        } catch (err) {
+          Log(
+            `openInTab: window.blur/focus failed: ${err?.message || err}`,
+            "debug",
+          );
+        }
+      }
+    } else {
+      Log("openInTab: no window or tab API available", "warn");
+    }
   },
 
   /**
@@ -48,16 +132,22 @@ export const Utils = {
    * @param {string} [url]
    * @returns {string} e.g. "ViewCollectionMode.cfm?PageIndex=2"
    */
-  formatLogUrl(url = '') {
-    if (!url) return '';
+  formatLogUrl(url = "") {
+    if (!url) return "";
     try {
-      const parsed = new URL(url, typeof window !== 'undefined' && window.location ? window.location.href : 'https://www.tcdb.com');
-      const filename = parsed.pathname.split('/').pop() || parsed.pathname;
-      const partParam = parsed.searchParams.get('Part');
+      const parsed = new URL(
+        url,
+        typeof window !== "undefined" && window.location
+          ? window.location.href
+          : "https://www.tcdb.com",
+      );
+      const filename = parsed.pathname.split("/").pop() || parsed.pathname;
+      const partParam = parsed.searchParams.get("Part");
       if (partParam) {
         return `${filename}?Part=${partParam}`;
       }
-      const pageIndex = parsed.searchParams.get('PageIndex') || parsed.searchParams.get('page');
+      const pageIndex =
+        parsed.searchParams.get("PageIndex") || parsed.searchParams.get("page");
       if (pageIndex) {
         return `${filename}?PageIndex=${pageIndex}`;
       }
@@ -79,13 +169,13 @@ export const Utils = {
      * @returns {string}
      */
     html(str) {
-      if (str === null || str === undefined) return '';
+      if (str === null || str === undefined) return "";
       return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     },
 
     /**
@@ -95,13 +185,13 @@ export const Utils = {
      * @returns {string}
      */
     xml(str) {
-      if (str === null || str === undefined) return '';
+      if (str === null || str === undefined) return "";
       return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
     },
 
     /**
@@ -111,11 +201,16 @@ export const Utils = {
      * @returns {string}
      */
     csv(value) {
-      const str = (value === null || value === undefined) ? '' : String(value);
-      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      const str = value === null || value === undefined ? "" : String(value);
+      if (
+        str.includes(",") ||
+        str.includes('"') ||
+        str.includes("\n") ||
+        str.includes("\r")
+      ) {
         return `"${str.replace(/"/g, '""')}"`;
       }
       return str;
-    }
-  }
+    },
+  },
 };

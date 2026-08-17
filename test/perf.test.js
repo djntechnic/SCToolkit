@@ -230,11 +230,13 @@ test('applySaleTypeDefaults reports no change when already correct', () => {
 
 // --- set list ---------------------------------------------------------------
 
-test('findSetLinks skips image-only and empty links', () => {
+test('findSetLinks skips image-only, empty, and offcanvas header toggle links', () => {
   const dom = mount(`
     <a href="/Checklist.cfm/sid/1/">Real Set</a>
     <a href="/Checklist.cfm/sid/2/"><img src="t.png"></a>
-    <a href="/Checklist.cfm/sid/3/">   </a>`);
+    <a href="/Checklist.cfm/sid/3/">   </a>
+    <a class="btn btn-link" data-bs-toggle="offcanvas" href="/ViewCollectionWantlist.cfm/sid/357729#offcanvas"><h1 class="site">Collection Links</h1></a>
+  `);
 
   const links = findSetLinks(dom.window.document);
   assert.deepEqual(links.map((l) => l.textContent.trim()), ['Real Set']);

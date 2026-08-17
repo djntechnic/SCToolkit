@@ -12,6 +12,66 @@ import { Utils } from "../core/utils.js";
 import { debounce } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { showToast } from "../ui/toast.js";
+import { cleanDocTitle } from "../ui/toolbar.js";
+
+/**
+ * Resolve full set title using Toolbar title logic.
+ * @param {Document} [doc=document]
+ * @returns {string}
+ */
+export function getToolbarTitle(doc = document) {
+  let rawTitle = doc ? doc.title : "";
+  let title = cleanDocTitle(rawTitle);
+
+  const genericLabels = [
+    "",
+    "collection",
+    "change log",
+    "forum",
+    "change log prices",
+    "recently added",
+    "inaccuracy reports",
+    "sctoolkit active",
+    "set view",
+    "browse",
+  ];
+
+  if (!title || genericLabels.includes(title.toLowerCase())) {
+    const setWrapperTitle = doc.querySelector?.(".set-title, #setHeader .set-title");
+    if (setWrapperTitle && setWrapperTitle.textContent.trim()) {
+      title = cleanDocTitle(setWrapperTitle.textContent.trim());
+    }
+  }
+
+  if (!title || genericLabels.includes(title.toLowerCase())) {
+    const setHeader =
+      doc.querySelector?.("#setname-content h1") ||
+      doc.querySelector?.("#main-content-area h2") ||
+      doc.querySelector?.("#main-content-area h1") ||
+      doc.querySelector?.("h1.site");
+    const subHeader =
+      doc.querySelector?.("#setname-content h3") ||
+      doc.querySelector?.("#main-content-area h3");
+
+    if (
+      setHeader &&
+      !setHeader.textContent.toLowerCase().includes("set links") &&
+      !setHeader.textContent.toLowerCase().includes("change log")
+    ) {
+      title = setHeader.textContent.replace(/\s*-\s*Cards$/i, "").trim();
+    }
+
+    if (
+      subHeader &&
+      title &&
+      !title.toLowerCase().includes(subHeader.textContent.trim().toLowerCase())
+    ) {
+      title += ` - ${subHeader.textContent.trim()}`;
+    }
+  }
+
+  return title;
+}
 
 /**
  * Contextual Metadata Extractor and Compiler.
@@ -41,36 +101,42 @@ export const CardMetadataExtractor = {
     const selectedText = selection.toString().trim();
     if (!selectedText) return null;
 
-    // 1. Year & Set Name Resolution
+    // 1. Year, Set Name & Insert Set Name Resolution via Toolbar Title Logic
+    const toolbarTitle = getToolbarTitle(doc);
     let year = "";
     let setName = "";
-    const setHeader =
-      doc.querySelector("#setname-content h1") ||
-      doc.querySelector("#main-content-area h1");
-    if (setHeader) {
-      const headerText = setHeader.textContent
-        .replace(/\s*-\s*Cards$/i, "")
-        .trim();
-      const yearMatch = headerText.match(/^(\d{4})\s+(.+)/);
+    let insertSetName = "";
+
+    if (toolbarTitle) {
+      const yearMatch = toolbarTitle.match(/^(\d{4}(?:-\d{2,4})?)\s+(.+)/);
       if (yearMatch) {
         year = yearMatch[1];
-        setName = yearMatch[2];
+        const rest = yearMatch[2];
+        const dashIdx = rest.indexOf("-");
+        if (dashIdx !== -1) {
+          setName = rest.slice(0, dashIdx).trim();
+          insertSetName = rest.slice(dashIdx + 1).trim();
+        } else {
+          setName = rest.trim();
+        }
       } else {
-        setName = headerText;
+        const dashIdx = toolbarTitle.indexOf("-");
+        if (dashIdx !== -1) {
+          setName = toolbarTitle.slice(0, dashIdx).trim();
+          insertSetName = toolbarTitle.slice(dashIdx + 1).trim();
+        } else {
+          setName = toolbarTitle.trim();
+        }
       }
-    }
-    const subHeader = doc.querySelector("#setname-content h3");
-    if (subHeader && setName) {
-      setName += ` ${subHeader.textContent.trim()}`;
-    } else if (subHeader && !setName) {
-      setName = subHeader.textContent.trim();
     }
 
     // 2. Card Number Resolution
     let cardNo = "";
     let cardLink = null;
-    const cardLinks = row.querySelectorAll(
-      'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="cid="]',
+    const cardLinks = Array.from(
+      row.querySelectorAll(
+        'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="cid="]',
+      ),
     );
     for (const link of cardLinks) {
       if (link.querySelector("img")) continue;
@@ -98,6 +164,16 @@ export const CardMetadataExtractor = {
     let tags = "";
     let printRun = "";
     const personLink = row.querySelector('a[href*="Person.cfm"]');
+    const teamLink = row.querySelector('a[href*="Team.cfm"]');
+
+    const ignoredTagsRaw = Config.global.cardFormatterIgnoredTags ?? "ASR, LL, TC, CL";
+    const ignoredTagsSet = new Set(
+      String(ignoredTagsRaw)
+        .split(",")
+        .map((t) => t.trim().toUpperCase())
+        .filter(Boolean)
+    );
+
     const subjectTd = personLink
       ? personLink.closest("td")
       : cardLink
@@ -111,27 +187,35 @@ export const CardMetadataExtractor = {
 
       tokens.forEach((token) => {
         const clean = token.replace(/,/g, "").trim();
-        if (/^SN\d+$/i.test(clean)) {
-          printRun = clean.replace(/^SN/i, "");
+        if (/^(?:SN|PR)\d+$/i.test(clean)) {
+          printRun = clean.replace(/^(?:SN|PR)/i, "");
         } else if (
           /^[A-Z0-9]{2,4}$/.test(clean) &&
           !/^(Jr|Sr|II|III|IV|V)$/i.test(clean)
         ) {
-          tagParts.push(clean);
+          if (!ignoredTagsSet.has(clean.toUpperCase())) {
+            tagParts.push(clean);
+          }
         }
       });
       tags = tagParts.join(" ");
     }
 
-    // 4. Player / Subject Name Resolution (Full Detail, not partial highlight snippet)
+    // 4. Player / Subject Name Resolution
     let playerName = "";
     if (personLink) {
       playerName = personLink.textContent.trim();
-    } else if (subjectTd) {
+    } else if (cardLinks.length >= 2 && !cardLinks[1].querySelector("img")) {
+      const secondText = cardLinks[1].textContent.trim();
+      if (secondText && secondText !== cardNo) {
+        playerName = secondText;
+      }
+    }
+
+    if (!playerName && subjectTd) {
       let rawName = subjectTd.textContent.replace(/\s+/g, " ").trim();
-      // Remove tags and print run tokens from full subject cell text
       if (printRun) {
-        rawName = rawName.replace(new RegExp(`\\bSN${printRun}\\b`, "i"), "");
+        rawName = rawName.replace(new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"), "");
       }
       if (tags) {
         const tagList = tags.split(" ");
@@ -143,7 +227,6 @@ export const CardMetadataExtractor = {
       playerName = rawName.replace(/\s+/g, " ").trim();
     }
 
-    // Fallback if no person link or subject cell name found
     if (!playerName) {
       playerName = selectedText;
       if (cardNo) {
@@ -162,13 +245,34 @@ export const CardMetadataExtractor = {
       if (!playerName) playerName = selectedText;
     }
 
+    // 5. Player Team Resolution
+    let playerTeam = "";
+    if (teamLink) {
+      playerTeam = teamLink.textContent.trim();
+    } else if (cardLinks.length >= 3 && !cardLinks[2].querySelector("img")) {
+      const thirdText = cardLinks[2].textContent.trim();
+      if (thirdText && thirdText !== cardNo && thirdText !== playerName) {
+        playerTeam = thirdText;
+      }
+    } else if (subjectTd && subjectTd.nextElementSibling) {
+      const nextTd = subjectTd.nextElementSibling;
+      const linkInNext = nextTd.querySelector("a");
+      if (linkInNext) {
+        playerTeam = linkInNext.textContent.trim();
+      } else {
+        playerTeam = nextTd.textContent.trim();
+      }
+    }
+
     return {
       Year: year,
       SetName: setName,
+      InsertSetName: insertSetName,
       PlayerName: playerName,
+      PlayerTeam: playerTeam,
       CardNo: cardNo,
       Tags: tags,
-      PR: printRun ? `/${printRun}` : "",
+      PR: printRun ? String(printRun).replace(/^\//, "") : "",
     };
   },
 
@@ -180,7 +284,8 @@ export const CardMetadataExtractor = {
    */
   compile: function (template, tokens) {
     if (!tokens || !template) return "";
-    let result = template;
+    let isTSV = template.includes("\t") || template.includes("\\t");
+    let result = template.replace(/\\t/g, "\t");
     if (!tokens.CardNo) {
       result = result.replace(/#\{CardNo\}/g, "{CardNo}");
     }
@@ -189,6 +294,9 @@ export const CardMetadataExtractor = {
       const val = (tokens[key] || "").trim();
       result = result.replace(pattern, val);
     });
+    if (isTSV) {
+      return result;
+    }
     // Sanitize extra consecutive spaces and orphaned trailing/leading delimiters
     return result
       .replace(/\s+/g, " ")
@@ -262,8 +370,6 @@ export const FormattedCopyPopover = {
       copyBtn.innerHTML = icon("copy");
       copyBtn.title = "Copy formatted text";
       copyBtn.setAttribute("aria-label", "Copy formatted text");
-      copyBtn.style.height = "20px";
-      copyBtn.style.padding = "0 6px";
 
       copyBtn.addEventListener("click", () => {
         const writePromise = win.navigator?.clipboard?.writeText
@@ -286,6 +392,40 @@ export const FormattedCopyPopover = {
       popover.appendChild(copyBtn);
     }
 
+    if (Config.global.cardFormatterShowTSV !== false) {
+      const tsvBtn = targetDoc.createElement("button");
+      tsvBtn.type = "button";
+      tsvBtn.className = "sctk-btn";
+      tsvBtn.innerHTML = icon("tsv");
+      tsvBtn.title = "Copy tab-separated values (TSV)";
+      tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
+
+      tsvBtn.addEventListener("click", () => {
+        const tsvTemplate =
+          Config.global.cardFormatterTSVTemplate ||
+          "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+        const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
+
+        const writePromise = win.navigator?.clipboard?.writeText
+          ? win.navigator.clipboard.writeText(tsvLine)
+          : Promise.resolve();
+
+        writePromise
+          .then(() => {
+            tsvBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied TSV: <b>${Utils.escape.html(tsvLine)}</b>`,
+              variant: "success",
+            });
+            setTimeout(() => this.hide(targetDoc), 1000);
+          })
+          .catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+      });
+      popover.appendChild(tsvBtn);
+    }
+
     const playerName = tokens?.PlayerName || "";
     if (playerName) {
       const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
@@ -297,8 +437,6 @@ export const FormattedCopyPopover = {
         brefBtn.innerHTML = icon("bref");
         brefBtn.title = "Search Baseball Reference";
         brefBtn.setAttribute("aria-label", "Search Baseball Reference");
-        brefBtn.style.height = "20px";
-        brefBtn.style.padding = "0 6px";
 
         brefBtn.addEventListener("click", () => {
           const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
@@ -314,8 +452,6 @@ export const FormattedCopyPopover = {
         googleBtn.innerHTML = icon("google");
         googleBtn.title = "Search Google";
         googleBtn.setAttribute("aria-label", "Search Google");
-        googleBtn.style.height = "20px";
-        googleBtn.style.padding = "0 6px";
 
         googleBtn.addEventListener("click", () => {
           const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
@@ -379,16 +515,17 @@ export function initCardNameFormatter() {
     }
 
     const showCopy = Config.global.cardFormatterShowCopy !== false;
+    const showTSV = Config.global.cardFormatterShowTSV !== false;
     const showBRef = Config.global.cardFormatterShowBRef !== false;
     const showGoogle = Config.global.cardFormatterShowGoogle !== false;
     const hasSearch = showBRef || showGoogle;
 
-    if (!showCopy && !hasSearch) {
+    if (!showCopy && !showTSV && !hasSearch) {
       FormattedCopyPopover.hide();
       return;
     }
 
-    if (!hasSearch && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
+    if (!hasSearch && !showTSV && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
       if (window.navigator?.clipboard?.writeText) {
         window.navigator.clipboard.writeText(formatted).then(() => {
           showToast({
@@ -417,3 +554,4 @@ export function initCardNameFormatter() {
     }
   });
 }
+

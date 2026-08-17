@@ -38,6 +38,7 @@ export function buildBanner(pkg) {
     ['grant', 'GM_setValue'],
     ['grant', 'GM_getValue'],
     ['grant', 'GM_info'],
+    ['grant', 'GM_openInTab'],
     ['run-at', 'document-end']
   ];
 

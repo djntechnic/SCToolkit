@@ -21,12 +21,12 @@
     "VsCodeTaskButtons.tasks": [
       {
         "label": "🚀 Run Dev Watcher",
-        "task": "Run Dev Watcher",
+        "task": "🚀 Run Dev Watcher",
         "tooltip": "Start Watcher to Build on File Change",
       },
       {
         "label": "⬇️ Git Pull",
-        "task": "Git Pull",
+        "task": "⬇️ Git Pull",
         "tooltip": "Pull that Latest from GitHub Repo",
       },
     ],

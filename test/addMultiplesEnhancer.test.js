@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import {
   autoScrollIfOutsideMiddle80,
@@ -13,6 +14,8 @@ import {
   setupSubmitHandler,
   checkAndHandlePostReloadSuccess,
   showAddedDetailsModal,
+  focusFirstQuantityField,
+  getSubmitButton,
   STORAGE_BATCH_KEY
 } from '../src/modules/addMultiplesEnhancer.js';
 import { InputIndex } from '../src/modules/inputOptimization.js';
@@ -324,3 +327,66 @@ test('checkAndHandlePostReloadSuccess: renders success message with Details butt
   assert.ok(modal.textContent.includes('Josh Jung'));
   assert.ok(modal.textContent.includes('43'));
 });
+
+test('focusFirstQuantityField: focuses single #Quantity input box on page load for CollectionAddM.cfm', () => {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <body>
+      <input name="q" type="text" placeholder="Search" />
+      <form name="add" id="add" action="/CollectionAddM2.cfm">
+        <input name="Quantity" type="text" maxlength="5" id="Quantity" class="form-control" size="5" placeholder="Quantity">
+      </form>
+    </body>
+    </html>
+  `;
+  const dom = new JSDOM(html, { url: 'https://www.tcdb.com/CollectionAddM.cfm?Type=Baseball&SetID=218622&CardID=13850248' });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+
+  const qtyInput = dom.window.document.getElementById('Quantity');
+
+  focusFirstQuantityField(dom.window.document);
+
+  assert.equal(dom.window.document.activeElement, qtyInput);
+});
+
+test('focusFirstQuantityField: focuses #Quantity input when loading submitted fixture CollectionAddM.html', () => {
+  const fixtureHtml = readFileSync(new URL('./fixtures/submitted/CollectionAddM.html', import.meta.url), 'utf8');
+  const dom = new JSDOM(fixtureHtml, { url: 'https://www.tcdb.com/CollectionAddM.cfm?Type=Baseball&SetID=218622&CardID=13850248&sTeamID=&Filter=&ReturnRow=0&PageIndex=1' });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+
+  initAddMultiplesEnhancer(dom.window.document);
+
+  const qtyInput = dom.window.document.querySelector('input#Quantity');
+  assert.ok(qtyInput !== null);
+  assert.equal(dom.window.document.activeElement, qtyInput);
+});
+
+test('setupLastRowEnterHandler: pressing Enter in the last quantity input moves focus to the Add submit button', () => {
+  const fixtureHtml = readFileSync(new URL('./fixtures/submitted/CollectionAddMultiplesText.html', import.meta.url), 'utf8');
+  const dom = new JSDOM(fixtureHtml, { url: 'https://www.tcdb.com/CollectionAddMultiplesText.cfm/sid/357729' });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+
+  const inputs = Array.from(dom.window.document.querySelectorAll('input[name^="Quantity_"]'));
+  InputIndex.getValidInputs = () => inputs;
+
+  initAddMultiplesEnhancer(dom.window.document);
+
+  const lastInput = inputs[inputs.length - 1];
+  assert.ok(lastInput !== null, 'Last quantity input should exist');
+  lastInput.focus();
+
+  const enterEvent = new dom.window.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true });
+  lastInput.dispatchEvent(enterEvent);
+
+  const active = dom.window.document.activeElement;
+  assert.ok(active !== null, 'Active element should not be null');
+  assert.equal(active.tagName, 'BUTTON');
+  assert.equal(active.textContent.trim(), 'Add');
+  assert.equal(active.type, 'submit');
+});
+
+

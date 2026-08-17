@@ -53,7 +53,7 @@ export const Routes = {
     path().includes('/year/'),
   isForSaleTrade: () => path().includes('/viewcollectionforsaletrade.cfm'),
   isWantlist: () => path().includes('/viewcollectionwantlist.cfm'),
-  isAddMultiples: () => path().includes('/collectionaddmultiples'),
+  isAddMultiples: () => path().includes('/collectionaddmultiples') || path().includes('/collectionaddm'),
 
   /**
    * True on any page scoped to one set. Composed from the individual

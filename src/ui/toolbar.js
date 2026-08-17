@@ -16,6 +16,7 @@ import { createBtn, injectStyle } from './dom.js';
 import { icon, installIconSprite } from './icons.js';
 import { TOOLBAR_CSS } from './styles.js';
 import { initDropdown, initDropdownDismissal } from './dropdown.js';
+import { showToast } from './toast.js';
 
 /**
  * Append the shortcut links plus a CSV action for a set.
@@ -35,6 +36,19 @@ export function appendShortcutBadges(
 ) {
   renderBadgeSet(container, sid, {
     include: getToolbarBadges(),
+    onPin: (e) => {
+      e.preventDefault();
+      const pageUrl = window.location.href;
+      const added = Pins.add({
+        id: sid,
+        name: label,
+        url: pageUrl,
+        year: Utils.extractYear(label, pageUrl)
+      });
+      if (!added) return;
+      Toolbar.renderPins();
+      showToast({ message: `Pinned: <b>${Utils.escape.html(label)}</b>` });
+    },
     onExport: (e) => {
       e.preventDefault();
       const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${sid}/`);
@@ -219,7 +233,18 @@ export const Toolbar = {
       return acc;
     }, {});
 
-    Object.keys(grouped).sort((a, b) => b.localeCompare(a)).forEach((year) => {
+    const sortedYears = Object.keys(grouped).sort((a, b) => {
+      if (a === 'Misc') return 1;
+      if (b === 'Misc') return -1;
+      const numA = parseInt(a, 10);
+      const numB = parseInt(b, 10);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB;
+      }
+      return a.localeCompare(b);
+    });
+
+    sortedYears.forEach((year) => {
       const dropDiv = document.createElement('div');
       dropDiv.className = 'tk-dropdown';
 
@@ -280,13 +305,17 @@ export const Toolbar = {
 
     const currentSid = extractSid(window.location.href);
 
+    const displayMode = Config.global?.toolbarButtonDisplay || 'both';
+
     const rawHotlinks = Config.global?.hotlinks || [];
     const hotlinks = Array.isArray(rawHotlinks) ? [...rawHotlinks] : [];
     hotlinks
       .filter((hl) => hl.enabled !== false)
       .sort((a, b) => Number(a.placement || 0) - Number(b.placement || 0))
       .forEach((hl) => {
-        const isAction = hl.action || hl.url === '#top' || hl.url === '#bottom';
+        const isViewAllC = hl.action === 'viewAllC' || hl.id === 'year' || (hl.url && hl.url.includes('ViewAllC.cfm'));
+        const isAction = hl.action || hl.url === '#top' || hl.url === '#bottom' || isViewAllC;
+        const targetMode = hl.target || 'inline';
         const el = document.createElement(isAction ? 'button' : 'a');
         el.className = 'tk-scroll-btn tk-hotlink-btn';
         el.title = hl.tooltip || hl.text || '';
@@ -304,17 +333,60 @@ export const Toolbar = {
               } else {
                 window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
               }
+            } else if (isViewAllC) {
+              const sport = resolveSportFromDocument(document);
+              const year = resolveYearFromDocument('', document);
+              const targetUrl = `/ViewAllC.cfm/sp/${encodeURIComponent(sport)}/year/${encodeURIComponent(year)}`;
+              if (targetMode === 'background') {
+                Utils.openInTab(targetUrl, true);
+              } else {
+                window.location.href = Utils.toFullUrl(targetUrl);
+              }
             } else if (hl.url) {
-              window.location.href = Utils.toFullUrl(hl.url);
+              if (targetMode === 'background') {
+                Utils.openInTab(hl.url, true);
+              } else {
+                window.location.href = Utils.toFullUrl(hl.url);
+              }
             }
           });
         } else {
           el.href = Utils.toFullUrl(hl.url);
+          if (targetMode === 'background') {
+            el.target = '_blank';
+            el.addEventListener('click', (e) => {
+              e.preventDefault();
+              Utils.openInTab(hl.url, true);
+            });
+          }
         }
 
-        const iconName = hl.icon || (hl.id === 'top' ? 'chevronUp' : hl.id === 'bottom' ? 'chevronDown' : hl.id === 'search' ? 'search' : null);
-        const iconHtml = iconName ? icon(iconName) : '';
-        el.innerHTML = `${iconHtml}<span>${Utils.escape.html(hl.text || '')}</span>`;
+        const iconName = hl.icon || (hl.id === 'top' ? 'chevronUp' : hl.id === 'bottom' ? 'chevronDown' : hl.id === 'search' ? 'search' : hl.id === 'year' ? 'calendar' : null);
+        const hasIcon = Boolean(iconName);
+        const hasText = Boolean(hl.text && hl.text.trim());
+
+        let renderIcon = false;
+        let renderText = false;
+
+        if (displayMode === 'both') {
+          renderIcon = hasIcon;
+          renderText = hasText;
+        } else if (displayMode === 'icon') {
+          renderIcon = hasIcon;
+          renderText = !hasIcon && hasText;
+        } else if (displayMode === 'text') {
+          renderText = hasText;
+          renderIcon = !hasText && hasIcon;
+        }
+
+        if (!renderIcon && !renderText) {
+          renderIcon = hasIcon;
+          renderText = hasText;
+        }
+
+        const iconHtml = renderIcon ? icon(iconName) : '';
+        const textHtml = renderText ? `<span>${Utils.escape.html(hl.text || '')}</span>` : '';
+        el.innerHTML = `${iconHtml}${textHtml}`;
         container.appendChild(el);
       });
 

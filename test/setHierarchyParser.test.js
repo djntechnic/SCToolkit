@@ -164,7 +164,7 @@ test('resolveSportFromDocument: parses sport from document breadcrumbs and fallb
 
   const docFallback = documentFrom(`<div>No breadcrumb</div>`);
   globalThis.document = docFallback;
-  assert.equal(resolveSportFromDocument(), 'Misc');
+  assert.equal(resolveSportFromDocument(), 'Baseball');
 });
 
 test('resolveYearFromDocument: parses year from URL and fallback', () => {
@@ -193,5 +193,23 @@ test('stripYearPrefix: removes leading year and space correctly', () => {
   assert.equal(stripYearPrefix('Bowman', '1955'), 'Bowman');
   assert.equal(stripYearPrefix('', '1955'), '');
   assert.equal(stripYearPrefix('1988 Fleer', ''), '1988 Fleer');
+});
+
+test('resolveSportFromDocument and resolveYearFromDocument: parses sport and year across submitted fixtures', () => {
+  const fixtures = [
+    { file: 'submitted/ViewCollectionForSaleTrade.html', expectedSport: 'Baseball', expectedYear: '2023' },
+    { file: 'submitted/ViewCollectionWantlist.html', expectedSport: 'Baseball', expectedYear: '2023' },
+    { file: 'submitted/CollectionAddMultiplesText.html', expectedSport: 'Baseball', expectedYear: '2023' },
+    { file: 'submitted/CollectionAddMultiples.html', expectedSport: 'Baseball', expectedYear: '2023' },
+    { file: 'submitted/Checklist.html (with Vars).html', expectedSport: 'Baseball', expectedYear: '2024' }
+  ];
+
+  fixtures.forEach(({ file, expectedSport, expectedYear }) => {
+    const doc = fixtureDocument(file);
+    const sport = resolveSportFromDocument(doc);
+    const year = resolveYearFromDocument('', doc);
+    assert.equal(sport, expectedSport, `Sport mismatch for ${file}`);
+    assert.equal(year, expectedYear, `Year mismatch for ${file}`);
+  });
 });
 

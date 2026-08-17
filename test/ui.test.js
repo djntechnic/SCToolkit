@@ -380,4 +380,80 @@ test('SettingsUI._buildModulesPane: alphabetizes modules and renders accordions'
   assert.equal(firstBody.style.display, 'none', 'Accordion body should close on second header click');
 });
 
+test('Toolbar.renderCenterContext: hotlinks respect toolbarButtonDisplay', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body><div id="sctk-toolbar"><div id="tk-center-context"></div></div></body></html>');
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+
+  const { Config } = await import('../src/core/config.js');
+  const { Toolbar } = await import('../src/ui/toolbar.js');
+
+  Config.global.hotlinks = [
+    { id: 'top', url: '#top', text: 'Top', enabled: true, icon: 'chevronUp' }
+  ];
+
+  // 1. Both mode (icon and text)
+  Config.global.toolbarButtonDisplay = 'both';
+  Toolbar.renderCenterContext();
+  const container = dom.window.document.getElementById('tk-center-context');
+  let btn = container.querySelector('.tk-hotlink-btn');
+  assert.ok(btn.querySelector('svg'), 'both mode should render icon');
+  assert.equal(btn.querySelector('span')?.textContent, 'Top', 'both mode should render text span');
+
+  // 2. Icon only mode
+  Config.global.toolbarButtonDisplay = 'icon';
+  Toolbar.renderCenterContext();
+  btn = container.querySelector('.tk-hotlink-btn');
+  assert.ok(btn.querySelector('svg'), 'icon mode should render icon');
+  assert.equal(btn.querySelector('span'), null, 'icon mode should not render text span when icon is available');
+
+  // 3. Text only mode
+  Config.global.toolbarButtonDisplay = 'text';
+  Toolbar.renderCenterContext();
+  btn = container.querySelector('.tk-hotlink-btn');
+  assert.equal(btn.querySelector('svg'), null, 'text mode should not render icon when text is available');
+  assert.equal(btn.querySelector('span')?.textContent, 'Top', 'text mode should render text span');
+
+  // Restore default
+  Config.global.toolbarButtonDisplay = 'both';
+});
+
+test('Toolbar.renderCenterContext: hotlinks respect launch target mode', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body><div id="sctk-toolbar"><div id="tk-center-context"></div></div></body></html>');
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+
+  let openedTab = null;
+  globalThis.GM_openInTab = (url, options) => {
+    openedTab = { url, options };
+  };
+
+  const { Config } = await import('../src/core/config.js');
+  const { Toolbar } = await import('../src/ui/toolbar.js');
+
+  Config.global.hotlinks = [
+    { id: 'inline_link', url: 'https://example.test/page1', text: 'Inline', enabled: true, target: 'inline' },
+    { id: 'bg_link', url: 'https://example.test/page2', text: 'Background', enabled: true, target: 'background' }
+  ];
+
+  Toolbar.renderCenterContext();
+  const container = dom.window.document.getElementById('tk-center-context');
+  const links = container.querySelectorAll('a.tk-hotlink-btn');
+  assert.equal(links.length, 2);
+
+  const inlineLink = links[0];
+  const bgLink = links[1];
+
+  assert.equal(inlineLink.target, '', 'inline link target attribute should be empty');
+  assert.equal(bgLink.target, '_blank', 'background link target attribute should be _blank');
+
+  bgLink.click();
+  assert.ok(openedTab, 'clicking background link should invoke GM_openInTab');
+  assert.equal(openedTab.url, 'https://example.test/page2');
+  assert.equal(openedTab.options.active, false, 'opened tab active option should be false for background tab');
+
+  delete globalThis.GM_openInTab;
+});
+
+
 

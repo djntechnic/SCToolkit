@@ -42,6 +42,12 @@ export function findSetLinks(root = document) {
     if (link.closest('#sctk-toolbar')) return false;
     if (!extractSid(link.href)) return false;
 
+    // Exclude offcanvas menu triggers, UI toggles, and heading links (e.g. "Collection Links")
+    if (link.hasAttribute('data-bs-toggle') || link.hasAttribute('data-toggle')) return false;
+    if (/#offcanvas/i.test(link.href) || /#menu/i.test(link.href)) return false;
+    if (link.querySelector('h1, h2, h3, h4, h5, h6, .site, .offcanvas-title')) return false;
+    if (link.closest('.offcanvas-header, .navbar-header')) return false;
+
     const text = link.textContent.trim();
     if (text.length === 0) return false;
 
