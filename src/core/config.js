@@ -173,6 +173,8 @@ export const DEFAULT_CONFIG = {
     cardFormatterTSVTemplate:
       '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}',
     cardFormatterIgnoredTags: 'ASR, LL, TC, CL',
+    cardFormatterTagSeparator: '',
+    cardFormatterTagReplacer: '',
     cardFormatterOutputMode: "popover",
     cardFormatterLinkTarget: "background",
     cardFormatterPopoverDurationMs: 4000,

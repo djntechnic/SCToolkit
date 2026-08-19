@@ -89,6 +89,20 @@ function isActionLink(a) {
   );
 }
 
+function getCleanCellText(cell) {
+  if (!cell) return "";
+  const doc = cell.ownerDocument || (typeof document !== "undefined" ? document : null);
+  const clone = cell.cloneNode(true);
+  clone.querySelectorAll(".tk-player-quick-links-inline, figcaption, .figure-caption").forEach((el) => el.remove());
+  if (doc) {
+    clone.querySelectorAll("br").forEach((br) => {
+      const space = doc.createTextNode(" ");
+      br.parentNode?.replaceChild(space, br);
+    });
+  }
+  return clone.textContent.replace(/\s+/g, " ").trim();
+}
+
 /**
  * Contextual Metadata Extractor and Compiler.
  */
@@ -191,6 +205,31 @@ export const CardMetadataExtractor = {
         .filter(Boolean)
     );
 
+    const tagSeparatorRaw = Config.global.cardFormatterTagSeparator;
+    const tagSeparator =
+      tagSeparatorRaw !== undefined &&
+      tagSeparatorRaw !== null &&
+      String(tagSeparatorRaw) !== ""
+        ? String(tagSeparatorRaw)
+        : " ";
+
+    const tagReplacerRaw = Config.global.cardFormatterTagReplacer ?? "";
+    const tagReplacements = new Map();
+    if (tagReplacerRaw) {
+      String(tagReplacerRaw)
+        .split(/,|\n/)
+        .forEach((pair) => {
+          const colonIdx = pair.indexOf(":");
+          if (colonIdx !== -1) {
+            const key = pair.slice(0, colonIdx).trim().toUpperCase();
+            const val = pair.slice(colonIdx + 1).trim();
+            if (key && val) {
+              tagReplacements.set(key, val);
+            }
+          }
+        });
+    }
+
     const subjectTd = personLink
       ? personLink.closest("td")
       : cardLink
@@ -198,7 +237,7 @@ export const CardMetadataExtractor = {
         : null;
 
     if (subjectTd) {
-      const rawSubject = subjectTd.textContent.replace(/\s+/g, " ").trim();
+      const rawSubject = getCleanCellText(subjectTd);
       const tokens = rawSubject.split(" ");
       const tagParts = [];
 
@@ -210,12 +249,17 @@ export const CardMetadataExtractor = {
           /^[A-Z0-9]{2,4}$/.test(clean) &&
           !/^(Jr|Sr|II|III|IV|V)$/i.test(clean)
         ) {
-          if (!ignoredTagsSet.has(clean.toUpperCase())) {
-            tagParts.push(clean);
+          const upperClean = clean.toUpperCase();
+          let targetTag = clean;
+          if (tagReplacements.has(upperClean)) {
+            targetTag = tagReplacements.get(upperClean);
+          }
+          if (targetTag && !ignoredTagsSet.has(targetTag.toUpperCase())) {
+            tagParts.push(targetTag);
           }
         }
       });
-      tags = tagParts.join(" ");
+      tags = tagParts.join(tagSeparator);
     }
 
     // 4. Player / Subject Name Resolution
@@ -227,14 +271,16 @@ export const CardMetadataExtractor = {
     }
 
     if (!playerName && subjectTd) {
-      let rawName = subjectTd.textContent.replace(/\s+/g, " ").trim();
+      let rawName = getCleanCellText(subjectTd);
       if (printRun) {
         rawName = rawName.replace(new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"), "");
       }
       if (tags) {
-        const tagList = tags.split(" ");
+        const tagList = tags.split(tagSeparator);
         tagList.forEach((t) => {
-          const escT = String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const trimmedTag = String(t).trim();
+          if (!trimmedTag) return;
+          const escT = trimmedTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           rawName = rawName.replace(new RegExp(`\\b${escT}\\b`, "g"), "");
         });
       }
@@ -265,7 +311,7 @@ export const CardMetadataExtractor = {
       playerTeam = teamLink.textContent.trim();
     } else if (cardLinks.length >= 3 && !cardLinks[2].querySelector("img")) {
       const thirdText = cardLinks[2].textContent.trim();
-      if (thirdText && thirdText !== cardNo && thirdText !== playerName) {
+      if (thirdText && thirdText !== cardNo) {
         playerTeam = thirdText;
       }
     } else if (subjectTd && subjectTd.nextElementSibling) {
@@ -274,7 +320,7 @@ export const CardMetadataExtractor = {
       if (linkInNext) {
         playerTeam = linkInNext.textContent.trim();
       } else {
-        playerTeam = nextTd.textContent.trim();
+        playerTeam = getCleanCellText(nextTd);
       }
     }
 

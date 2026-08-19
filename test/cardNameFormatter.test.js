@@ -11,6 +11,8 @@ test('Config: contains default Player Quick Links settings', () => {
   assert.equal(Config.global.cardFormatterTemplate, '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}');
   assert.equal(Config.global.cardFormatterTSVTemplate, '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}');
   assert.equal(Config.global.cardFormatterIgnoredTags, 'ASR, LL, TC, CL');
+  assert.equal(Config.global.cardFormatterTagSeparator, '');
+  assert.equal(Config.global.cardFormatterTagReplacer, '');
   assert.equal(Config.global.cardFormatterOutputMode, 'popover');
   assert.equal(Config.global.cardFormatterLinkTarget, 'background');
   assert.equal(Config.global.cardFormatterPopoverDurationMs, 4000);
@@ -574,6 +576,234 @@ test('renderInlineQuickLinks: places container in player cell even when row has 
   assert.equal(cellIndex, 5, 'Inline container must be injected into Player cell (td[5]), not dropdown cell (td[3])');
   assert.ok(container.parentElement.textContent.includes('Alex Kirilloff'));
 });
+
+test('CardMetadataExtractor.extract: retains PlayerTeam when PlayerName matches TeamName (e.g. New York Yankees)', () => {
+  const dom = new JSDOM(`
+    <!DOCTYPE html>
+    <html>
+    <head><title>2020 Topps Baseball Checklist | Trading Card Database</title></head>
+    <body>
+      <div id="setname-content">
+        <h1>2020 Topps</h1>
+      </div>
+      <div id="main-content-area">
+        <table>
+          <tr id="test-row">
+            <td><a href="ViewCard.cfm/sid/209948/cid/14198249">83</a></td>
+            <td><a href="ViewCard.cfm/sid/209948/cid/14198249">New York Yankees</a> TC</td>
+            <td><a href="ViewCard.cfm/sid/209948/cid/14198249">New York Yankees</a></td>
+          </tr>
+        </table>
+      </div>
+    </body>
+    </html>
+  `);
+  const mockDoc = dom.window.document;
+  const subjectLink = mockDoc.querySelectorAll('a[href*="ViewCard.cfm"]')[1];
+
+  const selection = {
+    isCollapsed: false,
+    anchorNode: subjectLink.firstChild,
+    rangeCount: 1,
+    getRangeAt: () => ({
+      getBoundingClientRect: () => ({ top: 100, bottom: 120, left: 50, right: 150, width: 100, height: 20 })
+    }),
+    toString: () => 'New York Yankees'
+  };
+
+  const tokens = CardMetadataExtractor.extract(selection, mockDoc);
+
+  assert.equal(tokens.PlayerName, 'New York Yankees');
+  assert.equal(tokens.PlayerTeam, 'New York Yankees', 'PlayerTeam should not be omitted when it matches PlayerName');
+  assert.equal(tokens.CardNo, '83');
+
+  const tsvTemplate = '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}';
+  const compiled = CardMetadataExtractor.compile(tsvTemplate, tokens);
+  assert.equal(compiled, '2020\tTopps\t\tNew York Yankees\tNew York Yankees\t\t\t83');
+});
+
+test('CardMetadataExtractor.extract: preserves VAR tag when card has SP, VAR or SSP, VAR and figcaption', () => {
+  const dom = new JSDOM(`
+    <!DOCTYPE html>
+    <html>
+    <head><title>2020 Topps Baseball Checklist | Trading Card Database</title></head>
+    <body>
+      <div id="setname-content">
+        <h1>2020 Topps</h1>
+      </div>
+      <div id="main-content-area">
+        <table>
+          <tr id="test-row-1">
+            <td><a href="ViewCard.cfm/sid/209948/cid/14198243">78</a></td>
+            <td>
+              <a href="ViewCard.cfm/sid/209948/cid/14198243">Bo Bichette</a> SP, VAR<br>
+              <figcaption class="figure-caption">VAR: Player's Weekend uniform</figcaption>
+            </td>
+            <td><a href="Team.cfm/tid/1/Toronto-Blue-Jays">Toronto Blue Jays</a></td>
+          </tr>
+          <tr id="test-row-2">
+            <td><a href="ViewCard.cfm/sid/209948/cid/14198244">78</a></td>
+            <td>
+              <a href="ViewCard.cfm/sid/209948/cid/14198244">Bo Bichette</a> SSP, VAR<br>
+              <figcaption class="figure-caption">VAR: Close up</figcaption>
+            </td>
+            <td><a href="Team.cfm/tid/1/Toronto-Blue-Jays">Toronto Blue Jays</a></td>
+          </tr>
+        </table>
+      </div>
+    </body>
+    </html>
+  `);
+  const mockDoc = dom.window.document;
+  const row1Link = mockDoc.querySelector('#test-row-1 a[href*="ViewCard.cfm"]');
+  const row2Link = mockDoc.querySelector('#test-row-2 a[href*="ViewCard.cfm"]');
+
+  const selection1 = {
+    isCollapsed: false,
+    anchorNode: row1Link.firstChild,
+    toString: () => 'Bo Bichette'
+  };
+  const tokens1 = CardMetadataExtractor.extract(selection1, mockDoc);
+  assert.equal(tokens1.PlayerName, 'Bo Bichette');
+  assert.equal(tokens1.Tags, 'SP VAR', 'VAR tag should be preserved alongside SP');
+
+  const selection2 = {
+    isCollapsed: false,
+    anchorNode: row2Link.firstChild,
+    toString: () => 'Bo Bichette'
+  };
+  const tokens2 = CardMetadataExtractor.extract(selection2, mockDoc);
+  assert.equal(tokens2.PlayerName, 'Bo Bichette');
+  assert.equal(tokens2.Tags, 'SSP VAR', 'VAR tag should be preserved alongside SSP');
+});
+
+test('CardMetadataExtractor.extract: parses CollectionAddMultiplesText-TeamCL.html fixture for Team cards and VAR cards', () => {
+  const filePath = path.join(process.cwd(), 'test/fixtures/submitted/CollectionAddMultiplesText-TeamCL.html');
+  if (!fs.existsSync(filePath)) return;
+  const html = fs.readFileSync(filePath, 'utf8');
+  const dom = new JSDOM(html, { url: 'https://www.tcdb.com/CollectionAddMultiplesText.cfm' });
+  const mockDoc = dom.window.document;
+
+  // Test Row 83: New York Yankees (Team card)
+  const yankeesRow = Array.from(mockDoc.querySelectorAll('tr')).find(r => r.textContent.includes('83') && r.textContent.includes('New York Yankees'));
+  assert.ok(yankeesRow, 'Should find row for New York Yankees card 83');
+
+  const yankeesLink = yankeesRow.querySelector('a');
+  const yankeesSel = { isCollapsed: false, anchorNode: yankeesLink.firstChild, toString: () => 'New York Yankees' };
+  const yankeesTokens = CardMetadataExtractor.extract(yankeesSel, mockDoc);
+  assert.equal(yankeesTokens.PlayerName, 'New York Yankees');
+  assert.equal(yankeesTokens.PlayerTeam, 'New York Yankees');
+  assert.equal(yankeesTokens.CardNo, '83');
+
+  // Test Row 78: Bo Bichette SSP, VAR
+  const bichetteVarRow = Array.from(mockDoc.querySelectorAll('tr')).find(r => r.textContent.includes('78') && r.textContent.includes('SSP, VAR'));
+  assert.ok(bichetteVarRow, 'Should find row for Bo Bichette SSP, VAR card 78');
+
+  const bichetteLink = bichetteVarRow.querySelector('a');
+  const bichetteSel = { isCollapsed: false, anchorNode: bichetteLink.firstChild, toString: () => 'Bo Bichette' };
+  const bichetteTokens = CardMetadataExtractor.extract(bichetteSel, mockDoc);
+  assert.equal(bichetteTokens.PlayerName, 'Bo Bichette');
+  assert.equal(bichetteTokens.PlayerTeam, 'Toronto Blue Jays');
+  assert.equal(bichetteTokens.Tags, 'SSP VAR');
+});
+
+test('CardMetadataExtractor.extract: cardFormatterTagSeparator formats multiple tags with custom delimiter', () => {
+  const dom = new JSDOM(`
+    <!DOCTYPE html>
+    <html>
+    <head><title>2020 Topps Baseball Checklist | Trading Card Database</title></head>
+    <body>
+      <div id="main-content-area">
+        <table>
+          <tr id="test-row">
+            <td><a href="ViewCard.cfm/sid/1/cid/1">78</a></td>
+            <td>
+              <a href="ViewCard.cfm/sid/1/cid/1">Bo Bichette</a> RC SP VAR
+            </td>
+            <td><a href="Team.cfm/tid/1/Toronto-Blue-Jays">Toronto Blue Jays</a></td>
+          </tr>
+        </table>
+      </div>
+    </body>
+    </html>
+  `);
+  const mockDoc = dom.window.document;
+  const link = mockDoc.querySelector('a[href*="ViewCard.cfm"]');
+  const sel = { isCollapsed: false, anchorNode: link.firstChild, toString: () => 'Bo Bichette' };
+
+  // 1. Default (blank) resolves to single space " "
+  Config.global.cardFormatterTagSeparator = '';
+  const tokensDefault = CardMetadataExtractor.extract(sel, mockDoc);
+  assert.equal(tokensDefault.Tags, 'RC SP VAR');
+
+  // 2. Custom comma separator ", "
+  Config.global.cardFormatterTagSeparator = ', ';
+  const tokensComma = CardMetadataExtractor.extract(sel, mockDoc);
+  assert.equal(tokensComma.Tags, 'RC, SP, VAR');
+
+  // 3. Custom semicolon separator "; "
+  Config.global.cardFormatterTagSeparator = '; ';
+  const tokensSemicolon = CardMetadataExtractor.extract(sel, mockDoc);
+  assert.equal(tokensSemicolon.Tags, 'RC; SP; VAR');
+
+  // 4. Custom hyphen separator "-"
+  Config.global.cardFormatterTagSeparator = '-';
+  const tokensHyphen = CardMetadataExtractor.extract(sel, mockDoc);
+  assert.equal(tokensHyphen.Tags, 'RC-SP-VAR');
+
+  // Reset
+  Config.global.cardFormatterTagSeparator = '';
+});
+
+test('CardMetadataExtractor.extract: cardFormatterTagReplacer replaces matching tags based on left-side key', () => {
+  const dom = new JSDOM(`
+    <!DOCTYPE html>
+    <html>
+    <head><title>2020 Topps Baseball Checklist | Trading Card Database</title></head>
+    <body>
+      <div id="main-content-area">
+        <table>
+          <tr id="test-row">
+            <td><a href="ViewCard.cfm/sid/1/cid/1">10</a></td>
+            <td>
+              <a href="ViewCard.cfm/sid/1/cid/1">Shohei Ohtani</a> AU SP
+            </td>
+            <td><a href="Team.cfm/tid/1/Los-Angeles-Angels">Los Angeles Angels</a></td>
+          </tr>
+        </table>
+      </div>
+    </body>
+    </html>
+  `);
+  const mockDoc = dom.window.document;
+  const link = mockDoc.querySelector('a[href*="ViewCard.cfm"]');
+  const sel = { isCollapsed: false, anchorNode: link.firstChild, toString: () => 'Shohei Ohtani' };
+
+  // 1. Tag replacer replaces AU with AUTO
+  Config.global.cardFormatterTagReplacer = 'AU: AUTO';
+  Config.global.cardFormatterTagSeparator = ' ';
+  const tokens1 = CardMetadataExtractor.extract(sel, mockDoc);
+  assert.equal(tokens1.Tags, 'AUTO SP');
+
+  // 2. Multiple tag replacements (case-insensitive left-side keys)
+  Config.global.cardFormatterTagReplacer = 'au: AUTOGRAPH, sp: SHORT PRINT';
+  Config.global.cardFormatterTagSeparator = ', ';
+  const tokens2 = CardMetadataExtractor.extract(sel, mockDoc);
+  assert.equal(tokens2.Tags, 'AUTOGRAPH, SHORT PRINT');
+
+  // 3. Replacement tag in ignored tags list is excluded
+  Config.global.cardFormatterIgnoredTags = 'ASR, LL, TC, CL, EXCLUDED';
+  Config.global.cardFormatterTagReplacer = 'AU: EXCLUDED, SP: SHORT PRINT';
+  const tokens3 = CardMetadataExtractor.extract(sel, mockDoc);
+  assert.equal(tokens3.Tags, 'SHORT PRINT');
+
+  // Reset
+  Config.global.cardFormatterIgnoredTags = 'ASR, LL, TC, CL';
+  Config.global.cardFormatterTagSeparator = '';
+  Config.global.cardFormatterTagReplacer = '';
+});
+
+
 
 
 

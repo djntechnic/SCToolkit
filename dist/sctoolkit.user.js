@@ -580,6 +580,8 @@
       cardFormatterTemplate: "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}",
       cardFormatterTSVTemplate: "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}",
       cardFormatterIgnoredTags: "ASR, LL, TC, CL",
+      cardFormatterTagSeparator: "",
+      cardFormatterTagReplacer: "",
       cardFormatterOutputMode: "popover",
       cardFormatterLinkTarget: "background",
       cardFormatterPopoverDurationMs: 4e3,
@@ -5790,6 +5792,19 @@ button.tk-add-btn {
     const href = a?.href || "";
     return href.includes("CollectionAdd") || href.includes("CollectionEdit") || href.includes("CollectionWant") || href.includes("CollectionStatus") || href.includes("CollectionMove") || href.includes("CollectionRemove") || href.includes("SalesLinks") || href.includes("MODE=") || href.includes("Team.cfm") || href.includes("Person.cfm");
   }
+  function getCleanCellText(cell) {
+    if (!cell) return "";
+    const doc = cell.ownerDocument || (typeof document !== "undefined" ? document : null);
+    const clone = cell.cloneNode(true);
+    clone.querySelectorAll(".tk-player-quick-links-inline, figcaption, .figure-caption").forEach((el) => el.remove());
+    if (doc) {
+      clone.querySelectorAll("br").forEach((br) => {
+        const space = doc.createTextNode(" ");
+        br.parentNode?.replaceChild(space, br);
+      });
+    }
+    return clone.textContent.replace(/\s+/g, " ").trim();
+  }
   var CardMetadataExtractor = {
     /**
      * Extract token values for a given window Selection
@@ -5862,9 +5877,25 @@ button.tk-add-btn {
       const ignoredTagsSet = new Set(
         String(ignoredTagsRaw).split(",").map((t) => t.trim().toUpperCase()).filter(Boolean)
       );
+      const tagSeparatorRaw = Config.global.cardFormatterTagSeparator;
+      const tagSeparator = tagSeparatorRaw !== void 0 && tagSeparatorRaw !== null && String(tagSeparatorRaw) !== "" ? String(tagSeparatorRaw) : " ";
+      const tagReplacerRaw = Config.global.cardFormatterTagReplacer ?? "";
+      const tagReplacements = /* @__PURE__ */ new Map();
+      if (tagReplacerRaw) {
+        String(tagReplacerRaw).split(/,|\n/).forEach((pair) => {
+          const colonIdx = pair.indexOf(":");
+          if (colonIdx !== -1) {
+            const key = pair.slice(0, colonIdx).trim().toUpperCase();
+            const val = pair.slice(colonIdx + 1).trim();
+            if (key && val) {
+              tagReplacements.set(key, val);
+            }
+          }
+        });
+      }
       const subjectTd = personLink ? personLink.closest("td") : cardLink ? cardLink.closest("td")?.nextElementSibling : null;
       if (subjectTd) {
-        const rawSubject = subjectTd.textContent.replace(/\s+/g, " ").trim();
+        const rawSubject = getCleanCellText(subjectTd);
         const tokens = rawSubject.split(" ");
         const tagParts = [];
         tokens.forEach((token) => {
@@ -5872,12 +5903,17 @@ button.tk-add-btn {
           if (/^(?:SN|PR)\d+$/i.test(clean)) {
             printRun = clean.replace(/^(?:SN|PR)/i, "");
           } else if (/^[A-Z0-9]{2,4}$/.test(clean) && !/^(Jr|Sr|II|III|IV|V)$/i.test(clean)) {
-            if (!ignoredTagsSet.has(clean.toUpperCase())) {
-              tagParts.push(clean);
+            const upperClean = clean.toUpperCase();
+            let targetTag = clean;
+            if (tagReplacements.has(upperClean)) {
+              targetTag = tagReplacements.get(upperClean);
+            }
+            if (targetTag && !ignoredTagsSet.has(targetTag.toUpperCase())) {
+              tagParts.push(targetTag);
             }
           }
         });
-        tags = tagParts.join(" ");
+        tags = tagParts.join(tagSeparator);
       }
       let playerName = "";
       if (personLink) {
@@ -5886,14 +5922,16 @@ button.tk-add-btn {
         playerName = cardLinks[1].textContent.trim();
       }
       if (!playerName && subjectTd) {
-        let rawName = subjectTd.textContent.replace(/\s+/g, " ").trim();
+        let rawName = getCleanCellText(subjectTd);
         if (printRun) {
           rawName = rawName.replace(new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"), "");
         }
         if (tags) {
-          const tagList = tags.split(" ");
+          const tagList = tags.split(tagSeparator);
           tagList.forEach((t) => {
-            const escT = String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const trimmedTag = String(t).trim();
+            if (!trimmedTag) return;
+            const escT = trimmedTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             rawName = rawName.replace(new RegExp(`\\b${escT}\\b`, "g"), "");
           });
         }
@@ -5920,7 +5958,7 @@ button.tk-add-btn {
         playerTeam = teamLink.textContent.trim();
       } else if (cardLinks.length >= 3 && !cardLinks[2].querySelector("img")) {
         const thirdText = cardLinks[2].textContent.trim();
-        if (thirdText && thirdText !== cardNo && thirdText !== playerName) {
+        if (thirdText && thirdText !== cardNo) {
           playerTeam = thirdText;
         }
       } else if (subjectTd && subjectTd.nextElementSibling) {
@@ -5929,7 +5967,7 @@ button.tk-add-btn {
         if (linkInNext) {
           playerTeam = linkInNext.textContent.trim();
         } else {
-          playerTeam = nextTd.textContent.trim();
+          playerTeam = getCleanCellText(nextTd);
         }
       }
       return {
@@ -8287,6 +8325,42 @@ button.tk-add-btn {
       ignoredTagsHint.className = "tk-settings-hint";
       ignoredTagsHint.textContent = "Comma-separated tags to ignore when extracting card metadata (e.g. ASR, LL, TC, CL)";
       ignoredTagsField.append(ignoredTagsLabel, ignoredTagsInput, ignoredTagsHint);
+      const tagSeparatorField = document.createElement("div");
+      tagSeparatorField.className = "tk-settings-field";
+      const tagSeparatorLabel = document.createElement("label");
+      tagSeparatorLabel.textContent = "Tag Separator";
+      const tagSeparatorInput = document.createElement("input");
+      tagSeparatorInput.type = "text";
+      tagSeparatorInput.value = Config.global.cardFormatterTagSeparator ?? "";
+      tagSeparatorInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      tagSeparatorInput.title = "Separator character(s) between tags (e.g. space, comma, semicolon). Blank (default) resolves to space.";
+      tagSeparatorInput.addEventListener("change", () => {
+        Config.global.cardFormatterTagSeparator = tagSeparatorInput.value;
+        Log(`Config change: global.cardFormatterTagSeparator = ${Config.global.cardFormatterTagSeparator}`, "info");
+        SettingsUI._persist();
+      });
+      const tagSeparatorHint = document.createElement("div");
+      tagSeparatorHint.className = "tk-settings-hint";
+      tagSeparatorHint.textContent = "Delimiter used between tags when formatted (e.g. space, comma, semicolon). Blank defaults to single space.";
+      tagSeparatorField.append(tagSeparatorLabel, tagSeparatorInput, tagSeparatorHint);
+      const tagReplacerField = document.createElement("div");
+      tagReplacerField.className = "tk-settings-field";
+      const tagReplacerLabel = document.createElement("label");
+      tagReplacerLabel.textContent = "Tag Replacements";
+      const tagReplacerInput = document.createElement("input");
+      tagReplacerInput.type = "text";
+      tagReplacerInput.value = Config.global.cardFormatterTagReplacer ?? "";
+      tagReplacerInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      tagReplacerInput.title = "Key-value mapping pairs for tag replacements (e.g. AU: AUTO, TC: CL).";
+      tagReplacerInput.addEventListener("change", () => {
+        Config.global.cardFormatterTagReplacer = tagReplacerInput.value.trim();
+        Log(`Config change: global.cardFormatterTagReplacer = ${Config.global.cardFormatterTagReplacer}`, "info");
+        SettingsUI._persist();
+      });
+      const tagReplacerHint = document.createElement("div");
+      tagReplacerHint.className = "tk-settings-hint";
+      tagReplacerHint.textContent = "Comma-separated pairs (e.g. AU: AUTO, TC: CL). Replaces left-side tag with right-side tag value.";
+      tagReplacerField.append(tagReplacerLabel, tagReplacerInput, tagReplacerHint);
       const outputModeField = document.createElement("div");
       outputModeField.className = "tk-settings-field";
       const outputModeLabel = document.createElement("label");
@@ -8456,7 +8530,7 @@ button.tk-add-btn {
       pane.appendChild(
         SettingsUI._buildCollapsibleSection(
           "Player Quick Links Settings",
-          [templateField, tsvTemplateField, ignoredTagsField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
+          [templateField, tsvTemplateField, ignoredTagsField, tagSeparatorField, tagReplacerField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
           "Configure custom copy templates, output modes (popover, inline buttons, clipboard), link opening targets, and search actions.",
           false
         )

@@ -1150,6 +1150,44 @@ export const SettingsUI = {
     ignoredTagsHint.textContent = 'Comma-separated tags to ignore when extracting card metadata (e.g. ASR, LL, TC, CL)';
     ignoredTagsField.append(ignoredTagsLabel, ignoredTagsInput, ignoredTagsHint);
 
+    const tagSeparatorField = document.createElement('div');
+    tagSeparatorField.className = 'tk-settings-field';
+    const tagSeparatorLabel = document.createElement('label');
+    tagSeparatorLabel.textContent = 'Tag Separator';
+    const tagSeparatorInput = document.createElement('input');
+    tagSeparatorInput.type = 'text';
+    tagSeparatorInput.value = Config.global.cardFormatterTagSeparator ?? '';
+    tagSeparatorInput.style.cssText = 'width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;';
+    tagSeparatorInput.title = 'Separator character(s) between tags (e.g. space, comma, semicolon). Blank (default) resolves to space.';
+    tagSeparatorInput.addEventListener('change', () => {
+      Config.global.cardFormatterTagSeparator = tagSeparatorInput.value;
+      Log(`Config change: global.cardFormatterTagSeparator = ${Config.global.cardFormatterTagSeparator}`, 'info');
+      SettingsUI._persist();
+    });
+    const tagSeparatorHint = document.createElement('div');
+    tagSeparatorHint.className = 'tk-settings-hint';
+    tagSeparatorHint.textContent = 'Delimiter used between tags when formatted (e.g. space, comma, semicolon). Blank defaults to single space.';
+    tagSeparatorField.append(tagSeparatorLabel, tagSeparatorInput, tagSeparatorHint);
+
+    const tagReplacerField = document.createElement('div');
+    tagReplacerField.className = 'tk-settings-field';
+    const tagReplacerLabel = document.createElement('label');
+    tagReplacerLabel.textContent = 'Tag Replacements';
+    const tagReplacerInput = document.createElement('input');
+    tagReplacerInput.type = 'text';
+    tagReplacerInput.value = Config.global.cardFormatterTagReplacer ?? '';
+    tagReplacerInput.style.cssText = 'width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;';
+    tagReplacerInput.title = 'Key-value mapping pairs for tag replacements (e.g. AU: AUTO, TC: CL).';
+    tagReplacerInput.addEventListener('change', () => {
+      Config.global.cardFormatterTagReplacer = tagReplacerInput.value.trim();
+      Log(`Config change: global.cardFormatterTagReplacer = ${Config.global.cardFormatterTagReplacer}`, 'info');
+      SettingsUI._persist();
+    });
+    const tagReplacerHint = document.createElement('div');
+    tagReplacerHint.className = 'tk-settings-hint';
+    tagReplacerHint.textContent = 'Comma-separated pairs (e.g. AU: AUTO, TC: CL). Replaces left-side tag with right-side tag value.';
+    tagReplacerField.append(tagReplacerLabel, tagReplacerInput, tagReplacerHint);
+
     const outputModeField = document.createElement('div');
     outputModeField.className = 'tk-settings-field';
     const outputModeLabel = document.createElement('label');
@@ -1333,7 +1371,7 @@ export const SettingsUI = {
     pane.appendChild(
       SettingsUI._buildCollapsibleSection(
         'Player Quick Links Settings',
-        [templateField, tsvTemplateField, ignoredTagsField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
+        [templateField, tsvTemplateField, ignoredTagsField, tagSeparatorField, tagReplacerField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
         'Configure custom copy templates, output modes (popover, inline buttons, clipboard), link opening targets, and search actions.',
         false
       )
