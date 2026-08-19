@@ -38,7 +38,7 @@ test('createBadge: an unknown key yields null rather than throwing', () => {
 
 test('renderBadgeSet: toolbar order, with the export action last', () => {
   const el = renderBadgeSet(container(), '4001', { onExport: () => {}, onExportHierarchy: () => {} });
-  assert.deepEqual(labels(el), ['CHK', 'INS', 'PAR', 'FS', 'MULTI', 'WANT', 'CSV', 'HIERARCHY']);
+  assert.deepEqual(labels(el), ['CHK', 'YEAR', 'INS', 'PAR', 'FS', 'MULTI', 'WANT', 'CSV', 'HIERARCHY']);
 });
 
 test('renderBadgeSet: set-link order leads with checklist', () => {
@@ -48,14 +48,14 @@ test('renderBadgeSet: set-link order leads with checklist', () => {
     onExport: () => {},
     onExportHierarchy: () => {}
   });
-  assert.deepEqual(labels(el), ['CHK', 'PIN', 'CSV', 'HIERARCHY', 'INS', 'PAR', 'FS', 'MULTI', 'WANT']);
+  assert.deepEqual(labels(el), ['CHK', 'PIN', 'CSV', 'HIERARCHY', 'YEAR', 'INS', 'PAR', 'FS', 'MULTI', 'WANT']);
 });
 
 test('renderBadgeSet: an action with no handler is skipped, not rendered dead', () => {
   // This is the guarantee the helper exists to provide: a caller cannot emit a
   // PIN or CSV badge that looks clickable and does nothing.
   const el = renderBadgeSet(container(), '4001', { include: SET_LINK_BADGES });
-  assert.deepEqual(labels(el), ['CHK', 'INS', 'PAR', 'FS', 'MULTI', 'WANT']);
+  assert.deepEqual(labels(el), ['CHK', 'YEAR', 'INS', 'PAR', 'FS', 'MULTI', 'WANT']);
 });
 
 test('renderBadgeSet: include controls exactly what is rendered', () => {
@@ -92,4 +92,16 @@ test('every badge key in both orders is a real definition', () => {
   [...TOOLBAR_BADGES, ...SET_LINK_BADGES].forEach((key) => {
     assert.ok(BADGES[key], `${key} is not a defined badge`);
   });
+});
+
+test('BADGES.YEAR: resolves ViewAllC.cfm URL for sport and year from document breadcrumbs', () => {
+  const mockDoc = new JSDOM(`
+    <ol class="breadcrumb">
+      <li><a href="https://www.tcdb.com/ViewAllC.cfm/sp/Baseball">Baseball</a></li>
+      <li><a href="https://www.tcdb.com/ViewAllC.cfm/sp/Baseball/year/2023">2023</a></li>
+    </ol>
+  `).window.document;
+
+  const url = BADGES.YEAR.getUrl('100', null, mockDoc);
+  assert.equal(url, '/ViewAllC.cfm/sp/Baseball/year/2023');
 });

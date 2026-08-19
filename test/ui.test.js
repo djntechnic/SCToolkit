@@ -263,18 +263,22 @@ test('cleanDocTitle: ViewAll.cfm / ViewAllC.cfm', () => {
 test('cleanDocTitle: ViewSet.cfm', () => {
   assert.equal(
     cleanDocTitle('2022 Bowman Baseball - Trading Card Database'),
-    '2022 Bowman Baseball'
+    '2022 Bowman'
   );
 });
 
 test('cleanDocTitle: Inserts.cfm', () => {
   assert.equal(
     cleanDocTitle('2022 Bowman Baseball - Inserts and Related Sets - Trading Card Database'),
-    '2022 Bowman Baseball'
+    '2022 Bowman'
   );
   assert.equal(
     cleanDocTitle('2022 Bowman Baseball - Inserts and Related Sets'),
-    '2022 Bowman Baseball'
+    '2022 Bowman'
+  );
+  assert.equal(
+    cleanDocTitle('2019 Topps Allen & Ginter Baseball - Inserts and Related Sets | Trading Card Database'),
+    '2019 Topps Allen & Ginter'
   );
 });
 
@@ -283,9 +287,40 @@ test('cleanDocTitle: Checklist.cfm', () => {
     cleanDocTitle('2022 Bowman - Bowman Buybacks Autographs'),
     '2022 Bowman - Bowman Buybacks Autographs'
   );
+  assert.equal(
+    cleanDocTitle('2019 Topps Allen & Ginter Baseball | Trading Card Database'),
+    '2019 Topps Allen & Ginter'
+  );
 });
 
-test('cleanDocTitle: ViewCollectionForSaleTrade.cfm / CollectionAddMultiplesText.cfm / ViewCollectionWantlist.cfm', () => {
+test('cleanDocTitle: all fixture set sub-page titles', () => {
+  assert.equal(cleanDocTitle('2019 Topps Allen & Ginter X Baseball Forum | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Packaging - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Rookies - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('2019 Topps Allen & Ginter X Baseball - Teams | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('External Links - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Errors / Variations - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Contributors - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Collection Summary - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Pricing - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Hall of Famers - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Comments - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Sell Sheets / Ads - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Videos - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('Glossary - 2019 Topps Allen & Ginter X Baseball | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('2019 Topps Allen & Ginter X Baseball - Gallery | Trading Card Database'), '2019 Topps Allen & Ginter X');
+  assert.equal(cleanDocTitle('2019 Topps Allen & Ginter X Baseball - Card Rankings | Trading Card Database'), '2019 Topps Allen & Ginter X');
+});
+
+test('cleanDocTitle: ViewCollection*.cfm / Rookies.cfm / CollectionAddMultiplesText.cfm', () => {
+  assert.equal(
+    cleanDocTitle('Collection - 2019 Topps Allen & Ginter Baseball | Trading Card Database'),
+    '2019 Topps Allen & Ginter'
+  );
+  assert.equal(
+    cleanDocTitle('Rookies - 2019 Topps Allen & Ginter Baseball | Trading Card Database'),
+    '2019 Topps Allen & Ginter'
+  );
   assert.equal(
     cleanDocTitle('Collection - 2022 Bowman - Bowman Buybacks Autographs'),
     '2022 Bowman - Bowman Buybacks Autographs'
@@ -344,5 +379,81 @@ test('SettingsUI._buildModulesPane: alphabetizes modules and renders accordions'
   firstHeader.click();
   assert.equal(firstBody.style.display, 'none', 'Accordion body should close on second header click');
 });
+
+test('Toolbar.renderCenterContext: hotlinks respect toolbarButtonDisplay', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body><div id="sctk-toolbar"><div id="tk-center-context"></div></div></body></html>');
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+
+  const { Config } = await import('../src/core/config.js');
+  const { Toolbar } = await import('../src/ui/toolbar.js');
+
+  Config.global.hotlinks = [
+    { id: 'top', url: '#top', text: 'Top', enabled: true, icon: 'chevronUp' }
+  ];
+
+  // 1. Both mode (icon and text)
+  Config.global.toolbarButtonDisplay = 'both';
+  Toolbar.renderCenterContext();
+  const container = dom.window.document.getElementById('tk-center-context');
+  let btn = container.querySelector('.tk-hotlink-btn');
+  assert.ok(btn.querySelector('svg'), 'both mode should render icon');
+  assert.equal(btn.querySelector('span')?.textContent, 'Top', 'both mode should render text span');
+
+  // 2. Icon only mode
+  Config.global.toolbarButtonDisplay = 'icon';
+  Toolbar.renderCenterContext();
+  btn = container.querySelector('.tk-hotlink-btn');
+  assert.ok(btn.querySelector('svg'), 'icon mode should render icon');
+  assert.equal(btn.querySelector('span'), null, 'icon mode should not render text span when icon is available');
+
+  // 3. Text only mode
+  Config.global.toolbarButtonDisplay = 'text';
+  Toolbar.renderCenterContext();
+  btn = container.querySelector('.tk-hotlink-btn');
+  assert.equal(btn.querySelector('svg'), null, 'text mode should not render icon when text is available');
+  assert.equal(btn.querySelector('span')?.textContent, 'Top', 'text mode should render text span');
+
+  // Restore default
+  Config.global.toolbarButtonDisplay = 'both';
+});
+
+test('Toolbar.renderCenterContext: hotlinks respect launch target mode', async () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body><div id="sctk-toolbar"><div id="tk-center-context"></div></div></body></html>');
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+
+  let openedTab = null;
+  globalThis.GM_openInTab = (url, options) => {
+    openedTab = { url, options };
+  };
+
+  const { Config } = await import('../src/core/config.js');
+  const { Toolbar } = await import('../src/ui/toolbar.js');
+
+  Config.global.hotlinks = [
+    { id: 'inline_link', url: 'https://example.test/page1', text: 'Inline', enabled: true, target: 'inline' },
+    { id: 'bg_link', url: 'https://example.test/page2', text: 'Background', enabled: true, target: 'background' }
+  ];
+
+  Toolbar.renderCenterContext();
+  const container = dom.window.document.getElementById('tk-center-context');
+  const links = container.querySelectorAll('a.tk-hotlink-btn');
+  assert.equal(links.length, 2);
+
+  const inlineLink = links[0];
+  const bgLink = links[1];
+
+  assert.equal(inlineLink.target, '', 'inline link target attribute should be empty');
+  assert.equal(bgLink.target, '_blank', 'background link target attribute should be _blank');
+
+  bgLink.click();
+  assert.ok(openedTab, 'clicking background link should invoke GM_openInTab');
+  assert.equal(openedTab.url, 'https://example.test/page2');
+  assert.equal(openedTab.options.active, false, 'opened tab active option should be false for background tab');
+
+  delete globalThis.GM_openInTab;
+});
+
 
 

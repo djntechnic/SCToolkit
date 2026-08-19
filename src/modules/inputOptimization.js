@@ -35,7 +35,7 @@ export function isEligibleInput(el) {
   if (el.readOnly || el.disabled || el.hidden || el.getAttribute('hidden') !== null) return false;
   if (el.name && el.name.toLowerCase() === 'pageindex') return false;
   if (el.id && el.id.toLowerCase() === 'pageindex') return false;
-  return el.offsetParent !== null || el.value === '0';
+  return el.offsetParent !== null || el.value === '0' || el.name === 'Quantity' || el.id === 'Quantity';
 }
 
 /**
@@ -92,6 +92,14 @@ export function initInputOptimization() {
       const nextInput = inputs[index + 1];
       nextInput.focus({ preventScroll: true });
       setTimeout(() => nextInput.select(), 20);
+    } else if (index === inputs.length - 1) {
+      const form = active.closest ? active.closest('form') : (typeof document !== 'undefined' ? document.querySelector('form#add, form') : null);
+      const submitBtn = form
+        ? (form.querySelector('button[type="submit"]') || form.querySelector('input[type="submit"]') || form.querySelector('.btn-primary'))
+        : (typeof document !== 'undefined' ? document.querySelector('button[type="submit"], input[type="submit"], .btn-primary') : null);
+      if (submitBtn && typeof submitBtn.focus === 'function') {
+        submitBtn.focus({ preventScroll: true });
+      }
     }
   });
 

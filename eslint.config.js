@@ -37,7 +37,9 @@ export default [
         localStorage: 'readonly',
         GM_getValue: 'readonly',
         GM_setValue: 'readonly',
-        GM_info: 'readonly'
+        GM_info: 'readonly',
+        GM_openInTab: 'readonly',
+        GM: 'readonly'
       }
     },
     rules: {

@@ -91,3 +91,118 @@ test('observeChecklistFilter & disconnectChecklistEnhancer: installs filter on l
     done();
   }, 250);
 });
+
+test('Select All button: visibility and checking functionality', (t, done) => {
+  const dom = new JSDOM(`
+    <!DOCTYPE html>
+    <html>
+      <body>
+        <div id="content">
+          <table>
+            <tbody>
+              <tr class="collection_row">
+                <td><label><input type="checkbox" id="cb1"></label></td>
+                <td>186 Franmil Reyes FS</td>
+              </tr>
+              <tr class="collection_row">
+                <td><label><input type="checkbox" id="cb2"></label></td>
+                <td>197 Wrigley Field STAD</td>
+              </tr>
+              <tr class="collection_row">
+                <td><label><input type="checkbox" id="cb3"></label></td>
+                <td>226 Albert Almora</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </body>
+    </html>
+  `);
+
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+
+  initChecklistEnhancer();
+
+  const input = dom.window.document.getElementById('tk-checklist-filter');
+  const selectAllBtn = dom.window.document.getElementById('tk-checklist-filter-select-all');
+  const cb1 = dom.window.document.getElementById('cb1');
+  const cb2 = dom.window.document.getElementById('cb2');
+  const cb3 = dom.window.document.getElementById('cb3');
+
+  assert.ok(selectAllBtn, 'Select All button should be installed');
+  assert.equal(selectAllBtn.style.display, 'none', 'Select All button should be hidden initially when filter is empty');
+
+  // Trigger input for "186.197" -> matches row 1 and row 2, but not row 3
+  input.value = '186.197';
+  input.dispatchEvent(new dom.window.Event('input'));
+
+  setTimeout(() => {
+    assert.notEqual(selectAllBtn.style.display, 'none', 'Select All button should be visible when 1+ matches appear');
+
+    // Click Select All button
+    selectAllBtn.click();
+
+    assert.equal(cb1.checked, true, 'Row 1 checkbox (matching) should be checked');
+    assert.equal(cb2.checked, true, 'Row 2 checkbox (matching) should be checked');
+    assert.equal(cb3.checked, false, 'Row 3 checkbox (non-matching) should remain unchecked');
+
+    // Filter for non-matching term "xyz"
+    input.value = 'xyz';
+    input.dispatchEvent(new dom.window.Event('input'));
+
+    setTimeout(() => {
+      assert.equal(selectAllBtn.style.display, 'none', 'Select All button should hide when 0 matches appear');
+
+      // Clear filter
+      input.value = '';
+      input.dispatchEvent(new dom.window.Event('input'));
+
+      setTimeout(() => {
+        assert.equal(selectAllBtn.style.display, 'none', 'Select All button should hide when filter is cleared');
+        disconnectChecklistEnhancer();
+        done();
+      }, 250);
+    }, 250);
+  }, 250);
+});
+
+test('Select All button: remains hidden for tables without checkboxes', (t, done) => {
+  const dom = new JSDOM(`
+    <!DOCTYPE html>
+    <html>
+      <body>
+        <div id="content">
+          <table>
+            <tbody>
+              <tr class="collection_row">
+                <td>186 Franmil Reyes FS</td>
+              </tr>
+              <tr class="collection_row">
+                <td>197 Wrigley Field STAD</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </body>
+    </html>
+  `);
+
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+
+  initChecklistEnhancer();
+
+  const input = dom.window.document.getElementById('tk-checklist-filter');
+  const selectAllBtn = dom.window.document.getElementById('tk-checklist-filter-select-all');
+
+  input.value = 'Franmil';
+  input.dispatchEvent(new dom.window.Event('input'));
+
+  setTimeout(() => {
+    assert.equal(selectAllBtn.style.display, 'none', 'Select All button should remain hidden when table has no checkboxes');
+    disconnectChecklistEnhancer();
+    done();
+  }, 250);
+});
+

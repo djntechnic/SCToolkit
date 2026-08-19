@@ -20,6 +20,7 @@ import { initCollectionQuantityCounter } from '../modules/collectionQuantityCoun
 import { initSetHierarchyExport } from '../modules/setHierarchyExport.js';
 import { initCollectionDefaulter } from '../modules/collectionDefaulter.js';
 import { initSetDropdownSearchEnhancer } from '../modules/setDropdownSearchEnhancer.js';
+import { initQuickAddGridEnhancer } from '../modules/quickAddGridEnhancer.js';
 
 /**
  * @typedef {object} ModuleDefinition
@@ -92,8 +93,8 @@ export const ModuleRegistry = [
   },
   {
     id: 'cardNameFormatter',
-    name: 'Card Name Formatter',
-    description: 'Dynamically extracts card metadata based on text selection and formats/copies card strings according to a customizable template.',
+    name: 'Player Quick Links',
+    description: 'Dynamically extracts card metadata and adds quick copy/search links (Baseball Reference, Google) via floating popover, inline buttons, or direct copy.',
     init: initCardNameFormatter,
     isAsync: false
   },
@@ -116,6 +117,13 @@ export const ModuleRegistry = [
     name: 'Collection Defaulter',
     description: 'Automatically selects a preferred Collection on the ViewCollection (Add / Update) page.',
     init: initCollectionDefaulter,
+    isAsync: false
+  },
+  {
+    id: 'quickAddGridEnhancer',
+    name: 'Quick Add Grid Enhancer',
+    description: 'Injects styled inline quantity inputs and quick-add buttons across Collection, Wantlist, and For Sale/Trade views.',
+    init: initQuickAddGridEnhancer,
     isAsync: false
   }
 ];

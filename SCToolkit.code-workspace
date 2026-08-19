@@ -20,13 +20,18 @@
     "markdown.extension.tableFormatter.enabled": false,
     "VsCodeTaskButtons.tasks": [
       {
+        "label": "🗄️ Open SQLite Database",
+        "task": "🗄️ Open SQLite Database",
+        "tooltip": "Find and open SQLite DB in data/ using DB Browser in read-only mode",
+      },
+      {
         "label": "🚀 Run Dev Watcher",
-        "task": "Run Dev Watcher",
+        "task": "🚀 Run Dev Watcher",
         "tooltip": "Start Watcher to Build on File Change",
       },
       {
         "label": "⬇️ Git Pull",
-        "task": "Git Pull",
+        "task": "⬇️ Git Pull",
         "tooltip": "Pull that Latest from GitHub Repo",
       },
     ],

@@ -13,7 +13,7 @@ import { SETTINGS_CSS } from './styles.js';
 import { THEMES, applyTheme } from './theme.js';
 import { Routes } from '../core/routes.js';
 import { resolveModules } from '../core/registry.js';
-import { BLOCK_TS_KEY, getValue, Pins } from '../core/storage.js';
+import { BLOCK_TS_KEY, getValue } from '../core/storage.js';
 import { getContractResults } from '../core/contracts.js';
 import { showToast } from './toast.js';
 import { Toolbar } from './toolbar.js';
@@ -180,11 +180,6 @@ export const SettingsUI = {
     globalTab.className = 'tk-settings-tab active';
     globalTab.textContent = 'Global';
 
-    const pinsTab = document.createElement('button');
-    pinsTab.type = 'button';
-    pinsTab.className = 'tk-settings-tab';
-    pinsTab.textContent = 'Pins';
-
     const routesTab = document.createElement('button');
     routesTab.type = 'button';
     routesTab.className = 'tk-settings-tab';
@@ -205,20 +200,18 @@ export const SettingsUI = {
     diagTab.className = 'tk-settings-tab';
     diagTab.textContent = 'Diagnostics';
 
-
     const badgesTab = document.createElement('button');
     badgesTab.type = 'button';
     badgesTab.className = 'tk-settings-tab';
-    badgesTab.textContent = 'Badges';
+    badgesTab.textContent = 'Badges & Hotlinks';
 
-    tabBar.append(globalTab, pinsTab, badgesTab, routesTab, regexTab, routeTesterTab, diagTab);
+    tabBar.append(globalTab, badgesTab, routesTab, regexTab, routeTesterTab, diagTab);
 
     const content = document.createElement('div');
     content.id = 'tk-settings-tab-content';
 
     const panes = {
       global: SettingsUI._buildGlobalPane(),
-      pins: SettingsUI._buildPinsPane(),
       badges: SettingsUI._buildBadgesPane(),
       routes: SettingsUI._buildModulesPane(),
       regex: SettingsUI._buildRegexPane(),
@@ -227,7 +220,6 @@ export const SettingsUI = {
     };
     const tabs = {
       global: globalTab,
-      pins: pinsTab,
       badges: badgesTab,
       routes: routesTab,
       regex: regexTab,
@@ -251,203 +243,7 @@ export const SettingsUI = {
     return body;
   },
 
-  /**
-   * Pin Configuration tab.
-   *
-   * Lists every stored pin with a toggle (enabled/disabled), a drag handle for
-   * reordering, Up/Down keyboard controls, and a remove button. Every mutation
-   * writes immediately to storage and re-renders the toolbar.
-   */
-  _buildPinsPane: () => {
-    const pane = document.createElement('div');
-    pane.id = 'tk-settings-pins';
 
-    const title = document.createElement('div');
-    title.className = 'tk-settings-section-title';
-    title.textContent = 'Pin Configuration';
-    pane.appendChild(title);
-
-    const hint = document.createElement('div');
-    hint.className = 'tk-settings-hint';
-    hint.style.marginBottom = '10px';
-    hint.textContent =
-      'Toggle pins on/off and drag rows (or use the ↑↓ buttons) to set their order. ' +
-      'Disabled pins are hidden from the toolbar but remain saved. Changes apply immediately.';
-    pane.appendChild(hint);
-
-    const list = document.createElement('div');
-    list.className = 'tk-pin-config-list';
-    pane.appendChild(list);
-
-    // ------------------------------------------------------------------ //
-    // Internal state: a mutable working copy of the pin array.            //
-    // Every mutation rebuilds the list DOM and flushes to storage.        //
-    // ------------------------------------------------------------------ //
-    let workingPins = Pins.all(); // live reference, mutated in place
-
-    const flush = () => {
-      Pins.reorder(workingPins);
-      Toolbar.renderPins();
-    };
-
-    const rebuild = () => {
-      list.innerHTML = '';
-      workingPins = Pins.all(); // re-read after external changes (remove via toolbar)
-
-      if (workingPins.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'tk-pin-config-empty';
-        empty.textContent = 'No pins saved. Pin a set from any set page to get started.';
-        list.appendChild(empty);
-        return;
-      }
-
-      workingPins.forEach((pin, idx) => {
-        const row = document.createElement('div');
-        row.className = 'tk-pin-config-row' + (pin.enabled === false ? ' tk-pin-disabled' : '');
-        row.draggable = true;
-        row.dataset.pinId = pin.id;
-
-        // --- Drag handle ---
-        const handle = document.createElement('span');
-        handle.className = 'tk-pin-drag-handle';
-        handle.title = 'Drag to reorder';
-        handle.innerHTML = '&#9776;'; // ≡ hamburger
-        handle.setAttribute('aria-hidden', 'true');
-        row.appendChild(handle);
-
-        // --- Enable toggle ---
-        const toggle = document.createElement('input');
-        toggle.type = 'checkbox';
-        toggle.className = 'tk-pin-config-toggle';
-        toggle.checked = pin.enabled !== false;
-        toggle.title = toggle.checked ? 'Disable this pin' : 'Enable this pin';
-        toggle.setAttribute('aria-label', `Toggle ${pin.name}`);
-        toggle.addEventListener('change', () => {
-          Pins.toggle(pin.id);
-          workingPins = Pins.all();
-          Toolbar.renderPins();
-          rebuild();
-          Log(`Pin '${pin.name}' ${toggle.checked ? 'enabled' : 'disabled'}.`, 'debug');
-        });
-        row.appendChild(toggle);
-
-        // --- Name (clickable link) ---
-        const nameWrap = document.createElement('span');
-        nameWrap.className = 'tk-pin-config-name';
-        const nameLink = document.createElement('a');
-        nameLink.href = pin.url;
-        nameLink.textContent = pin.name;
-        nameLink.title = `Navigate to ${pin.name}`;
-        nameWrap.appendChild(nameLink);
-        row.appendChild(nameWrap);
-
-        // --- Year label ---
-        const yearLabel = document.createElement('span');
-        yearLabel.className = 'tk-pin-config-year';
-        yearLabel.textContent = pin.year || '';
-        row.appendChild(yearLabel);
-
-        // --- Reorder + Remove actions ---
-        const actions = document.createElement('span');
-        actions.className = 'tk-pin-config-actions';
-
-        const upBtn = document.createElement('button');
-        upBtn.type = 'button';
-        upBtn.className = 'tk-pin-reorder-btn';
-        upBtn.title = 'Move up';
-        upBtn.setAttribute('aria-label', `Move ${pin.name} up`);
-        upBtn.innerHTML = '&#8593;';
-        upBtn.disabled = idx === 0;
-        upBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (idx === 0) return;
-          workingPins = Pins.all();
-          [workingPins[idx - 1], workingPins[idx]] = [workingPins[idx], workingPins[idx - 1]];
-          flush();
-          rebuild();
-        });
-
-        const downBtn = document.createElement('button');
-        downBtn.type = 'button';
-        downBtn.className = 'tk-pin-reorder-btn';
-        downBtn.title = 'Move down';
-        downBtn.setAttribute('aria-label', `Move ${pin.name} down`);
-        downBtn.innerHTML = '&#8595;';
-        downBtn.disabled = idx === workingPins.length - 1;
-        downBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (idx === workingPins.length - 1) return;
-          workingPins = Pins.all();
-          [workingPins[idx], workingPins[idx + 1]] = [workingPins[idx + 1], workingPins[idx]];
-          flush();
-          rebuild();
-        });
-
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'tk-pin-remove-btn';
-        removeBtn.title = `Remove ${pin.name}`;
-        removeBtn.setAttribute('aria-label', `Remove pin: ${pin.name}`);
-        removeBtn.innerHTML = icon('x');
-        removeBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          Pins.remove(pin.id);
-          workingPins = Pins.all();
-          Toolbar.renderPins();
-          rebuild();
-          Log(`Pin removed from settings: ${pin.name}`, 'debug');
-        });
-
-        actions.appendChild(upBtn);
-        actions.appendChild(downBtn);
-        actions.appendChild(removeBtn);
-        row.appendChild(actions);
-
-        // ---------------------------------------------------------------- //
-        // HTML5 drag-and-drop reordering                                   //
-        // ---------------------------------------------------------------- //
-        row.addEventListener('dragstart', (e) => {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', String(idx));
-          setTimeout(() => row.classList.add('tk-pin-row-dragging'), 0);
-        });
-
-        row.addEventListener('dragend', () => {
-          row.classList.remove('tk-pin-row-dragging');
-          list.querySelectorAll('.tk-pin-row-drag-over').forEach((r) => r.classList.remove('tk-pin-row-drag-over'));
-        });
-
-        row.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          list.querySelectorAll('.tk-pin-row-drag-over').forEach((r) => r.classList.remove('tk-pin-row-drag-over'));
-          row.classList.add('tk-pin-row-drag-over');
-        });
-
-        row.addEventListener('dragleave', () => {
-          row.classList.remove('tk-pin-row-drag-over');
-        });
-
-        row.addEventListener('drop', (e) => {
-          e.preventDefault();
-          row.classList.remove('tk-pin-row-drag-over');
-          const srcIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
-          if (isNaN(srcIdx) || srcIdx === idx) return;
-          workingPins = Pins.all();
-          const [moved] = workingPins.splice(srcIdx, 1);
-          workingPins.splice(idx, 0, moved);
-          flush();
-          rebuild();
-        });
-
-        list.appendChild(row);
-      });
-    };
-
-    rebuild();
-    return pane;
-  },
 
   /**
    * Badge Configuration tab.
@@ -462,93 +258,130 @@ export const SettingsUI = {
 
     const title = document.createElement('div');
     title.className = 'tk-settings-section-title';
-    title.textContent = 'Badge Configuration';
+    title.textContent = 'Badges & Hotlinks Configuration';
     pane.appendChild(title);
 
     const hint = document.createElement('div');
     hint.className = 'tk-settings-hint';
     hint.style.marginBottom = '12px';
     hint.textContent =
-      'Toggle individual action badges on/off and drag rows (or use the ↑↓ buttons) to set their order. ' +
-      'Changes apply immediately to the toolbar and injected set-link badges.';
+      'Configure toolbar action badges, set-link badges, and center-toolbar hotlinks (Top, Bottom, Search, or custom links). ' +
+      'Click section headers to expand/collapse. Each item allows custom text, tooltip, launch target mode, and placement ordering.';
     pane.appendChild(hint);
 
-    /**
-     * Build one sortable/togglable badge list section.
-     *
-     * @param {string} sectionTitle
-     * @param {string} configKey  - 'toolbarBadges' | 'setLinkBadges'
-     * @param {() => void} onApply  - called after any change to re-render the UI
-     */
-    const buildSection = (sectionTitle, configKey, onApply) => {
+    const buildCollapsibleSection = (sectionTitle, configKey, onApply, isHotlinkSection = false) => {
       const section = document.createElement('div');
-      section.style.marginBottom = '16px';
-
-      const secTitle = document.createElement('div');
-      secTitle.style.cssText = 'font-family:var(--tk-font-mono);font-size:10px;font-weight:700;color:var(--tk-teal);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;';
-      secTitle.textContent = sectionTitle;
-      section.appendChild(secTitle);
-
-      const list = document.createElement('div');
-      list.className = 'tk-pin-config-list';
-      section.appendChild(list);
+      section.style.cssText = 'margin-bottom:12px;border:1px solid var(--tk-border);border-radius:var(--tk-radius-sm);overflow:hidden;background:var(--tk-bg-base);';
 
       const getEntries = () => Config.global[configKey] || [];
 
+      // Header (Collapsible)
+      const header = document.createElement('div');
+      header.style.cssText = 'background:var(--tk-bg-elevated);padding:10px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;border-bottom:1px solid var(--tk-border);';
+
+      const headerLeft = document.createElement('div');
+      headerLeft.style.cssText = 'display:flex;align-items:center;gap:8px;';
+
+      const titleEl = document.createElement('span');
+      titleEl.style.cssText = 'font-family:var(--tk-font-mono);font-size:11px;font-weight:700;color:var(--tk-teal);text-transform:uppercase;letter-spacing:0.06em;';
+      titleEl.textContent = sectionTitle;
+
+      const countBadge = document.createElement('span');
+      countBadge.style.cssText = 'font-family:var(--tk-font-mono);font-size:9.5px;color:var(--tk-text-muted);background:var(--tk-bg-base);padding:2px 6px;border-radius:10px;border:1px solid var(--tk-border);';
+
+      headerLeft.appendChild(titleEl);
+      headerLeft.appendChild(countBadge);
+
+      const toggleIcon = document.createElement('span');
+      toggleIcon.style.cssText = 'font-size:12px;color:var(--tk-text-muted);transition:transform 0.2s;';
+      toggleIcon.textContent = '▼';
+
+      header.appendChild(headerLeft);
+      header.appendChild(toggleIcon);
+
+      // Body container
+      const body = document.createElement('div');
+      body.style.cssText = 'padding:12px;display:block;';
+
+      let isCollapsed = false;
+      header.addEventListener('click', () => {
+        isCollapsed = !isCollapsed;
+        body.style.display = isCollapsed ? 'none' : 'block';
+        toggleIcon.textContent = isCollapsed ? '▶' : '▼';
+      });
+
+      const list = document.createElement('div');
+      list.className = 'tk-pin-config-list';
+      body.appendChild(list);
+
+      const updateCount = () => {
+        const entries = getEntries();
+        const activeCount = entries.filter((e) => e.enabled !== false).length;
+        countBadge.textContent = `${activeCount}/${entries.length} active`;
+      };
+
       const flush = () => {
         SettingsUI._persist();
+        updateCount();
         onApply();
       };
 
       const rebuild = () => {
         list.innerHTML = '';
-        const entries = getEntries();
+        const currentEntries = getEntries();
+        updateCount();
 
-        entries.forEach((entry, idx) => {
-          const badgeDef = BADGES[entry.key];
-          if (!badgeDef) return; // skip unknown keys
+        currentEntries.forEach((entry, idx) => {
+          const isCustomHotlink = isHotlinkSection && entry.id !== 'top' && entry.id !== 'bottom' && entry.id !== 'search';
+          const badgeDef = !isHotlinkSection ? BADGES[entry.key] : null;
+          if (!isHotlinkSection && !badgeDef) return;
 
-          const row = document.createElement('div');
-          row.className = 'tk-pin-config-row' + (entry.enabled === false ? ' tk-pin-disabled' : '');
-          row.draggable = true;
-          row.dataset.badgeKey = entry.key;
+          const card = document.createElement('div');
+          card.className = 'tk-pin-config-row' + (entry.enabled === false ? ' tk-pin-disabled' : '');
+          card.style.cssText = 'background:var(--tk-bg-base);border:1px solid var(--tk-border);border-radius:var(--tk-radius-sm);padding:10px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;';
+          card.draggable = true;
 
-          // --- Drag handle ---
+          // Header row inside card
+          const topRow = document.createElement('div');
+          topRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--tk-border);padding-bottom:6px;';
+
+          const leftHeader = document.createElement('div');
+          leftHeader.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
+
+          // Drag handle
           const handle = document.createElement('span');
           handle.className = 'tk-pin-drag-handle';
           handle.title = 'Drag to reorder';
           handle.innerHTML = '&#9776;';
           handle.setAttribute('aria-hidden', 'true');
-          row.appendChild(handle);
+          leftHeader.appendChild(handle);
 
-          // --- Enable toggle ---
+          // Enable checkbox
           const toggle = document.createElement('input');
           toggle.type = 'checkbox';
           toggle.className = 'tk-pin-config-toggle';
           toggle.checked = entry.enabled !== false;
-          toggle.title = toggle.checked ? 'Disable this badge' : 'Enable this badge';
-          toggle.setAttribute('aria-label', `Toggle ${badgeDef.text || entry.key} badge`);
+          toggle.title = toggle.checked ? 'Disable item' : 'Enable item';
           toggle.addEventListener('change', () => {
             entry.enabled = toggle.checked;
-            row.classList.toggle('tk-pin-disabled', !toggle.checked);
-            Log(`Config change: ${configKey}[${entry.key}].enabled = ${toggle.checked}`, 'info');
+            card.classList.toggle('tk-pin-disabled', !toggle.checked);
             flush();
           });
-          row.appendChild(toggle);
+          leftHeader.appendChild(toggle);
 
-          // --- Badge name ---
+          // Item Title label
           const nameWrap = document.createElement('span');
           nameWrap.className = 'tk-pin-config-name';
-          nameWrap.textContent = badgeDef.title || entry.key;
-          row.appendChild(nameWrap);
+          nameWrap.style.cssText = 'font-family:var(--tk-font-mono);font-size:11px;font-weight:700;color:var(--tk-text);';
+          const displayName = isHotlinkSection
+            ? (entry.text || entry.id || `Hotlink ${idx + 1}`)
+            : (badgeDef.title || entry.key);
+          nameWrap.textContent = displayName;
+          leftHeader.appendChild(nameWrap);
 
-          // --- Badge key chip ---
-          const keyChip = document.createElement('span');
-          keyChip.className = 'tk-pin-config-year';
-          keyChip.textContent = badgeDef.text || entry.key;
-          row.appendChild(keyChip);
+          topRow.appendChild(leftHeader);
 
-          // --- Reorder + actions ---
+          // Reorder / Remove buttons
           const actions = document.createElement('span');
           actions.className = 'tk-pin-config-actions';
 
@@ -556,7 +389,6 @@ export const SettingsUI = {
           upBtn.type = 'button';
           upBtn.className = 'tk-pin-reorder-btn';
           upBtn.title = 'Move up';
-          upBtn.setAttribute('aria-label', `Move ${entry.key} up`);
           upBtn.innerHTML = '&#8593;';
           upBtn.disabled = idx === 0;
           upBtn.addEventListener('click', (e) => {
@@ -564,8 +396,8 @@ export const SettingsUI = {
             if (idx === 0) return;
             const arr = getEntries();
             [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+            if (isHotlinkSection) arr.forEach((item, i) => { item.placement = i + 1; });
             Config.global[configKey] = arr;
-            Log(`Config change: ${configKey} reordered`, 'info');
             flush();
             rebuild();
           });
@@ -574,79 +406,221 @@ export const SettingsUI = {
           downBtn.type = 'button';
           downBtn.className = 'tk-pin-reorder-btn';
           downBtn.title = 'Move down';
-          downBtn.setAttribute('aria-label', `Move ${entry.key} down`);
           downBtn.innerHTML = '&#8595;';
-          downBtn.disabled = idx === entries.length - 1;
+          downBtn.disabled = idx === currentEntries.length - 1;
           downBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (idx === entries.length - 1) return;
+            if (idx === currentEntries.length - 1) return;
             const arr = getEntries();
             [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+            if (isHotlinkSection) arr.forEach((item, i) => { item.placement = i + 1; });
             Config.global[configKey] = arr;
-            Log(`Config change: ${configKey} reordered`, 'info');
             flush();
             rebuild();
           });
 
           actions.appendChild(upBtn);
           actions.appendChild(downBtn);
-          row.appendChild(actions);
 
-          // --- HTML5 drag-and-drop ---
-          row.addEventListener('dragstart', (e) => {
+          if (isCustomHotlink) {
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'tk-pin-remove-btn';
+            delBtn.title = 'Remove hotlink';
+            delBtn.innerHTML = icon('x');
+            delBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              Config.global[configKey].splice(idx, 1);
+              (Config.global[configKey] || []).forEach((item, i) => { item.placement = i + 1; });
+              flush();
+              rebuild();
+            });
+            actions.appendChild(delBtn);
+          }
+
+          topRow.appendChild(actions);
+          card.appendChild(topRow);
+
+          // Drag and Drop
+          card.addEventListener('dragstart', (e) => {
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', String(idx));
-            setTimeout(() => row.classList.add('tk-pin-row-dragging'), 0);
+            setTimeout(() => card.classList.add('tk-pin-row-dragging'), 0);
           });
 
-          row.addEventListener('dragend', () => {
-            row.classList.remove('tk-pin-row-dragging');
+          card.addEventListener('dragend', () => {
+            card.classList.remove('tk-pin-row-dragging');
             list.querySelectorAll('.tk-pin-row-drag-over').forEach((r) => r.classList.remove('tk-pin-row-drag-over'));
           });
 
-          row.addEventListener('dragover', (e) => {
+          card.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             list.querySelectorAll('.tk-pin-row-drag-over').forEach((r) => r.classList.remove('tk-pin-row-drag-over'));
-            row.classList.add('tk-pin-row-drag-over');
+            card.classList.add('tk-pin-row-drag-over');
           });
 
-          row.addEventListener('dragleave', () => {
-            row.classList.remove('tk-pin-row-drag-over');
+          card.addEventListener('dragleave', () => {
+            card.classList.remove('tk-pin-row-drag-over');
           });
 
-          row.addEventListener('drop', (e) => {
+          card.addEventListener('drop', (e) => {
             e.preventDefault();
-            row.classList.remove('tk-pin-row-drag-over');
+            card.classList.remove('tk-pin-row-drag-over');
             const srcIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
             if (isNaN(srcIdx) || srcIdx === idx) return;
             const arr = getEntries();
             const [moved] = arr.splice(srcIdx, 1);
             arr.splice(idx, 0, moved);
+            if (isHotlinkSection) arr.forEach((item, i) => { item.placement = i + 1; });
             Config.global[configKey] = arr;
-            Log(`Config change: ${configKey} reordered via drag`, 'info');
             flush();
             rebuild();
           });
 
-          list.appendChild(row);
+          // Fields Row (Standardized 4-column layout across all 3 sections)
+          const fieldsRow = document.createElement('div');
+          fieldsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1.25fr 1.25fr 1fr;gap:8px;';
+
+          // 1. Text Field
+          const textGroup = document.createElement('div');
+          const textLabel = document.createElement('label');
+          textLabel.style.cssText = 'display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;';
+          textLabel.textContent = isHotlinkSection ? 'Link Text' : 'Badge Text';
+          const textInput = document.createElement('input');
+          textInput.type = 'text';
+          textInput.value = isHotlinkSection ? (entry.text || '') : (entry.text !== undefined ? entry.text : badgeDef.text || '');
+          textInput.style.cssText = 'width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;';
+          textInput.addEventListener('change', () => {
+            entry.text = textInput.value.trim();
+            flush();
+          });
+          textGroup.appendChild(textLabel);
+          textGroup.appendChild(textInput);
+
+          // 2. URL / Key Info Field
+          const urlGroup = document.createElement('div');
+          const urlLabel = document.createElement('label');
+          urlLabel.style.cssText = 'display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;';
+          urlLabel.textContent = isHotlinkSection ? 'Link URL' : 'Badge Key / Type';
+          const urlInput = document.createElement('input');
+          urlInput.type = 'text';
+          if (isHotlinkSection) {
+            urlInput.value = entry.url || '';
+            urlInput.style.cssText = 'width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;';
+            urlInput.addEventListener('change', () => {
+              entry.url = urlInput.value.trim();
+              flush();
+            });
+          } else {
+            urlInput.value = badgeDef.getUrl ? badgeDef.getUrl('SID', 'PARENT') : `${entry.key} (Action)`;
+            urlInput.readOnly = true;
+            urlInput.style.cssText = 'width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border);border-radius:3px;background:var(--tk-bg-base);color:var(--tk-text-muted);box-sizing:border-box;cursor:default;';
+          }
+          urlGroup.appendChild(urlLabel);
+          urlGroup.appendChild(urlInput);
+
+          // 3. Tooltip Field
+          const tooltipGroup = document.createElement('div');
+          const tooltipLabel = document.createElement('label');
+          tooltipLabel.style.cssText = 'display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;';
+          tooltipLabel.textContent = isHotlinkSection ? 'Link Tooltip' : 'Badge Tooltip';
+          const tooltipInput = document.createElement('input');
+          tooltipInput.type = 'text';
+          tooltipInput.value = isHotlinkSection ? (entry.tooltip || '') : (entry.tooltip !== undefined ? entry.tooltip : badgeDef.title || '');
+          tooltipInput.style.cssText = 'width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;';
+          tooltipInput.addEventListener('change', () => {
+            entry.tooltip = tooltipInput.value.trim();
+            flush();
+          });
+          tooltipGroup.appendChild(tooltipLabel);
+          tooltipGroup.appendChild(tooltipInput);
+
+          // 4. Target Field
+          const targetGroup = document.createElement('div');
+          const targetLabel = document.createElement('label');
+          targetLabel.style.cssText = 'display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;';
+          targetLabel.textContent = 'Launch Target';
+          const targetSelect = document.createElement('select');
+          targetSelect.style.cssText = 'width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;';
+
+          const optInline = document.createElement('option');
+          optInline.value = 'inline';
+          optInline.textContent = 'Directly In-Line';
+          if ((entry.target || 'inline') === 'inline') optInline.selected = true;
+
+          const optBg = document.createElement('option');
+          optBg.value = 'background';
+          optBg.textContent = 'New Background Tab';
+          if (entry.target === 'background') optBg.selected = true;
+
+          targetSelect.appendChild(optInline);
+          targetSelect.appendChild(optBg);
+
+          targetSelect.addEventListener('change', () => {
+            entry.target = targetSelect.value;
+            flush();
+          });
+          targetGroup.appendChild(targetLabel);
+          targetGroup.appendChild(targetSelect);
+
+          fieldsRow.appendChild(textGroup);
+          fieldsRow.appendChild(urlGroup);
+          fieldsRow.appendChild(tooltipGroup);
+          fieldsRow.appendChild(targetGroup);
+          card.appendChild(fieldsRow);
+
+          list.appendChild(card);
         });
+
+        if (isHotlinkSection) {
+          const addBtn = document.createElement('button');
+          addBtn.type = 'button';
+          addBtn.className = 'sctk-btn';
+          addBtn.style.cssText = 'margin-top:4px;font-size:10px;padding:4px 10px;';
+          addBtn.textContent = '+ Add Custom Hotlink';
+          addBtn.addEventListener('click', () => {
+            if (!Config.global.hotlinks) Config.global.hotlinks = [];
+            const nextPlacement = Config.global.hotlinks.length + 1;
+            Config.global.hotlinks.push({
+              id: `custom_${Date.now()}`,
+              text: 'Link',
+              url: '/',
+              tooltip: 'Custom link',
+              placement: nextPlacement,
+              enabled: true,
+              target: 'inline'
+            });
+            flush();
+            rebuild();
+          });
+          list.appendChild(addBtn);
+        }
       };
 
       rebuild();
+      section.appendChild(header);
+      section.appendChild(body);
       return section;
     };
 
-    pane.appendChild(buildSection(
+    pane.appendChild(buildCollapsibleSection(
       'Toolbar Badges',
       'toolbarBadges',
       () => Toolbar.renderCenterContext()
     ));
 
-    pane.appendChild(buildSection(
+    pane.appendChild(buildCollapsibleSection(
       'Set Link Badges',
       'setLinkBadges',
       () => reinjectSetActions()
+    ));
+
+    pane.appendChild(buildCollapsibleSection(
+      'Toolbar Hotlinks',
+      'hotlinks',
+      () => Toolbar.renderCenterContext(),
+      true
     ));
 
     return pane;
@@ -1122,12 +1096,12 @@ export const SettingsUI = {
     const templateField = document.createElement('div');
     templateField.className = 'tk-settings-field';
     const templateLabel = document.createElement('label');
-    templateLabel.textContent = 'Template Format';
+    templateLabel.textContent = 'Friendly Copy Template Format';
     const templateInput = document.createElement('input');
     templateInput.type = 'text';
     templateInput.value = Config.global.cardFormatterTemplate || '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}';
     templateInput.style.cssText = 'width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;';
-    templateInput.title = 'Tokens: {PlayerName}, {Year}, {SetName}, {Tags}, {PR}, {CardNo}';
+    templateInput.title = 'Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}';
     templateInput.addEventListener('change', () => {
       Config.global.cardFormatterTemplate = templateInput.value.trim();
       Log(`Config change: global.cardFormatterTemplate = ${Config.global.cardFormatterTemplate}`, 'info');
@@ -1135,17 +1109,94 @@ export const SettingsUI = {
     });
     const templateHint = document.createElement('div');
     templateHint.className = 'tk-settings-hint';
-    templateHint.textContent = 'Tokens: {PlayerName}, {Year}, {SetName}, {Tags}, {PR}, {CardNo}';
+    templateHint.textContent = 'Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}';
     templateField.append(templateLabel, templateInput, templateHint);
+
+    const tsvTemplateField = document.createElement('div');
+    tsvTemplateField.className = 'tk-settings-field';
+    const tsvTemplateLabel = document.createElement('label');
+    tsvTemplateLabel.textContent = 'TSV Copy Template Format';
+    const tsvTemplateInput = document.createElement('input');
+    tsvTemplateInput.type = 'text';
+    tsvTemplateInput.value = Config.global.cardFormatterTSVTemplate || '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}';
+    tsvTemplateInput.style.cssText = 'width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;';
+    tsvTemplateInput.title = 'Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}';
+    tsvTemplateInput.addEventListener('change', () => {
+      Config.global.cardFormatterTSVTemplate = tsvTemplateInput.value;
+      Log(`Config change: global.cardFormatterTSVTemplate = ${Config.global.cardFormatterTSVTemplate}`, 'info');
+      SettingsUI._persist();
+    });
+    const tsvTemplateHint = document.createElement('div');
+    tsvTemplateHint.className = 'tk-settings-hint';
+    tsvTemplateHint.textContent = 'Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}';
+    tsvTemplateField.append(tsvTemplateLabel, tsvTemplateInput, tsvTemplateHint);
+
+    const ignoredTagsField = document.createElement('div');
+    ignoredTagsField.className = 'tk-settings-field';
+    const ignoredTagsLabel = document.createElement('label');
+    ignoredTagsLabel.textContent = 'Ignored Tags List';
+    const ignoredTagsInput = document.createElement('input');
+    ignoredTagsInput.type = 'text';
+    ignoredTagsInput.value = Config.global.cardFormatterIgnoredTags || 'ASR, LL, TC, CL';
+    ignoredTagsInput.style.cssText = 'width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;';
+    ignoredTagsInput.title = 'Comma-separated list of card tags to ignore when extracting card metadata.';
+    ignoredTagsInput.addEventListener('change', () => {
+      Config.global.cardFormatterIgnoredTags = ignoredTagsInput.value.trim();
+      Log(`Config change: global.cardFormatterIgnoredTags = ${Config.global.cardFormatterIgnoredTags}`, 'info');
+      SettingsUI._persist();
+    });
+    const ignoredTagsHint = document.createElement('div');
+    ignoredTagsHint.className = 'tk-settings-hint';
+    ignoredTagsHint.textContent = 'Comma-separated tags to ignore when extracting card metadata (e.g. ASR, LL, TC, CL)';
+    ignoredTagsField.append(ignoredTagsLabel, ignoredTagsInput, ignoredTagsHint);
+
+    const tagSeparatorField = document.createElement('div');
+    tagSeparatorField.className = 'tk-settings-field';
+    const tagSeparatorLabel = document.createElement('label');
+    tagSeparatorLabel.textContent = 'Tag Separator';
+    const tagSeparatorInput = document.createElement('input');
+    tagSeparatorInput.type = 'text';
+    tagSeparatorInput.value = Config.global.cardFormatterTagSeparator ?? '';
+    tagSeparatorInput.style.cssText = 'width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;';
+    tagSeparatorInput.title = 'Separator character(s) between tags (e.g. space, comma, semicolon). Blank (default) resolves to space.';
+    tagSeparatorInput.addEventListener('change', () => {
+      Config.global.cardFormatterTagSeparator = tagSeparatorInput.value;
+      Log(`Config change: global.cardFormatterTagSeparator = ${Config.global.cardFormatterTagSeparator}`, 'info');
+      SettingsUI._persist();
+    });
+    const tagSeparatorHint = document.createElement('div');
+    tagSeparatorHint.className = 'tk-settings-hint';
+    tagSeparatorHint.textContent = 'Delimiter used between tags when formatted (e.g. space, comma, semicolon). Blank defaults to single space.';
+    tagSeparatorField.append(tagSeparatorLabel, tagSeparatorInput, tagSeparatorHint);
+
+    const tagReplacerField = document.createElement('div');
+    tagReplacerField.className = 'tk-settings-field';
+    const tagReplacerLabel = document.createElement('label');
+    tagReplacerLabel.textContent = 'Tag Replacements';
+    const tagReplacerInput = document.createElement('input');
+    tagReplacerInput.type = 'text';
+    tagReplacerInput.value = Config.global.cardFormatterTagReplacer ?? '';
+    tagReplacerInput.style.cssText = 'width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;';
+    tagReplacerInput.title = 'Key-value mapping pairs for tag replacements (e.g. AU: AUTO, TC: CL).';
+    tagReplacerInput.addEventListener('change', () => {
+      Config.global.cardFormatterTagReplacer = tagReplacerInput.value.trim();
+      Log(`Config change: global.cardFormatterTagReplacer = ${Config.global.cardFormatterTagReplacer}`, 'info');
+      SettingsUI._persist();
+    });
+    const tagReplacerHint = document.createElement('div');
+    tagReplacerHint.className = 'tk-settings-hint';
+    tagReplacerHint.textContent = 'Comma-separated pairs (e.g. AU: AUTO, TC: CL). Replaces left-side tag with right-side tag value.';
+    tagReplacerField.append(tagReplacerLabel, tagReplacerInput, tagReplacerHint);
 
     const outputModeField = document.createElement('div');
     outputModeField.className = 'tk-settings-field';
     const outputModeLabel = document.createElement('label');
     outputModeLabel.textContent = 'Output Mode';
     const outputModeSelect = document.createElement('select');
-    outputModeSelect.title = 'popover: show floating copy button near text. clipboard: auto-copy to clipboard.';
+    outputModeSelect.title = 'popover: show floating copy button near text. inline: render small buttons below card/player. clipboard: auto-copy to clipboard.';
     [
       { value: 'popover', label: 'Floating Popover' },
+      { value: 'inline', label: 'Inline Buttons' },
       { value: 'clipboard', label: 'Auto-Copy to Clipboard' }
     ].forEach(({ value, label }) => {
       const opt = document.createElement('option');
@@ -1161,6 +1212,52 @@ export const SettingsUI = {
     });
     outputModeField.append(outputModeLabel, outputModeSelect);
 
+    const linkTargetField = document.createElement('div');
+    linkTargetField.className = 'tk-settings-field';
+    const linkTargetLabel = document.createElement('label');
+    linkTargetLabel.textContent = 'Link Opening Target';
+    const linkTargetSelect = document.createElement('select');
+    linkTargetSelect.title = 'Specify whether external links (Baseball Reference & Google) open in background tab or focused tab.';
+    [
+      { value: 'background', label: 'New Tab (Background)' },
+      { value: 'focus', label: 'New Tab with Focus' }
+    ].forEach(({ value, label }) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if ((Config.global.cardFormatterLinkTarget || 'background') === value) opt.selected = true;
+      linkTargetSelect.appendChild(opt);
+    });
+    linkTargetSelect.addEventListener('change', () => {
+      Config.global.cardFormatterLinkTarget = linkTargetSelect.value;
+      Log(`Config change: global.cardFormatterLinkTarget = ${linkTargetSelect.value}`, 'info');
+      SettingsUI._persist();
+    });
+    linkTargetField.append(linkTargetLabel, linkTargetSelect);
+
+    const popoverDurationField = document.createElement('div');
+    popoverDurationField.className = 'tk-settings-field';
+    const popoverDurationLabel = document.createElement('label');
+    popoverDurationLabel.textContent = 'Popover Duration (ms)';
+    const popoverDurationInput = document.createElement('input');
+    popoverDurationInput.type = 'number';
+    popoverDurationInput.min = '500';
+    popoverDurationInput.max = '30000';
+    popoverDurationInput.step = '500';
+    popoverDurationInput.value = Config.global.cardFormatterPopoverDurationMs || 4000;
+    popoverDurationInput.style.cssText = 'width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;';
+    popoverDurationInput.title = 'How long the floating copy popover stays visible before auto-dismissing.';
+    popoverDurationInput.addEventListener('change', () => {
+      const val = parseInt(popoverDurationInput.value, 10);
+      Config.global.cardFormatterPopoverDurationMs = isNaN(val) ? 4000 : val;
+      Log(`Config change: global.cardFormatterPopoverDurationMs = ${Config.global.cardFormatterPopoverDurationMs}`, 'info');
+      SettingsUI._persist();
+    });
+    const popoverDurationHint = document.createElement('div');
+    popoverDurationHint.className = 'tk-settings-hint';
+    popoverDurationHint.textContent = 'How long the floating copy popover stays visible before auto-dismissing (in milliseconds).';
+    popoverDurationField.append(popoverDurationLabel, popoverDurationInput, popoverDurationHint);
+
     const showCopyField = document.createElement('div');
     showCopyField.className = 'tk-settings-field';
     const showCopyLabel = document.createElement('label');
@@ -1171,6 +1268,17 @@ export const SettingsUI = {
     const showCopyCheckbox = document.createElement('input');
     showCopyCheckbox.type = 'checkbox';
     showCopyCheckbox.checked = Config.global.cardFormatterShowCopy !== false;
+
+    const showTSVField = document.createElement('div');
+    showTSVField.className = 'tk-settings-field';
+    const showTSVLabel = document.createElement('label');
+    showTSVLabel.style.display = 'flex';
+    showTSVLabel.style.alignItems = 'center';
+    showTSVLabel.style.gap = '6px';
+    showTSVLabel.style.cursor = 'pointer';
+    const showTSVCheckbox = document.createElement('input');
+    showTSVCheckbox.type = 'checkbox';
+    showTSVCheckbox.checked = Config.global.cardFormatterShowTSV !== false;
 
     const showBRefField = document.createElement('div');
     showBRefField.className = 'tk-settings-field';
@@ -1196,21 +1304,22 @@ export const SettingsUI = {
 
     const updateOutputModeState = () => {
       const showCopy = showCopyCheckbox.checked;
+      const showTSV = showTSVCheckbox.checked;
       const showBRef = showBRefCheckbox.checked;
       const showGoogle = showGoogleCheckbox.checked;
       const hasSearch = showBRef || showGoogle;
 
-      if (hasSearch) {
-        outputModeSelect.value = 'popover';
-        outputModeSelect.disabled = true;
-        outputModeSelect.title = 'Floating Popover is required when Baseball Reference or Google search is enabled.';
-        if (Config.global.cardFormatterOutputMode !== 'popover') {
+      if (hasSearch || showTSV) {
+        outputModeSelect.disabled = false;
+        outputModeSelect.title = 'Choose Floating Popover or Inline Buttons mode for active actions.';
+        if (Config.global.cardFormatterOutputMode === 'clipboard') {
           Config.global.cardFormatterOutputMode = 'popover';
-          Log('Config change: global.cardFormatterOutputMode = popover (required by active search actions)', 'info');
+          outputModeSelect.value = 'popover';
+          Log('Config change: global.cardFormatterOutputMode = popover (clipboard invalid for active actions)', 'info');
         }
       } else if (showCopy) {
         outputModeSelect.disabled = false;
-        outputModeSelect.title = 'popover: show floating copy button near text. clipboard: auto-copy to clipboard.';
+        outputModeSelect.title = 'popover: show floating copy popover. inline: render inline buttons. clipboard: auto-copy.';
       } else {
         outputModeSelect.value = 'clipboard';
         outputModeSelect.disabled = true;
@@ -1227,8 +1336,17 @@ export const SettingsUI = {
       updateOutputModeState();
       SettingsUI._persist();
     });
-    showCopyLabel.append(showCopyCheckbox, document.createTextNode('Show Copy Button'));
+    showCopyLabel.append(showCopyCheckbox, document.createTextNode('Show Friendly Copy Button'));
     showCopyField.appendChild(showCopyLabel);
+
+    showTSVCheckbox.addEventListener('change', () => {
+      Config.global.cardFormatterShowTSV = showTSVCheckbox.checked;
+      Log(`Config change: global.cardFormatterShowTSV = ${showTSVCheckbox.checked}`, 'info');
+      updateOutputModeState();
+      SettingsUI._persist();
+    });
+    showTSVLabel.append(showTSVCheckbox, document.createTextNode('Show TSV Copy Button'));
+    showTSVField.appendChild(showTSVLabel);
 
     showBRefCheckbox.addEventListener('change', () => {
       Config.global.cardFormatterShowBRef = showBRefCheckbox.checked;
@@ -1252,9 +1370,9 @@ export const SettingsUI = {
 
     pane.appendChild(
       SettingsUI._buildCollapsibleSection(
-        'Card Name Formatter Settings',
-        [templateField, outputModeField, showCopyField, showBRefField, showGoogleField],
-        'Configure custom copy templates, floating popover output modes, and search actions.',
+        'Player Quick Links Settings',
+        [templateField, tsvTemplateField, ignoredTagsField, tagSeparatorField, tagReplacerField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
+        'Configure custom copy templates, output modes (popover, inline buttons, clipboard), link opening targets, and search actions.',
         false
       )
     );

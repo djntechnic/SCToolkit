@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { deriveSetYear } from '../src/core/storage.js';
+import { deriveSetYear, Pins } from '../src/core/storage.js';
 import { extractSid, extractParentSid } from '../src/core/sid.js';
 import { JSDOM } from 'jsdom';
 
@@ -15,6 +15,13 @@ test('extractSid: query form', () => {
 
 test('extractSid: case-insensitive', () => {
   assert.equal(extractSid('/Checklist.cfm/SID/99/'), '99');
+});
+
+test('extractSid: SetID parameter and Forum path form', () => {
+  assert.equal(extractSid('ChangeLog.cfm?SetID=209616'), '209616');
+  assert.equal(extractSid('ChangeLog.cfm/SetID/209616'), '209616');
+  assert.equal(extractSid('Forum.cfm/Page/S/ID/209616/2019-Topps-Allen-&-Ginter-X'), '209616');
+  assert.equal(extractSid('Forum.cfm/S/ID/209616/2019-Topps-Allen-&-Ginter-X'), '209616');
 });
 
 test('extractSid: absent or empty input yields null', () => {
@@ -75,6 +82,21 @@ test('extractParentSid: returns null on base set page where only currentSid exis
   assert.equal(extractParentSid(dom.window.document, '10000'), null);
 });
 
+test('extractParentSid: ignores links inside #sctk-toolbar (e.g. pinned sets)', () => {
+  const dom = new JSDOM(`
+    <div id="sctk-toolbar">
+      <div id="tk-pinned">
+        <a class="tk-pin-title" href="https://www.tcdb.com/ViewSet.cfm/sid/560650/2025-Topps-Update">2025 Topps Update</a>
+        <a href="/Inserts.cfm/sid/560650/#InsertSets">INS</a>
+      </div>
+    </div>
+    <div class="menu-linksV">
+      <a href="/ViewSet.cfm/sid/198281/2019-Topps-Allen-&-Ginter">Overview</a>
+    </div>
+  `);
+  assert.equal(extractParentSid(dom.window.document, '198281'), null);
+});
+
 test('deriveSetYear: the href wins when it carries a year', () => {
   assert.equal(deriveSetYear('Some Set', '/Checklist.cfm/sid/12/1987-topps'), '1987');
 });
@@ -91,3 +113,23 @@ test('deriveSetYear: no year anywhere groups under Misc', () => {
   assert.equal(deriveSetYear('Example Promos'), 'Misc');
   assert.equal(deriveSetYear(''), 'Misc');
 });
+
+test('Pins.sort: sorts pins by year (ascending) and then set name (A-Z) with Misc at the end', () => {
+  const input = [
+    { id: '1', name: '2019 Topps Heritage', year: '2019' },
+    { id: '2', name: '2025 Topps Chrome', year: '2025' },
+    { id: '3', name: '2019 Bowman', year: '2019' },
+    { id: '4', name: '2025 Bowman Best', year: '2025' },
+    { id: '5', name: 'Misc Promo Set', year: 'Misc' }
+  ];
+
+  const sorted = Pins.sort(input);
+  assert.deepEqual(sorted.map((p) => p.name), [
+    '2019 Bowman',
+    '2019 Topps Heritage',
+    '2025 Bowman Best',
+    '2025 Topps Chrome',
+    'Misc Promo Set'
+  ]);
+});
+

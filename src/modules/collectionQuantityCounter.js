@@ -62,7 +62,7 @@ export function countCollectionQuantities(root = document) {
 
     // 2. Look for checked checkbox or quantity input if no badge gave a value
     if (qty === 0) {
-      const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]');
+      const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]:not(.tk-qty-input)');
       if (qtyInput && qtyInput.value) {
         const parsed = parseInt(qtyInput.value.trim(), 10);
         if (!isNaN(parsed)) qty = Math.max(0, parsed);
@@ -130,7 +130,7 @@ export function getCollectionCardDetails(root = document) {
     }
 
     if (qty === 0) {
-      const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]');
+      const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]:not(.tk-qty-input)');
       if (qtyInput && qtyInput.value) {
         const parsed = parseInt(qtyInput.value.trim(), 10);
         if (!isNaN(parsed)) qty = Math.max(0, parsed);
@@ -393,10 +393,17 @@ export function initCollectionQuantityCounter() {
     }
   };
 
+  const handleCustomEvent = () => setTimeout(update, 50);
   document.addEventListener('change', handleEvent, true);
   document.addEventListener('input', handleEvent, true);
   document.addEventListener('click', handleEvent, true);
-  boundListeners.push({ type: 'change', fn: handleEvent }, { type: 'input', fn: handleEvent }, { type: 'click', fn: handleEvent });
+  document.addEventListener('sctk:collection-changed', handleCustomEvent, true);
+  boundListeners.push(
+    { type: 'change', fn: handleEvent },
+    { type: 'input', fn: handleEvent },
+    { type: 'click', fn: handleEvent },
+    { type: 'sctk:collection-changed', fn: handleCustomEvent }
+  );
 
   // 2. MutationObserver for DOM changes (AJAX updates, row color change, ColdFusion navigate)
   const targetArea = document.querySelector('#main-content-area') || document.querySelector('#content') || document.body;

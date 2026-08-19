@@ -190,3 +190,46 @@ test('configToXml and xmlToConfig: round-trip preserves all settings', () => {
 test('xmlToConfig: throws descriptive error on invalid XML', () => {
   assert.throws(() => xmlToConfig('<invalid xml>'), /XML Parse Error|Invalid XML/);
 });
+
+test('hotlinks: default config contains Top, Bottom, Search, and Year hotlinks', () => {
+  const hotlinks = DEFAULT_CONFIG.global.hotlinks;
+  assert.ok(Array.isArray(hotlinks));
+  assert.equal(hotlinks.length, 4);
+  assert.equal(hotlinks[0].id, 'top');
+  assert.equal(hotlinks[1].id, 'bottom');
+  assert.equal(hotlinks[2].id, 'search');
+  assert.equal(hotlinks[2].url, 'https://www.tcdb.com/AdvancedSearch.cfm');
+  assert.equal(hotlinks[2].tooltip, 'Perform Advanced Search');
+  assert.equal(hotlinks[2].placement, 3);
+  assert.equal(hotlinks[3].id, 'year');
+  assert.equal(hotlinks[3].url, '/ViewAllC.cfm');
+  assert.equal(hotlinks[3].placement, 4);
+});
+
+test('migrate: auto-heals stored toolbarBadges by merging missing default badges like PIN and YEAR', () => {
+  const storedOld8Badges = [
+    { key: 'CHECKLIST', enabled: true },
+    { key: 'INSERTS', enabled: true },
+    { key: 'PARALLELS', enabled: true },
+    { key: 'FOR_SALE', enabled: true },
+    { key: 'MULTI', enabled: true },
+    { key: 'WANTLIST', enabled: true },
+    { key: 'CSV', enabled: true },
+    { key: 'HIERARCHY', enabled: true }
+  ];
+
+  const stored = {
+    schemaVersion: DEFAULT_CONFIG.schemaVersion,
+    modules: {},
+    global: {
+      toolbarBadges: storedOld8Badges
+    }
+  };
+
+  const result = SettingsStore.migrate(stored);
+  const keys = result.global.toolbarBadges.map((b) => b.key);
+  assert.ok(keys.includes('PIN'), 'migrated stored config should include PIN badge');
+  assert.ok(keys.includes('YEAR'), 'migrated stored config should include YEAR badge');
+  assert.equal(result.global.toolbarBadges.length, 10);
+});
+

@@ -14,6 +14,7 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_info
+// @grant        GM_openInTab
 // @run-at       document-end
 // ==/UserScript==
 
@@ -205,6 +206,79 @@
       return `${origin}${path2.startsWith("/") ? "" : "/"}${path2}`;
     },
     /**
+     * Open a URL in a new background tab (or foreground tab if requested).
+     * Falls back to window.open if GM_openInTab is unavailable.
+     *
+     * @param {string} url
+     * @param {boolean} [inBackground=true]
+     */
+    openInTab(url, inBackground = true, winContext = null) {
+      const win = winContext || (typeof window !== "undefined" ? window : null);
+      const fullUrl = Utils.toFullUrl(url);
+      const gmType = typeof GM_openInTab;
+      const winType = typeof win;
+      const grants = typeof GM_info !== "undefined" ? GM_info?.script?.grant?.join(", ") : "undefined";
+      Log(`Granted APIs: ${grants}`, "debug");
+      Log(
+        `openInTab called: url='${url}', fullUrl='${fullUrl}', inBackground=${inBackground}, typeof GM_openInTab='${gmType}', typeof window='${winType}'`,
+        "debug"
+      );
+      if (typeof GM_openInTab === "function") {
+        try {
+          Log(
+            "openInTab: attempting GM_openInTab(url, { active, loadInBackground, insert })",
+            "debug"
+          );
+          GM_openInTab(fullUrl, {
+            active: !inBackground,
+            loadInBackground: inBackground,
+            insert: true
+          });
+          return;
+        } catch (err) {
+          Log(
+            `openInTab: GM_openInTab(options) failed: ${err?.message || err}`,
+            "debug"
+          );
+          try {
+            Log("openInTab: attempting GM_openInTab(url, inBackground)", "debug");
+            GM_openInTab(fullUrl, inBackground);
+            return;
+          } catch (err2) {
+            Log(
+              `openInTab: GM_openInTab(url, bool) failed: ${err2?.message || err2}`,
+              "debug"
+            );
+          }
+        }
+      } else if (typeof GM !== "undefined" && typeof GM.openInTab === "function") {
+        try {
+          Log("openInTab: attempting GM.openInTab(url, !inBackground)", "debug");
+          GM.openInTab(fullUrl, inBackground);
+          return;
+        } catch (err) {
+          Log(`openInTab: GM.openInTab failed: ${err?.message || err}`, "debug");
+        }
+      }
+      if (win && win.open) {
+        Log("openInTab: falling back to window.open", "debug");
+        const openedWin = win.open(fullUrl, "_blank");
+        if (openedWin && inBackground) {
+          try {
+            openedWin.blur();
+            if (typeof win.focus === "function") win.focus();
+          } catch (err) {
+            Log(
+              `openInTab: window.blur/focus failed: ${err?.message || err}`,
+              "debug"
+            );
+          }
+        }
+      } else {
+        Log("openInTab: no window or tab API available", "warn");
+      }
+    },
+    /**
      * Format a URL into a concise, readable string for console logging.
      * Prevents long URLs from causing ugly line wrapping in developer tools.
      *
@@ -214,7 +288,10 @@
     formatLogUrl(url = "") {
       if (!url) return "";
       try {
-        const parsed = new URL(url, typeof window !== "undefined" && window.location ? window.location.href : "https://www.tcdb.com");
+        const parsed = new URL(
+          url,
+          typeof window !== "undefined" && window.location ? window.location.href : "https://www.tcdb.com"
+        );
         const filename = parsed.pathname.split("/").pop() || parsed.pathname;
         const partParam = parsed.searchParams.get("Part");
         if (partParam) {
@@ -300,45 +377,46 @@
      * @returns {Array<{id: string, name: string, url: string, year: string, enabled?: boolean}>}
      */
     all: () => getValue(PINNED_SETS_KEY, []),
+    /**
+     * Sort an array of pins (or the persisted list) by Year (newest first),
+     * then by Set Name (alphabetical A-Z).
+     *
+     * @param {Array<{id: string, name: string, url: string, year: string, enabled?: boolean}>} [pins]
+     * @returns {Array<{id: string, name: string, url: string, year: string, enabled?: boolean}>}
+     */
+    sort: (pins) => {
+      const list = pins || Pins.all();
+      list.sort((a, b) => {
+        const yearA = a.year && SET_YEAR_REGEX.test(a.year) ? a.year : Utils.extractYear(a.name, a.url) || "Misc";
+        const yearB = b.year && SET_YEAR_REGEX.test(b.year) ? b.year : Utils.extractYear(b.name, b.url) || "Misc";
+        if (yearA !== yearB) {
+          if (yearA === "Misc") return 1;
+          if (yearB === "Misc") return -1;
+          const numA = parseInt(yearA, 10);
+          const numB = parseInt(yearB, 10);
+          if (!isNaN(numA) && !isNaN(numB)) {
+            return numA - numB;
+          }
+          return yearA.localeCompare(yearB);
+        }
+        const nameA = (a.name || "").trim();
+        const nameB = (b.name || "").trim();
+        return nameA.localeCompare(nameB, void 0, { numeric: true, sensitivity: "base" });
+      });
+      return list;
+    },
     /** @param {{id: string, name: string, url: string, year: string}} pin */
     add: (pin) => {
       const pins = Pins.all();
       if (pins.find((p) => p.id === pin.id)) return false;
       pins.push(pin);
+      Pins.sort(pins);
       setValue(PINNED_SETS_KEY, pins);
       return true;
     },
     /** @param {string} id */
     remove: (id) => {
       setValue(PINNED_SETS_KEY, Pins.all().filter((p) => p.id !== id));
-    },
-    /**
-     * Replace the entire stored pin list in one write.
-     *
-     * Used by drag-and-drop reordering: the caller assembles the new order and
-     * passes it here so storage is always consistent with the UI.
-     *
-     * @param {Array<{id: string, name: string, url: string, year: string, enabled?: boolean}>} pins
-     */
-    reorder: (pins) => {
-      setValue(PINNED_SETS_KEY, pins);
-    },
-    /**
-     * Flip the `enabled` field for a single pin and persist.
-     *
-     * Pins with no `enabled` field are treated as enabled; toggling them once
-     * sets `enabled: false`.
-     *
-     * @param {string} id
-     * @returns {boolean} the new enabled state, or `true` if pin not found
-     */
-    toggle: (id) => {
-      const pins = Pins.all();
-      const pin = pins.find((p) => p.id === id);
-      if (!pin) return true;
-      pin.enabled = !(pin.enabled !== false);
-      setValue(PINNED_SETS_KEY, pins);
-      return pin.enabled;
     }
   };
   var SET_YEAR_REGEX = /^(\d{4})/;
@@ -405,7 +483,10 @@
       },
       addMultiplesEnhancer: {
         enabled: true,
-        urlMatch: [{ pattern: "/collectionaddmultiples", exclude: false }],
+        urlMatch: [
+          { pattern: "/collectionaddmultiples", exclude: false },
+          { pattern: "/collectionaddm", exclude: false }
+        ],
         actions: {}
       },
       csvExportEngine: {
@@ -455,6 +536,15 @@
         enabled: true,
         urlMatch: [{ pattern: "/viewcollection\\.cfm", exclude: false }],
         actions: {}
+      },
+      quickAddGridEnhancer: {
+        enabled: true,
+        urlMatch: [
+          { pattern: "/viewcollection\\.cfm", exclude: false },
+          { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
+          { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false }
+        ],
+        actions: {}
       }
     },
     global: {
@@ -488,9 +578,15 @@
       setListEnhancerChunkSize: 25,
       settingsSaveDebounceMs: 400,
       cardFormatterTemplate: "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}",
+      cardFormatterTSVTemplate: "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}",
+      cardFormatterIgnoredTags: "ASR, LL, TC, CL",
+      cardFormatterTagSeparator: "",
+      cardFormatterTagReplacer: "",
       cardFormatterOutputMode: "popover",
+      cardFormatterLinkTarget: "background",
       cardFormatterPopoverDurationMs: 4e3,
       cardFormatterShowCopy: true,
+      cardFormatterShowTSV: true,
       cardFormatterShowBRef: true,
       cardFormatterShowGoogle: true,
       quantityCounterPosition: "bottom-right",
@@ -504,6 +600,8 @@
       defaultCollectionId: 6,
       toolbarBadges: [
         { key: "CHECKLIST", enabled: true },
+        { key: "PIN", enabled: true },
+        { key: "YEAR", enabled: true },
         { key: "INSERTS", enabled: true },
         { key: "PARALLELS", enabled: true },
         { key: "FOR_SALE", enabled: true },
@@ -517,11 +615,57 @@
         { key: "PIN", enabled: true },
         { key: "CSV", enabled: true },
         { key: "HIERARCHY", enabled: true },
+        { key: "YEAR", enabled: true },
         { key: "INSERTS", enabled: true },
         { key: "PARALLELS", enabled: true },
         { key: "FOR_SALE", enabled: true },
         { key: "MULTI", enabled: true },
         { key: "WANTLIST", enabled: true }
+      ],
+      hotlinks: [
+        {
+          id: "top",
+          url: "#top",
+          text: "Top",
+          tooltip: "Scroll to top of page",
+          placement: 1,
+          enabled: true,
+          icon: "chevronUp",
+          action: "scrollToTop",
+          target: "inline"
+        },
+        {
+          id: "bottom",
+          url: "#bottom",
+          text: "Bottom",
+          tooltip: "Scroll to bottom of page",
+          placement: 2,
+          enabled: true,
+          icon: "chevronDown",
+          action: "scrollToBottom",
+          target: "inline"
+        },
+        {
+          id: "search",
+          url: "https://www.tcdb.com/AdvancedSearch.cfm",
+          text: "Search",
+          tooltip: "Perform Advanced Search",
+          placement: 3,
+          enabled: true,
+          icon: "search",
+          target: "inline"
+        },
+        {
+          id: "year",
+          url: "/ViewAllC.cfm",
+          text: "Year",
+          tooltip: "View All Sets for Year in Collection",
+          placement: 4,
+          enabled: true,
+          icon: "calendar",
+          action: "viewAllC",
+          target: "inline"
+        }
       ]
     }
   };
@@ -607,6 +751,22 @@
             `Stored config contains obsolete global setting '${key}' — pruned during migration.`,
             "warn"
           );
+        }
+      });
+      ["toolbarBadges", "setLinkBadges"].forEach((badgeListKey) => {
+        if (Array.isArray(global[badgeListKey])) {
+          const defaultList = DEFAULT_CONFIG.global[badgeListKey] || [];
+          const storedList = global[badgeListKey];
+          const storedKeys = new Set(
+            storedList.map((item) => typeof item === "string" ? item : item.key)
+          );
+          const missingDefaults = defaultList.filter((defaultItem) => {
+            const key = typeof defaultItem === "string" ? defaultItem : defaultItem.key;
+            return !storedKeys.has(key);
+          });
+          if (missingDefaults.length > 0) {
+            global[badgeListKey] = [...storedList, ...missingDefaults];
+          }
         }
       });
       merged.global = global;
@@ -818,7 +978,7 @@
     if (el.readOnly || el.disabled || el.hidden || el.getAttribute("hidden") !== null) return false;
     if (el.name && el.name.toLowerCase() === "pageindex") return false;
     if (el.id && el.id.toLowerCase() === "pageindex") return false;
-    return el.offsetParent !== null || el.value === "0";
+    return el.offsetParent !== null || el.value === "0" || el.name === "Quantity" || el.id === "Quantity";
   }
   var cache = { inputs: null };
   function invalidateInputCache() {
@@ -849,6 +1009,12 @@
         const nextInput = inputs[index + 1];
         nextInput.focus({ preventScroll: true });
         setTimeout(() => nextInput.select(), 20);
+      } else if (index === inputs.length - 1) {
+        const form = active.closest ? active.closest("form") : typeof document !== "undefined" ? document.querySelector("form#add, form") : null;
+        const submitBtn = form ? form.querySelector('button[type="submit"]') || form.querySelector('input[type="submit"]') || form.querySelector(".btn-primary") : typeof document !== "undefined" ? document.querySelector('button[type="submit"], input[type="submit"], .btn-primary') : null;
+        if (submitBtn && typeof submitBtn.focus === "function") {
+          submitBtn.focus({ preventScroll: true });
+        }
       }
     });
     const target = typeof document !== "undefined" && document.getElementById("main-content-area") || (typeof document !== "undefined" ? document.body : null);
@@ -900,6 +1066,11 @@
       strokeWidth: 2,
       body: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>'
     },
+    calendar: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>'
+    },
     pin: {
       size: 12,
       strokeWidth: 2,
@@ -935,6 +1106,11 @@
       strokeWidth: 2,
       body: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'
     },
+    tsv: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/>'
+    },
     bref: {
       size: 12,
       strokeWidth: 2,
@@ -954,6 +1130,11 @@
       size: 12,
       strokeWidth: 2,
       body: '<path d="M12 12V3"/><path d="m8 8 4 4 4-4"/><path d="M4 16h16"/><path d="M4 16v4"/><path d="M12 16v4"/><path d="M20 16v4"/>'
+    },
+    search: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'
     }
   };
   var SPRITE_ID = "sctk-icon-sprite";
@@ -975,6 +1156,57 @@
     const def = ICONS[name];
     if (!def) return "";
     return `<svg class="tk-icon" width="${def.size}" height="${def.size}" aria-hidden="true"><use href="#${symbolId(name)}"/></svg>`;
+  }
+
+  // src/core/sid.js
+  function extractSid(url) {
+    if (!url) return null;
+    const str = String(url);
+    const match = str.match(/(?:sid|setid)[=/](\d+)/i) || str.match(/\/(?:page\/s|s)\/id\/(\d+)/i);
+    return match ? match[1] : null;
+  }
+  function extractParentSid(doc = document, currentSid = null) {
+    if (!doc || typeof doc.querySelector !== "function") return null;
+    const getHref = (el) => (el ? el.getAttribute ? el.getAttribute("href") || el.href : el.href : "") || "";
+    const isToolkitEl = (el) => !!(el && el.closest && el.closest("#sctk-toolbar, [data-sctk], .sctk-element, .tk-dropdown, .tk-pin-item, .tk-injected-badge-group"));
+    const candidateAnchors = Array.from(
+      doc.querySelectorAll(
+        '.menu-linksV a, .menu-listV a, #offcanvas a, #content a[href*="ViewSet.cfm/sid/"], a[href*="ViewSet.cfm/sid/"]'
+      )
+    ).filter((a) => !isToolkitEl(a));
+    const overviewLink = candidateAnchors.find((a) => {
+      const text = (a.textContent || "").trim().toLowerCase();
+      const href = getHref(a).toLowerCase();
+      return text.includes("overview") && (href.includes("viewset.cfm/sid/") || href.includes("viewset.cfm?sid="));
+    });
+    if (overviewLink) {
+      const sid = extractSid(getHref(overviewLink));
+      if (sid && sid !== currentSid) return sid;
+    }
+    const menuAnchors = Array.from(
+      doc.querySelectorAll(".menu-linksV a, .menu-listV a, #offcanvas a")
+    ).filter((a) => !isToolkitEl(a));
+    for (const link of menuAnchors) {
+      const sid = extractSid(getHref(link));
+      if (sid && sid !== currentSid) return sid;
+    }
+    const breadcrumbLinks = Array.from(
+      doc.querySelectorAll(
+        '.breadcrumb a[href*="/sid/"], .breadcrumb a[href*="sid="], ol.breadcrumb a[href*="/sid/"], ul.breadcrumb a[href*="/sid/"], nav a[href*="/sid/"]'
+      )
+    ).filter((a) => !isToolkitEl(a));
+    for (const link of breadcrumbLinks) {
+      const sid = extractSid(getHref(link));
+      if (sid && sid !== currentSid) return sid;
+    }
+    const headerLink = doc.querySelector(
+      '#setname-content h1 a[href*="/sid/"], #main-content-area h1 a[href*="/sid/"]'
+    );
+    if (headerLink && !isToolkitEl(headerLink)) {
+      const sid = extractSid(getHref(headerLink));
+      if (sid && sid !== currentSid) return sid;
+    }
+    return null;
   }
 
   // src/core/routes.js
@@ -1004,13 +1236,13 @@
     isViewAllSets: () => (path().includes("/viewall.cfm") || path().includes("/viewallc.cfm")) && path().includes("/sp/") && path().includes("/year/"),
     isForSaleTrade: () => path().includes("/viewcollectionforsaletrade.cfm"),
     isWantlist: () => path().includes("/viewcollectionwantlist.cfm"),
-    isAddMultiples: () => path().includes("/collectionaddmultiples"),
+    isAddMultiples: () => path().includes("/collectionaddmultiples") || path().includes("/collectionaddm"),
     /**
      * True on any page scoped to one set. Composed from the individual
      * predicates rather than re-listing the same seven path fragments, so adding
      * a set-scoped route cannot leave this out of date.
      */
-    isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()),
+    isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()) || !!extractSid(typeof window !== "undefined" ? window.location.href : ""),
     hasPagination: (root = document) => !path().includes("addmultiples") && (!!root.querySelector(".pagination") || Routes.isSetPage() || Routes.isCollection() || Routes.isPlayerCollection())
   };
 
@@ -1116,6 +1348,8 @@
     const index = buildRowIndex(mainContent);
     Log(`Checklist filter indexed ${index.length} data item(s).`, "info");
     recordContract("checklistEnhancer", `indexed ${index.length} data item(s)`, index.length > 0);
+    const hasCheckboxes = index.some(({ el }) => el.querySelector('input[type="checkbox"]') !== null);
+    Log(`Checklist filter: hasCheckboxes=${hasCheckboxes}`, "debug");
     const placeholderText = getFilterPlaceholder();
     const filterWrap = document.createElement("div");
     filterWrap.id = "tk-checklist-filter-wrap";
@@ -1128,12 +1362,16 @@
         ${icon("x")}
       </button>
     </div>
+    <button type="button" id="tk-checklist-filter-select-all" class="sctk-btn" title="Select all visible matching items" aria-label="Select all visible items" style="display: none;">
+      Select All
+    </button>
     <span id="tk-filter-count" aria-live="polite"></span>
   `;
     targetElement.before(filterWrap);
     const countEl = filterWrap.querySelector("#tk-filter-count");
     const input = filterWrap.querySelector("#tk-checklist-filter");
     const clearBtn = filterWrap.querySelector("#tk-checklist-filter-clear");
+    const selectAllBtn = filterWrap.querySelector("#tk-checklist-filter-select-all");
     const updateClearVisibility = () => {
       if (clearBtn) {
         clearBtn.style.display = input.value.trim() !== "" ? "inline-flex" : "none";
@@ -1142,6 +1380,11 @@
     const run = debounce((term) => {
       const visible = applyFilter(index, term);
       countEl.textContent = term === "" ? "" : `${visible} of ${index.length}`;
+      if (selectAllBtn) {
+        const showBtn = hasCheckboxes && term !== "" && visible > 0;
+        selectAllBtn.style.display = showBtn ? "inline-flex" : "none";
+      }
+      Log(`Checklist filter: applied term "${term}" (${visible} of ${index.length} visible)`, "debug");
     }, Config.global.checklistFilterDebounceMs);
     const performFilter = () => {
       const val = input.value.toLowerCase().trim();
@@ -1161,6 +1404,21 @@
         input.value = "";
         input.focus();
         performFilter();
+      });
+    }
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => {
+        let count = 0;
+        index.forEach(({ el }) => {
+          if (!el.classList.contains(HIDDEN_CLASS)) {
+            const cb = el.querySelector('input[type="checkbox"]');
+            if (cb && !cb.checked) {
+              cb.click();
+              count++;
+            }
+          }
+        });
+        Log(`Checklist filter: "Select All" clicked, checked ${count} matching item checkbox(es).`, "debug");
       });
     }
     return true;
@@ -1242,50 +1500,6 @@
       installFilter(scope);
     }
     observeChecklistFilter();
-  }
-
-  // src/core/sid.js
-  function extractSid(url) {
-    if (!url) return null;
-    const match = String(url).match(/sid[=/](\d+)/i);
-    return match ? match[1] : null;
-  }
-  function extractParentSid(doc = document, currentSid = null) {
-    if (!doc || typeof doc.querySelector !== "function") return null;
-    const getHref = (el) => (el ? el.getAttribute ? el.getAttribute("href") || el.href : el.href : "") || "";
-    const candidateAnchors = Array.from(
-      doc.querySelectorAll(
-        '.menu-linksV a, .menu-listV a, #offcanvas a, #content a[href*="ViewSet.cfm/sid/"], a[href*="ViewSet.cfm/sid/"]'
-      )
-    );
-    const overviewLink = candidateAnchors.find((a) => {
-      const text = (a.textContent || "").trim().toLowerCase();
-      const href = getHref(a).toLowerCase();
-      return text.includes("overview") || href.includes("viewset.cfm/sid/");
-    });
-    if (overviewLink) {
-      const sid = extractSid(getHref(overviewLink));
-      if (sid && sid !== currentSid) return sid;
-    }
-    for (const link of candidateAnchors) {
-      const sid = extractSid(getHref(link));
-      if (sid && sid !== currentSid) return sid;
-    }
-    const breadcrumbLinks = doc.querySelectorAll(
-      '.breadcrumb a[href*="/sid/"], .breadcrumb a[href*="sid="], ol.breadcrumb a[href*="/sid/"], ul.breadcrumb a[href*="/sid/"], nav a[href*="/sid/"]'
-    );
-    for (const link of breadcrumbLinks) {
-      const sid = extractSid(getHref(link));
-      if (sid && sid !== currentSid) return sid;
-    }
-    const headerLink = doc.querySelector(
-      '#setname-content h1 a[href*="/sid/"], #main-content-area h1 a[href*="/sid/"]'
-    );
-    if (headerLink) {
-      const sid = extractSid(getHref(headerLink));
-      if (sid && sid !== currentSid) return sid;
-    }
-    return null;
   }
 
   // src/data/csv.js
@@ -2292,141 +2506,6 @@
     }
   }
 
-  // src/ui/badges.js
-  var BADGES = {
-    CHECKLIST: {
-      icon: "list",
-      text: "CHK",
-      cssClass: "tk-badge-link-c",
-      title: "View Set Checklist",
-      getUrl: (sid) => `/Checklist.cfm/sid/${sid}`
-    },
-    INSERTS: {
-      icon: "bolt",
-      text: "INS",
-      cssClass: "tk-badge-link-i",
-      title: "View Insert Sets",
-      getUrl: (sid, parentSid) => `/Inserts.cfm/sid/${parentSid || sid}/#InsertSets`
-    },
-    PARALLELS: {
-      icon: "gem",
-      text: "PAR",
-      cssClass: "tk-badge-link-p",
-      title: "View Parallel Sets",
-      getUrl: (sid, parentSid) => `/Inserts.cfm/sid/${parentSid || sid}/#ParallelSets`
-    },
-    FOR_SALE: {
-      icon: "tag",
-      text: "FS",
-      cssClass: "tk-badge-link-fs",
-      title: "Add For Sale / For Trade Items",
-      getUrl: (sid) => `/ViewCollectionForSaleTrade.cfm/sid/${sid}`
-    },
-    MULTI: {
-      icon: "layers",
-      text: "MULTI",
-      cssClass: "tk-badge-link-fsm",
-      title: "Add For Sale / For Trade Items",
-      getUrl: (sid) => `/CollectionAddMultiplesText.cfm/sid/${sid}`
-    },
-    WANTLIST: {
-      icon: "star",
-      text: "WANT",
-      cssClass: "tk-badge-link-w",
-      title: "View Collection Wantlist",
-      getUrl: (sid) => `/ViewCollectionWantlist.cfm/sid/${sid}`
-    },
-    CSV: {
-      icon: "download",
-      text: "CSV",
-      cssClass: "tk-badge-action",
-      title: "Export Set Checklist to CSV"
-    },
-    PIN: {
-      icon: "pin",
-      text: "PIN",
-      cssClass: "tk-badge-action",
-      title: "Pin this set to the Global Toolbar"
-    },
-    REMOVE_PIN: {
-      icon: "x",
-      text: "",
-      cssClass: "tk-pin-remove",
-      title: "Remove Pin"
-    },
-    HIERARCHY: {
-      icon: "downloadHierarchy",
-      text: "HIERARCHY",
-      cssClass: "tk-badge-action-h",
-      title: "Export Set Hierarchy"
-    }
-  };
-  var SHORTCUT_KEYS = ["CHECKLIST", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
-  var TOOLBAR_BADGES = ["CHECKLIST", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST", "CSV", "HIERARCHY"];
-  var SET_LINK_BADGES = ["CHECKLIST", "PIN", "CSV", "HIERARCHY", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
-  function getToolbarBadges() {
-    const cfg = Config.global?.toolbarBadges;
-    if (!Array.isArray(cfg) || cfg.length === 0) return TOOLBAR_BADGES;
-    return cfg.filter((b) => b.enabled !== false).map((b) => b.key);
-  }
-  function getSetLinkBadges() {
-    const cfg = Config.global?.setLinkBadges;
-    if (!Array.isArray(cfg) || cfg.length === 0) return SET_LINK_BADGES;
-    return cfg.filter((b) => b.enabled !== false).map((b) => b.key);
-  }
-  function createBadge(badgeKey, sid = null, onClickOverride = null, displayMode = "both", parentSid = null) {
-    const config = BADGES[badgeKey];
-    if (!config) return null;
-    const showIcon = displayMode === "both" || displayMode === "icon";
-    const showText = (displayMode === "both" || displayMode === "text") && !!config.text;
-    const actualShowIcon = showIcon || !showText && !config.text;
-    const iconSvg = actualShowIcon ? icon(config.icon) : "";
-    const textSpan = showText ? `<span class="tk-badge-label">${config.text}</span>` : "";
-    const inner = `${iconSvg}${textSpan}`;
-    if (config.getUrl && !onClickOverride) {
-      const link = document.createElement("a");
-      link.href = config.getUrl(sid, parentSid);
-      link.innerHTML = inner;
-      link.className = `sctk-badge ${config.cssClass}`;
-      link.title = config.title;
-      return link;
-    }
-    const btn = document.createElement("span");
-    btn.innerHTML = inner;
-    btn.className = `sctk-badge ${config.cssClass}`;
-    btn.title = config.title;
-    btn.tabIndex = 0;
-    btn.setAttribute("role", "button");
-    btn.setAttribute("aria-label", config.title);
-    if (onClickOverride) {
-      btn.addEventListener("click", onClickOverride);
-      btn.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClickOverride(e);
-        }
-      });
-    }
-    return btn;
-  }
-  function renderBadgeSet(container, sid, {
-    include = TOOLBAR_BADGES,
-    onExport = null,
-    onExportHierarchy = null,
-    onPin = null,
-    displayMode = "both",
-    parentSid = null
-  } = {}) {
-    const handlers = { CSV: onExport, PIN: onPin, HIERARCHY: onExportHierarchy };
-    include.forEach((key) => {
-      const isAction = key in handlers;
-      if (isAction && !handlers[key]) return;
-      const badge = createBadge(key, sid, isAction ? handlers[key] : null, displayMode, parentSid);
-      if (badge) container.appendChild(badge);
-    });
-    return container;
-  }
-
   // src/data/setHierarchyParser.js
   function parseViewAllSets(doc, year) {
     const parentSets = [];
@@ -2708,23 +2787,42 @@
     }
     return `${year} ${pName}`;
   }
-  function resolveSportFromDocument() {
-    const sportBreadcrumb = document.querySelector('ol.breadcrumb li a[href*="/sp/"]');
+  function resolveSportFromDocument(doc = typeof document !== "undefined" ? document : null) {
+    if (!doc) return "Baseball";
+    const sportBreadcrumb = doc.querySelector('.breadcrumb a[href*="/sp/"], ol.breadcrumb li a[href*="/sp/"]');
     if (sportBreadcrumb) {
-      const match2 = sportBreadcrumb.getAttribute("href").match(/\/sp\/([^/]+)/i);
+      const href = sportBreadcrumb.getAttribute("href") || "";
+      const match2 = href.match(/\/sp\/([^/?#]+)/i);
       if (match2) return decodeURIComponent(match2[1]);
-      return sportBreadcrumb.textContent.trim();
+      const text = sportBreadcrumb.textContent.trim();
+      if (text) return text;
     }
-    const match = document.URL.match(/\/sp\/([^/]+)/i);
+    const url = doc.URL || doc.location?.href || "";
+    const match = url.match(/\/sp\/([^/?#]+)/i);
     if (match) return decodeURIComponent(match[1]);
-    return "Misc";
+    return "Baseball";
   }
-  function resolveYearFromDocument(setName) {
-    const match = document.URL.match(/\/year\/([^/]+)/i);
-    if (match) return decodeURIComponent(match[1]);
-    const docTitle = document.title || "";
-    const yearMatch = docTitle.match(/\b(18|19|20)\d{2}\b/) || setName.match(/\b(18|19|20)\d{2}\b/);
-    if (yearMatch) return yearMatch[0];
+  function resolveYearFromDocument(setName = "", doc = typeof document !== "undefined" ? document : null) {
+    if (doc) {
+      const yearBreadcrumb = doc.querySelector('.breadcrumb a[href*="/year/"], ol.breadcrumb li a[href*="/year/"]');
+      if (yearBreadcrumb) {
+        const href = yearBreadcrumb.getAttribute("href") || "";
+        const match2 = href.match(/\/year\/([^/?#]+)/i);
+        if (match2) return decodeURIComponent(match2[1]);
+        const textYear = yearBreadcrumb.textContent.trim().match(/\b(18|19|20)\d{2}\b/);
+        if (textYear) return textYear[0];
+      }
+      const url = doc.URL || doc.location?.href || "";
+      const match = url.match(/\/year\/([^/?#]+)/i);
+      if (match) return decodeURIComponent(match[1]);
+      const docTitle = doc.title || "";
+      const titleYear = docTitle.match(/\b(18|19|20)\d{2}\b/);
+      if (titleYear) return titleYear[0];
+    }
+    if (setName) {
+      const nameYear = setName.match(/\b(18|19|20)\d{2}\b/);
+      if (nameYear) return nameYear[0];
+    }
     return "Misc";
   }
   function stripYearPrefix(setName, year) {
@@ -2832,6 +2930,166 @@
     }
   }
 
+  // src/ui/badges.js
+  var BADGES = {
+    CHECKLIST: {
+      icon: "list",
+      text: "CHK",
+      cssClass: "tk-badge-link-c",
+      title: "View Set Checklist",
+      getUrl: (sid) => `/Checklist.cfm/sid/${sid}`
+    },
+    YEAR: {
+      icon: "calendar",
+      text: "YEAR",
+      cssClass: "tk-badge-link-y",
+      title: "View All Sets for Year in Collection",
+      getUrl: (sid, parentSid, doc = typeof document !== "undefined" ? document : null) => {
+        const sport = resolveSportFromDocument(doc);
+        const year = resolveYearFromDocument("", doc);
+        return `/ViewAllC.cfm/sp/${encodeURIComponent(sport)}/year/${encodeURIComponent(year)}`;
+      }
+    },
+    INSERTS: {
+      icon: "bolt",
+      text: "INS",
+      cssClass: "tk-badge-link-i",
+      title: "View Insert Sets",
+      getUrl: (sid, parentSid) => `/Inserts.cfm/sid/${parentSid || sid}/#InsertSets`
+    },
+    PARALLELS: {
+      icon: "gem",
+      text: "PAR",
+      cssClass: "tk-badge-link-p",
+      title: "View Parallel Sets",
+      getUrl: (sid, parentSid) => `/Inserts.cfm/sid/${parentSid || sid}/#ParallelSets`
+    },
+    FOR_SALE: {
+      icon: "tag",
+      text: "FS",
+      cssClass: "tk-badge-link-fs",
+      title: "Add For Sale / For Trade Items",
+      getUrl: (sid) => `/ViewCollectionForSaleTrade.cfm/sid/${sid}`
+    },
+    MULTI: {
+      icon: "layers",
+      text: "MULTI",
+      cssClass: "tk-badge-link-fsm",
+      title: "Add For Sale / For Trade Items",
+      getUrl: (sid) => `/CollectionAddMultiplesText.cfm/sid/${sid}`
+    },
+    WANTLIST: {
+      icon: "star",
+      text: "WANT",
+      cssClass: "tk-badge-link-w",
+      title: "View Collection Wantlist",
+      getUrl: (sid) => `/ViewCollectionWantlist.cfm/sid/${sid}`
+    },
+    CSV: {
+      icon: "download",
+      text: "CSV",
+      cssClass: "tk-badge-action",
+      title: "Export Set Checklist to CSV"
+    },
+    PIN: {
+      icon: "pin",
+      text: "PIN",
+      cssClass: "tk-badge-action",
+      title: "Pin this set to the Global Toolbar"
+    },
+    REMOVE_PIN: {
+      icon: "x",
+      text: "",
+      cssClass: "tk-pin-remove",
+      title: "Remove Pin"
+    },
+    HIERARCHY: {
+      icon: "downloadHierarchy",
+      text: "HIERARCHY",
+      cssClass: "tk-badge-action-h",
+      title: "Export Set Hierarchy"
+    }
+  };
+  var SHORTCUT_KEYS = ["CHECKLIST", "YEAR", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
+  var TOOLBAR_BADGES = ["CHECKLIST", "PIN", "YEAR", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST", "CSV", "HIERARCHY"];
+  var SET_LINK_BADGES = ["CHECKLIST", "PIN", "CSV", "HIERARCHY", "YEAR", "INSERTS", "PARALLELS", "FOR_SALE", "MULTI", "WANTLIST"];
+  function getToolbarBadges() {
+    const cfg = Config.global?.toolbarBadges;
+    if (!Array.isArray(cfg) || cfg.length === 0) return TOOLBAR_BADGES;
+    return cfg.filter((b) => b.enabled !== false);
+  }
+  function getSetLinkBadges() {
+    const cfg = Config.global?.setLinkBadges;
+    if (!Array.isArray(cfg) || cfg.length === 0) return SET_LINK_BADGES;
+    return cfg.filter((b) => b.enabled !== false);
+  }
+  function createBadge(badgeKey, sid = null, onClickOverride = null, displayMode = "both", parentSid = null, overrides = {}) {
+    const config = BADGES[badgeKey];
+    if (!config) return null;
+    const textLabel = overrides.text !== void 0 && overrides.text !== null && overrides.text !== "" ? overrides.text : config.text;
+    const badgeTitle = overrides.tooltip || overrides.title || config.title;
+    const targetMode = overrides.target || "inline";
+    const showIcon = displayMode === "both" || displayMode === "icon";
+    const showText = (displayMode === "both" || displayMode === "text") && !!textLabel;
+    const actualShowIcon = showIcon || !showText && !textLabel;
+    const iconSvg = actualShowIcon ? icon(config.icon) : "";
+    const textSpan = showText ? `<span class="tk-badge-label">${Utils.escape.html(textLabel)}</span>` : "";
+    const inner = `${iconSvg}${textSpan}`;
+    if (config.getUrl && !onClickOverride) {
+      const link = document.createElement("a");
+      link.href = config.getUrl(sid, parentSid);
+      link.innerHTML = inner;
+      link.className = `sctk-badge ${config.cssClass}`;
+      link.title = badgeTitle;
+      if (targetMode === "background") {
+        link.target = "_blank";
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          Utils.openInTab(link.href, true);
+        });
+      }
+      return link;
+    }
+    const btn = document.createElement("span");
+    btn.innerHTML = inner;
+    btn.className = `sctk-badge ${config.cssClass}`;
+    btn.title = badgeTitle;
+    btn.tabIndex = 0;
+    btn.setAttribute("role", "button");
+    btn.setAttribute("aria-label", badgeTitle);
+    if (onClickOverride) {
+      btn.addEventListener("click", onClickOverride);
+      btn.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClickOverride(e);
+        }
+      });
+    }
+    return btn;
+  }
+  function renderBadgeSet(container, sid, {
+    include = TOOLBAR_BADGES,
+    onExport = null,
+    onExportHierarchy = null,
+    onPin = null,
+    displayMode = "both",
+    parentSid = null
+  } = {}) {
+    const handlers = { CSV: onExport, PIN: onPin, HIERARCHY: onExportHierarchy };
+    include.forEach((item) => {
+      const key = typeof item === "string" ? item : item?.key;
+      if (!key) return;
+      if (typeof item === "object" && item.enabled === false) return;
+      const isAction = key in handlers;
+      if (isAction && !handlers[key]) return;
+      const overrides = typeof item === "object" ? item : {};
+      const badge = createBadge(key, sid, isAction ? handlers[key] : null, displayMode, parentSid, overrides);
+      if (badge) container.appendChild(badge);
+    });
+    return container;
+  }
+
   // src/ui/styles.js
   var TOOLBAR_CSS = `
 /* ---- Design tokens ----
@@ -2854,7 +3112,9 @@
     --tk-teal: #0891b2;
     --tk-blue: #0353a4;
     --tk-violet: #7c3aed;
+    --tk-indigo: #6366f1;
     --tk-magenta: #db2777;
+    --tk-amber: #d97706;
     --tk-green: #059669;
     --tk-red: #dc2626;
 
@@ -2889,7 +3149,9 @@
     --tk-teal: #2dd4bf;
     --tk-blue: #0353a4;
     --tk-violet: #c084fc;
+    --tk-indigo: #818cf8;
     --tk-magenta: #f472b6;
+    --tk-amber: #fbbf24;
     --tk-green: #34d399;
     --tk-red: #f87171;
 
@@ -2898,7 +3160,8 @@
 
 /* Solid-fill badges need dark text against the brighter dark-mode accents. */
 :root[data-sctk-theme="dark"] .tk-badge-link-fs,
-:root[data-sctk-theme="dark"] .tk-badge-link-w { color: #16181b; }
+:root[data-sctk-theme="dark"] .tk-badge-link-w,
+:root[data-sctk-theme="dark"] .tk-badge-link-y:hover { color: #16181b; }
 :root[data-sctk-theme="dark"] .sctk-btn:hover:not(:disabled),
 :root[data-sctk-theme="dark"] #tk-center-context .tk-scroll-btn:hover { color: #ffffff; }
 
@@ -2915,9 +3178,9 @@
 
 /* Responsive Center Context Bar */
 #tk-center-context { flex-grow: 1; flex-shrink: 1; display: flex; align-items: center; justify-content: center; gap: 4px; overflow: hidden; min-width: 120px; padding: 0 4px; }
-#tk-center-context .tk-scroll-btn { background: var(--tk-bg-elevated); color: var(--tk-blue); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 6px 0 6px; height: 20px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; user-select: none; display: inline-flex; align-items: center; justify-content: center; gap: 3px; line-height: 1; box-sizing: border-box; }
-#tk-center-context .tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
-#tk-center-context .context-label { display: inline-flex; align-items: center; height: 20px; font-family: var(--tk-font-mono); font-weight: 600; color: var(--tk-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1; margin: 0 2px; padding-top: 1px; box-sizing: border-box; }
+#tk-center-context .tk-scroll-btn, #tk-center-context .tk-scroll-btn:visited { background: var(--tk-bg-elevated); color: var(--tk-blue); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 6px 0 6px; height: 20px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; user-select: none; display: inline-flex; align-items: center; justify-content: center; gap: 3px; line-height: 1; box-sizing: border-box; text-decoration: none !important; }
+#tk-center-context .tk-scroll-btn:hover, #tk-center-context .tk-scroll-btn:hover:visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; text-decoration: none !important; }
+#tk-center-context .context-label { display: inline-flex; align-items: center; height: 20px; font-family: var(--tk-font-mono); font-weight: 600; color: var(--tk-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1; margin: 0; padding-top: 1px; box-sizing: border-box; }
 
 /* Right-Aligned Status Bar */
 #tk-status-wrap { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; }
@@ -2925,14 +3188,14 @@
 #tk-status:hover { color: var(--tk-blue); text-decoration: underline; }
 :root[data-sctk-theme="dark"] #tk-status:hover { color: var(--tk-teal); }
 
-#tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #000000; border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 20px; margin-left: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; cursor: pointer; box-sizing: border-box; }
+#tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #000000; border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 20px; margin-left: 0; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-family: var(--tk-font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; cursor: pointer; box-sizing: border-box; }
 #tk-settings-trigger.tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
 :root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn { background: var(--tk-bg-elevated); color: #ffffff; border-color: var(--tk-border-strong); }
 :root[data-sctk-theme="dark"] #tk-settings-trigger.tk-scroll-btn:hover { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #ffffff; }
 
-.sctk-btn, .sctk-btn:visited { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 22px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; }
+.sctk-btn, .sctk-btn:visited { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 1px 7px 0 7px; height: 22px; cursor: pointer; font-family: var(--tk-font-ui); font-size: 10.5px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; text-decoration: none !important; }
 .sctk-btn svg { flex-shrink: 0; }
-.sctk-btn:hover:not(:disabled), .sctk-btn:hover:not(:disabled):visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; }
+.sctk-btn:hover:not(:disabled), .sctk-btn:hover:not(:disabled):visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: #000000; text-decoration: none !important; }
 .sctk-btn-danger { border-color: var(--tk-red); color: var(--tk-red); }
 .sctk-btn-danger:hover:not(:disabled) { background: var(--tk-red); border-color: var(--tk-red); color: #ffffff; }
 .sctk-btn[hidden] { display: none; }
@@ -2989,7 +3252,8 @@
 #tk-overflow .tk-dropdown-content .sctk-btn { width: 100%; justify-content: flex-start; margin: 2px 0; }
 
 /* Compact Badge Styles */
-.sctk-badge, .sctk-badge:visited { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-family: var(--tk-font-mono); padding: 1px 5px 0 5px; height: 20px; margin-left: 2px; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; box-sizing: border-box; cursor: pointer; white-space: nowrap; border: 1px solid transparent; }
+.sctk-badge, .sctk-badge:visited { display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-family: var(--tk-font-mono); padding: 1px 5px 0 5px; height: 20px; margin: 0; text-decoration: none !important; font-size: 9.5px; font-weight: 700; letter-spacing: 0.01em; border-radius: var(--tk-radius-sm); line-height: 1; box-sizing: border-box; cursor: pointer; white-space: nowrap; background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); color: var(--tk-text); }
+.sctk-badge:hover, .sctk-badge:hover:visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: var(--tk-accent); text-decoration: none !important; }
 
 .tk-badge-action, .tk-badge-action:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
 .tk-badge-action:hover, .tk-badge-action:hover:visited { background: var(--tk-blue); color: #ffffff; }
@@ -2999,6 +3263,9 @@
 
 .tk-badge-link-c, .tk-badge-link-c:visited { background: var(--tk-bg-elevated); border-color: var(--tk-blue); color: var(--tk-blue); }
 .tk-badge-link-c:hover, .tk-badge-link-c:hover:visited { background: var(--tk-blue); color: #ffffff; }
+
+.tk-badge-link-y, .tk-badge-link-y:visited { background: var(--tk-bg-elevated); border-color: var(--tk-amber); color: var(--tk-amber); }
+.tk-badge-link-y:hover, .tk-badge-link-y:hover:visited { background: var(--tk-amber); color: #ffffff; }
 
 .tk-badge-link-i, .tk-badge-link-i:visited { background: var(--tk-bg-elevated); border-color: var(--tk-violet); color: var(--tk-violet); }
 .tk-badge-link-i:hover, .tk-badge-link-i:hover:visited { background: var(--tk-violet); color: #ffffff; }
@@ -3022,6 +3289,7 @@
 #tk-checklist-filter { padding: 3px 22px 3px 6px; border: 1px solid var(--tk-border-strong); background: var(--tk-bg-elevated); color: var(--tk-text); border-radius: 3px; font-size: 11.5px; width: 320px; font-family: var(--tk-font-ui); box-sizing: border-box; }
 #tk-checklist-filter-clear { position: absolute; right: 4px; background: transparent; border: none; color: var(--tk-text-muted); padding: 2px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 2px; height: 16px; width: 16px; margin: 0; }
 #tk-checklist-filter-clear:hover { color: var(--tk-red); background: var(--tk-bg-hover); }
+#tk-checklist-filter-select-all { height: 22px; padding: 1px 8px 0 8px; font-size: 10.5px; flex-shrink: 0; }
 #tk-filter-count { font-family: var(--tk-font-mono); font-size: 10px; color: var(--tk-text-muted); white-space: nowrap; flex-shrink: 0; }
 #tk-checklist-filter:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; border-color: var(--tk-accent); }
 
@@ -3072,9 +3340,15 @@
 .tk-toast-message ul, .tk-toast-message ol { text-align: left; margin: 3px 0 0 0; padding-left: 16px; }
 .tk-toast-message li { text-align: left; margin-bottom: 2px; }
 
-/* Card Name Formatter Popover */
+/* Player Quick Links / Card Name Formatter */
 .tk-formatter-popover { position: absolute; z-index: 200000; background: var(--tk-bg-elevated); color: var(--tk-text); border: 1px solid var(--tk-border-strong); border-radius: var(--tk-radius-sm); padding: 4px 8px; box-shadow: var(--tk-shadow-elevated); font-family: var(--tk-font-ui); font-size: 11px; display: flex; align-items: center; gap: 8px; }
 .tk-popover-label { font-family: var(--tk-font-mono); white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+.tk-formatter-popover .sctk-btn { height: 20px; padding: 0 6px; }
+
+.tk-player-quick-links-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 2px; line-height: 1; }
+.sctk-inline-btn, .sctk-inline-btn:visited { display: inline-flex; align-items: center; justify-content: center; gap: 2px; background: var(--tk-bg-elevated); color: var(--tk-text-muted); border: 1px solid var(--tk-border-strong); border-radius: 2px; padding: 0 2px; height: 12px; min-width: 12px; cursor: pointer; font-family: var(--tk-font-mono); font-size: 8px; font-weight: 600; white-space: nowrap; line-height: 1; box-sizing: border-box; text-decoration: none !important; }
+.sctk-inline-btn:hover:not(:disabled), .sctk-inline-btn:hover:not(:disabled):visited { background: var(--tk-bg-hover); border-color: var(--tk-accent); color: var(--tk-text); text-decoration: none !important; }
+.sctk-inline-btn svg { width: 8px; height: 8px; flex-shrink: 0; }
 
 /* Quantity Counter Widget */
 .sctk-qty-counter { font-family: var(--tk-font-ui); font-size: 11.5px; color: var(--tk-text); background: var(--tk-bg-elevated); border: 1px solid var(--tk-border-strong); border-left: 3px solid var(--tk-accent); border-radius: var(--tk-radius-sm); padding: 5px 10px; box-shadow: var(--tk-shadow-elevated); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; user-select: none; pointer-events: auto; }
@@ -3224,6 +3498,107 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     .tk-route-row { flex-wrap: wrap; }
     .tk-route-row input[type="text"] { flex-basis: 100%; }
 }
+
+/* Quick Add Grid Enhancer */
+table tr td .tk-inline-add,
+.table tr td .tk-inline-add,
+.table td .tk-inline-add,
+.tk-inline-add {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    margin-top: 4px !important;
+    margin-bottom: 2px !important;
+    width: max-content !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    vertical-align: middle !important;
+    opacity: 0.95;
+    transition: opacity 0.2s ease-in-out;
+}
+.tk-inline-add:hover {
+    opacity: 1;
+}
+table tr td input.tk-qty-input,
+.table tr td input.tk-qty-input,
+.table td input.tk-qty-input,
+input.tk-qty-input {
+    width: 28px !important;
+    min-width: 28px !important;
+    max-width: 28px !important;
+    flex: 0 0 28px !important;
+    height: 22px !important;
+    text-align: center !important;
+    border: 1px solid var(--tk-border-strong) !important;
+    border-right: none !important;
+    border-radius: var(--tk-radius-sm) 0 0 var(--tk-radius-sm) !important;
+    font-size: 11px !important;
+    font-family: var(--tk-font-mono) !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    outline: none !important;
+    background: var(--tk-bg-elevated) !important;
+    color: var(--tk-text) !important;
+    box-sizing: border-box !important;
+    line-height: 20px !important;
+    -moz-appearance: textfield;
+}
+.tk-qty-input::-webkit-outer-spin-button,
+.tk-qty-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.tk-qty-input:focus {
+    border-color: var(--tk-accent) !important;
+}
+table tr td button.tk-add-btn,
+.table tr td button.tk-add-btn,
+.table td button.tk-add-btn,
+button.tk-add-btn {
+    width: 24px !important;
+    min-width: 24px !important;
+    max-width: 24px !important;
+    flex: 0 0 24px !important;
+    height: 22px !important;
+    background: var(--tk-accent) !important;
+    color: #ffffff !important;
+    border: 1px solid var(--tk-accent) !important;
+    border-radius: 0 var(--tk-radius-sm) var(--tk-radius-sm) 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 12px !important;
+    font-family: var(--tk-font-ui) !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    user-select: none !important;
+}
+.tk-add-btn:hover:not(:disabled) {
+    background: var(--tk-blue) !important;
+    border-color: var(--tk-blue) !important;
+}
+.tk-add-btn:disabled {
+    background: var(--tk-border-strong) !important;
+    border-color: var(--tk-border-strong) !important;
+    color: var(--tk-text-muted) !important;
+    cursor: not-allowed !important;
+}
+.tk-add-btn.tk-add-btn-success {
+    background: var(--tk-green) !important;
+    border-color: var(--tk-green) !important;
+    color: #ffffff !important;
+}
+.tk-add-btn.tk-add-btn-error {
+    background: var(--tk-red) !important;
+    border-color: var(--tk-red) !important;
+    color: #ffffff !important;
+}
 `;
 
   // src/ui/dropdown.js
@@ -3282,6 +3657,19 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   function appendShortcutBadges(container, sid, label = "Set", displayMode = Config.global?.toolbarButtonDisplay || "both", parentSid = null) {
     renderBadgeSet(container, sid, {
       include: getToolbarBadges(),
+      onPin: (e) => {
+        e.preventDefault();
+        const pageUrl = window.location.href;
+        const added = Pins.add({
+          id: sid,
+          name: label,
+          url: pageUrl,
+          year: Utils.extractYear(label, pageUrl)
+        });
+        if (!added) return;
+        Toolbar.renderPins();
+        showToast({ message: `Pinned: <b>${Utils.escape.html(label)}</b>` });
+      },
       onExport: (e) => {
         e.preventDefault();
         const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${sid}/`);
@@ -3300,9 +3688,16 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   function cleanDocTitle(rawTitle) {
     let t = (rawTitle !== void 0 ? rawTitle : typeof document !== "undefined" ? document.title : "") || "";
     t = t.replace(/\s*([|-])\s*(Trading Card Database|TCDB).*/i, "");
-    t = t.replace(/^(Collection(\s+[^-\n]+)?|.*?'s\s+Collection)\s*-\s*/i, "");
     t = t.replace(
-      /\s*-\s*(Inserts and Related Sets|Inserts & Related Sets|Inserts|Checklist|Overview|Cards|For Sale\/Trade|For Sale|Trade|Wantlist|Add Multiples(\s+Text)?|Add\/Edit|Member Ratings|Ratings|User Comments|Comments|Price Guide|Trivia|Gallery|Errors\s*\/\s*Variations|Packaging|Documentation)\s*$/i,
+      /^(Collection(\s+[^-\n]+)?|.*?'s\s+Collection|Rookies|Errors(\s*\/\s*Variations)?|Gallery|Packaging|Trivia|Comments|Member\s+Ratings|Ratings|Price\s+Guide|Pricing|Overview|Hall\s+of\s+(?:Famers|Teams|Fame)|Teams|Coaches|Umpires|External\s+Links|Contributors|Sell\s+Sheets(\s*\/\s*Ads)?|Videos|Glossary|Card\s+Rankings)\s*-\s*/i,
+      ""
+    );
+    t = t.replace(
+      /\s*(?:-\s*|\b(?:Baseball|Basketball|Football|Hockey|Soccer|Racing|Golf|Boxing|MMA|Wrestling|Bowling|Tennis|Track\s+(?:&|and)\s+Field|Multi-Sport|Non-Sport|Gaming|College)\s+)?(Inserts and Related Sets|Inserts & Related Sets|Inserts|Checklist|Overview|Cards|For Sale\/Trade|For Sale|Trade|Wantlist|Add Multiples(\s+Text)?|Add\/Edit|Member Ratings|Ratings|User Comments|Comments|Price Guide|Pricing|Trivia|Gallery|Errors\s*\/\s*Variations|Packaging|Documentation|Teams|External Links|Contributors|Sell Sheets(\s*\/\s*Ads)?|Videos|Glossary|Card Rankings|Forum)\s*$/i,
+      ""
+    );
+    t = t.replace(
+      /\s+\b(Baseball|Basketball|Football|Hockey|Soccer|Racing|Golf|Boxing|MMA|Wrestling|Bowling|Tennis|Track\s+(?:&|and)\s+Field|Multi-Sport|Non-Sport|Gaming|College)\b(?=\s*-|\s*$)(?!\s+Sets\b)/i,
       ""
     );
     t = t.replace(/\s*[-|:/]\s*$/g, "");
@@ -3420,7 +3815,17 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         (acc[year] ||= []).push(pin);
         return acc;
       }, {});
-      Object.keys(grouped).sort((a, b) => b.localeCompare(a)).forEach((year) => {
+      const sortedYears = Object.keys(grouped).sort((a, b) => {
+        if (a === "Misc") return 1;
+        if (b === "Misc") return -1;
+        const numA = parseInt(a, 10);
+        const numB = parseInt(b, 10);
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return numA - numB;
+        }
+        return a.localeCompare(b);
+      });
+      sortedYears.forEach((year) => {
         const dropDiv = document.createElement("div");
         dropDiv.className = "tk-dropdown";
         const dropBtn = document.createElement("button");
@@ -3468,27 +3873,80 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       if (!container) return;
       container.innerHTML = "";
       const currentSid = extractSid(window.location.href);
-      const scrollTopBtn = document.createElement("button");
-      scrollTopBtn.type = "button";
-      scrollTopBtn.className = "tk-scroll-btn";
-      scrollTopBtn.innerHTML = `${icon("chevronUp")}<span>Top</span>`;
-      scrollTopBtn.title = "Scroll to top of page";
-      scrollTopBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
-      container.appendChild(scrollTopBtn);
-      const scrollBottomBtn = document.createElement("button");
-      scrollBottomBtn.type = "button";
-      scrollBottomBtn.className = "tk-scroll-btn";
-      scrollBottomBtn.innerHTML = `${icon("chevronDown")}<span>Bottom</span>`;
-      scrollBottomBtn.title = "Scroll to bottom of page";
-      scrollBottomBtn.addEventListener("click", () => {
-        const footer = document.querySelector("#bottomnav, footer, #footer, .footer");
-        if (footer) {
-          footer.scrollIntoView({ behavior: "smooth", block: "start" });
+      const displayMode = Config.global?.toolbarButtonDisplay || "both";
+      const rawHotlinks = Config.global?.hotlinks || [];
+      const hotlinks = Array.isArray(rawHotlinks) ? [...rawHotlinks] : [];
+      hotlinks.filter((hl) => hl.enabled !== false).sort((a, b) => Number(a.placement || 0) - Number(b.placement || 0)).forEach((hl) => {
+        const isViewAllC = hl.action === "viewAllC" || hl.id === "year" || hl.url && hl.url.includes("ViewAllC.cfm");
+        const isAction = hl.action || hl.url === "#top" || hl.url === "#bottom" || isViewAllC;
+        const targetMode = hl.target || "inline";
+        const el = document.createElement(isAction ? "button" : "a");
+        el.className = "tk-scroll-btn tk-hotlink-btn";
+        el.title = hl.tooltip || hl.text || "";
+        if (isAction) {
+          el.type = "button";
+          el.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (hl.action === "scrollToTop" || hl.url === "#top") {
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            } else if (hl.action === "scrollToBottom" || hl.url === "#bottom") {
+              const footer = document.querySelector("#bottomnav, footer, #footer, .footer");
+              if (footer) {
+                footer.scrollIntoView({ behavior: "smooth", block: "start" });
+              } else {
+                window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+              }
+            } else if (isViewAllC) {
+              const sport = resolveSportFromDocument(document);
+              const year = resolveYearFromDocument("", document);
+              const targetUrl = `/ViewAllC.cfm/sp/${encodeURIComponent(sport)}/year/${encodeURIComponent(year)}`;
+              if (targetMode === "background") {
+                Utils.openInTab(targetUrl, true);
+              } else {
+                window.location.href = Utils.toFullUrl(targetUrl);
+              }
+            } else if (hl.url) {
+              if (targetMode === "background") {
+                Utils.openInTab(hl.url, true);
+              } else {
+                window.location.href = Utils.toFullUrl(hl.url);
+              }
+            }
+          });
         } else {
-          window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+          el.href = Utils.toFullUrl(hl.url);
+          if (targetMode === "background") {
+            el.target = "_blank";
+            el.addEventListener("click", (e) => {
+              e.preventDefault();
+              Utils.openInTab(hl.url, true);
+            });
+          }
         }
+        const iconName = hl.icon || (hl.id === "top" ? "chevronUp" : hl.id === "bottom" ? "chevronDown" : hl.id === "search" ? "search" : hl.id === "year" ? "calendar" : null);
+        const hasIcon = Boolean(iconName);
+        const hasText = Boolean(hl.text && hl.text.trim());
+        let renderIcon = false;
+        let renderText = false;
+        if (displayMode === "both") {
+          renderIcon = hasIcon;
+          renderText = hasText;
+        } else if (displayMode === "icon") {
+          renderIcon = hasIcon;
+          renderText = !hasIcon && hasText;
+        } else if (displayMode === "text") {
+          renderText = hasText;
+          renderIcon = !hasText && hasIcon;
+        }
+        if (!renderIcon && !renderText) {
+          renderIcon = hasIcon;
+          renderText = hasText;
+        }
+        const iconHtml = renderIcon ? icon(iconName) : "";
+        const textHtml = renderText ? `<span>${Utils.escape.html(hl.text || "")}</span>` : "";
+        el.innerHTML = `${iconHtml}${textHtml}`;
+        container.appendChild(el);
       });
-      container.appendChild(scrollBottomBtn);
       if (Routes.isCardPage()) {
         const titleNode = document.querySelector("#setname-content h1") || document.querySelector("#main-content-area h1");
         const subTitleNode = document.querySelector("#setname-content h3") || document.querySelector("#main-content-area h3");
@@ -3511,13 +3969,36 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       }
       if (currentSid && Routes.isSetPage()) {
         let setName = cleanDocTitle();
-        if (!setName) {
-          const setHeader = document.querySelector("#setname-content h1") || document.querySelector("#main-content-area h2") || document.querySelector("#main-content-area h1");
+        const genericLabels = [
+          "change log",
+          "forum",
+          "change log prices",
+          "recently added",
+          "inaccuracy reports",
+          "sctoolkit active",
+          "set view"
+        ];
+        if (!setName || genericLabels.includes(setName.toLowerCase())) {
+          const setHeader = document.querySelector("#setname-content h1") || document.querySelector("#main-content-area h2") || document.querySelector("#main-content-area h1") || document.querySelector("h1.site");
           const subHeader = document.querySelector("#setname-content h3") || document.querySelector("#main-content-area h3");
-          if (setHeader && !setHeader.innerText.toLowerCase().includes("set links")) {
+          if (setHeader && !setHeader.innerText.toLowerCase().includes("set links") && !setHeader.innerText.toLowerCase().includes("change log")) {
             setName = setHeader.innerText.replace(/\s*-\s*Cards$/i, "").trim();
           }
-          if (subHeader && !setName.includes(subHeader.innerText.trim())) {
+          if (!setName || genericLabels.includes(setName.toLowerCase())) {
+            const viewSetLink = document.querySelector(`a[href*="ViewSet.cfm/sid/${currentSid}"], a[href*="ViewSet.cfm?sid=${currentSid}"], a[href*="/sid/${currentSid}/"]`);
+            if (viewSetLink) {
+              const titleAttr = viewSetLink.getAttribute("title");
+              if (titleAttr && titleAttr.toLowerCase().startsWith("navigate to ")) {
+                setName = titleAttr.replace(/^navigate to /i, "").trim();
+              } else {
+                const linkText = viewSetLink.innerText.trim();
+                if (linkText && !genericLabels.includes(linkText.toLowerCase()) && linkText !== "View") {
+                  setName = cleanDocTitle(linkText);
+                }
+              }
+            }
+          }
+          if (subHeader && setName && !setName.includes(subHeader.innerText.trim())) {
             setName += (setName ? " - " : "") + subHeader.innerText.trim();
           }
         }
@@ -3548,6 +4029,10 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     return Array.from(root.querySelectorAll(SET_LINK_SELECTOR)).filter((link) => {
       if (link.closest("#sctk-toolbar")) return false;
       if (!extractSid(link.href)) return false;
+      if (link.hasAttribute("data-bs-toggle") || link.hasAttribute("data-toggle")) return false;
+      if (/#offcanvas/i.test(link.href) || /#menu/i.test(link.href)) return false;
+      if (link.querySelector("h1, h2, h3, h4, h5, h6, .site, .offcanvas-title")) return false;
+      if (link.closest(".offcanvas-header, .navbar-header")) return false;
       const text = link.textContent.trim();
       if (text.length === 0) return false;
       if (/^[\u25B6\u25C0\u25BC\u25B2►◄▼▲\s+-]+$/.test(text)) return false;
@@ -4177,8 +4662,13 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       if (e.target === modal) closeModal();
     });
   }
-  function focusFirstQuantityField() {
+  function focusFirstQuantityField(root = typeof document !== "undefined" ? document : null) {
+    if (!root) return;
+    const doc = root.ownerDocument || (root.nodeType === 9 ? root : typeof document !== "undefined" ? document : null);
+    if (!doc) return;
     const target = (() => {
+      const singleQtyInput = root.querySelector ? root.querySelector('input#Quantity, input[name="Quantity"]') : null;
+      if (singleQtyInput && isEligibleInput(singleQtyInput)) return singleQtyInput;
       const inputs = InputIndex.getValidInputs();
       return inputs.find((el) => el.value === "0") || inputs[0] || null;
     })();
@@ -4189,14 +4679,18 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     const stop = () => {
       if (cancelled) return;
       cancelled = true;
-      USER_INTENT_EVENTS.forEach((type) => document.removeEventListener(type, stop, true));
+      USER_INTENT_EVENTS.forEach((type) => doc.removeEventListener(type, stop, true));
     };
-    USER_INTENT_EVENTS.forEach((type) => document.addEventListener(type, stop, true));
+    USER_INTENT_EVENTS.forEach((type) => doc.addEventListener(type, stop, true));
     const assert = () => {
       if (cancelled) return;
-      if (document.activeElement !== target) {
-        target.focus({ preventScroll: true });
-        target.select();
+      if (doc.activeElement !== target) {
+        if (typeof target.focus === "function") {
+          target.focus({ preventScroll: true });
+        }
+        if (typeof target.select === "function") {
+          target.select();
+        }
       }
       autoScrollIfOutsideMiddle80(target);
       if (Date.now() < deadline) {
@@ -4207,6 +4701,54 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       }
     };
     assert();
+  }
+  function getSubmitButton(root = typeof document !== "undefined" ? document : null) {
+    if (!root || typeof root.querySelector !== "function") return null;
+    const form = root.querySelector ? root.querySelector("form#add") || root.querySelector('form[name="add"]') || root.querySelector('form[action*="CollectionAddMultiples"]') || root.querySelector("form") : null;
+    const scope = form || root;
+    let btn = scope.querySelector('button[type="submit"].btn-primary, button[type="submit"]');
+    if (btn) return btn;
+    btn = scope.querySelector('input[type="submit"]');
+    if (btn) return btn;
+    btn = scope.querySelector(".btn-primary");
+    if (btn) return btn;
+    const buttons = Array.from(scope.querySelectorAll("button"));
+    btn = buttons.find((b) => (b.textContent || "").trim().toLowerCase().includes("add"));
+    if (btn) return btn;
+    return null;
+  }
+  function setupLastRowEnterHandler(root = typeof document !== "undefined" ? document : null) {
+    if (!root || typeof root.addEventListener !== "function") return;
+    root.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.code !== "NumpadEnter") return;
+      const doc = root.ownerDocument || (root.nodeType === 9 ? root : typeof document !== "undefined" ? document : null);
+      const active = doc && doc.activeElement || (typeof document !== "undefined" ? document.activeElement : null);
+      if (!active || active.tagName !== "INPUT") return;
+      if (active.id === "tk-checklist-filter" || active.name?.toLowerCase() === "pageindex" || active.id?.toLowerCase() === "pageindex") return;
+      const inputs = InputIndex.getValidInputs();
+      if (!inputs || inputs.length === 0) return;
+      const index = inputs.indexOf(active);
+      if (index === -1) return;
+      if (index === inputs.length - 1) {
+        const submitBtn = getSubmitButton(root);
+        if (submitBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof submitBtn.focus === "function") {
+            try {
+              submitBtn.focus({ preventScroll: true });
+            } catch {
+              submitBtn.focus();
+            }
+            if (doc && doc.activeElement !== submitBtn) {
+              submitBtn.focus();
+            }
+          }
+          autoScrollIfOutsideMiddle80(submitBtn);
+          Log("Add Multiples: Focus moved from last quantity input row to Add button.", "info");
+        }
+      }
+    }, true);
   }
   function initAddMultiplesEnhancer(root = typeof document !== "undefined" ? document : null) {
     if (!root) return;
@@ -4228,8 +4770,9 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     setupDirtyTracking(root);
     setupBeforeUnloadWarning(typeof window !== "undefined" ? window : null, root);
     setupSubmitHandler(root);
+    setupLastRowEnterHandler(root);
     checkAndHandlePostReloadSuccess(root);
-    focusFirstQuantityField();
+    focusFirstQuantityField(root);
   }
 
   // src/data/collectionBrowseParser.js
@@ -5212,6 +5755,56 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   }
 
   // src/modules/cardNameFormatter.js
+  function getToolbarTitle(doc = document) {
+    const rawTitle = doc ? doc.title : "";
+    let title = cleanDocTitle(rawTitle);
+    const genericLabels = [
+      "",
+      "collection",
+      "change log",
+      "forum",
+      "change log prices",
+      "recently added",
+      "inaccuracy reports",
+      "sctoolkit active",
+      "set view",
+      "browse"
+    ];
+    if (!title || genericLabels.includes(title.toLowerCase())) {
+      const setWrapperTitle = doc.querySelector?.(".set-title, #setHeader .set-title");
+      if (setWrapperTitle && setWrapperTitle.textContent.trim()) {
+        title = cleanDocTitle(setWrapperTitle.textContent.trim());
+      }
+    }
+    if (!title || genericLabels.includes(title.toLowerCase())) {
+      const setHeader = doc.querySelector?.("#setname-content h1") || doc.querySelector?.("#main-content-area h2") || doc.querySelector?.("#main-content-area h1") || doc.querySelector?.("h1.site");
+      const subHeader = doc.querySelector?.("#setname-content h3") || doc.querySelector?.("#main-content-area h3");
+      if (setHeader && !setHeader.textContent.toLowerCase().includes("set links") && !setHeader.textContent.toLowerCase().includes("change log")) {
+        title = setHeader.textContent.replace(/\s*-\s*Cards$/i, "").trim();
+      }
+      if (subHeader && title && !title.toLowerCase().includes(subHeader.textContent.trim().toLowerCase())) {
+        title += ` - ${subHeader.textContent.trim()}`;
+      }
+    }
+    return title;
+  }
+  function isActionLink(a) {
+    const href = a?.href || "";
+    return href.includes("CollectionAdd") || href.includes("CollectionEdit") || href.includes("CollectionWant") || href.includes("CollectionStatus") || href.includes("CollectionMove") || href.includes("CollectionRemove") || href.includes("SalesLinks") || href.includes("MODE=") || href.includes("Team.cfm") || href.includes("Person.cfm");
+  }
+  function getCleanCellText(cell) {
+    if (!cell) return "";
+    const doc = cell.ownerDocument || (typeof document !== "undefined" ? document : null);
+    const clone = cell.cloneNode(true);
+    clone.querySelectorAll(".tk-player-quick-links-inline, figcaption, .figure-caption").forEach((el) => el.remove());
+    if (doc) {
+      clone.querySelectorAll("br").forEach((br) => {
+        const space = doc.createTextNode(" ");
+        br.parentNode?.replaceChild(space, br);
+      });
+    }
+    return clone.textContent.replace(/\s+/g, " ").trim();
+  }
   var CardMetadataExtractor = {
     /**
      * Extract token values for a given window Selection
@@ -5229,40 +5822,45 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       if (!row) return null;
       const selectedText = selection.toString().trim();
       if (!selectedText) return null;
+      const toolbarTitle = getToolbarTitle(doc);
       let year = "";
       let setName = "";
-      const setHeader = doc.querySelector("#setname-content h1") || doc.querySelector("#main-content-area h1");
-      if (setHeader) {
-        const headerText = setHeader.textContent.replace(/\s*-\s*Cards$/i, "").trim();
-        const yearMatch = headerText.match(/^(\d{4})\s+(.+)/);
+      let insertSetName = "";
+      if (toolbarTitle) {
+        const yearMatch = toolbarTitle.match(/^(\d{4}(?:-\d{2,4})?)\s+(.+)/);
         if (yearMatch) {
           year = yearMatch[1];
-          setName = yearMatch[2];
+          const rest = yearMatch[2];
+          const dashIdx = rest.indexOf("-");
+          if (dashIdx !== -1) {
+            setName = rest.slice(0, dashIdx).trim();
+            insertSetName = rest.slice(dashIdx + 1).trim();
+          } else {
+            setName = rest.trim();
+          }
         } else {
-          setName = headerText;
+          const dashIdx = toolbarTitle.indexOf("-");
+          if (dashIdx !== -1) {
+            setName = toolbarTitle.slice(0, dashIdx).trim();
+            insertSetName = toolbarTitle.slice(dashIdx + 1).trim();
+          } else {
+            setName = toolbarTitle.trim();
+          }
         }
-      }
-      const subHeader = doc.querySelector("#setname-content h3");
-      if (subHeader && setName) {
-        setName += ` ${subHeader.textContent.trim()}`;
-      } else if (subHeader && !setName) {
-        setName = subHeader.textContent.trim();
       }
       let cardNo = "";
       let cardLink = null;
-      const cardLinks = row.querySelectorAll(
-        'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="cid="]'
+      const cardLinks = Array.from(
+        row.querySelectorAll(
+          'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]'
+        )
+      ).filter(
+        (a) => !a.querySelector("img") && !a.querySelector("i") && a.textContent.trim().length > 0 && !isActionLink(a)
       );
-      for (const link of cardLinks) {
-        if (link.querySelector("img")) continue;
-        const text = link.textContent.trim();
-        if (text) {
-          cardNo = text;
-          cardLink = link;
-          break;
-        }
-      }
-      if (!cardNo) {
+      if (cardLinks.length > 0) {
+        cardNo = cardLinks[0].textContent.trim();
+        cardLink = cardLinks[0];
+      } else {
         const firstTd = row.querySelector("td");
         if (firstTd) {
           const text = firstTd.textContent.trim();
@@ -5274,33 +5872,66 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       let tags = "";
       let printRun = "";
       const personLink = row.querySelector('a[href*="Person.cfm"]');
+      const teamLink = row.querySelector('a[href*="Team.cfm"]');
+      const ignoredTagsRaw = Config.global.cardFormatterIgnoredTags ?? "ASR, LL, TC, CL";
+      const ignoredTagsSet = new Set(
+        String(ignoredTagsRaw).split(",").map((t) => t.trim().toUpperCase()).filter(Boolean)
+      );
+      const tagSeparatorRaw = Config.global.cardFormatterTagSeparator;
+      const tagSeparator = tagSeparatorRaw !== void 0 && tagSeparatorRaw !== null && String(tagSeparatorRaw) !== "" ? String(tagSeparatorRaw) : " ";
+      const tagReplacerRaw = Config.global.cardFormatterTagReplacer ?? "";
+      const tagReplacements = /* @__PURE__ */ new Map();
+      if (tagReplacerRaw) {
+        String(tagReplacerRaw).split(/,|\n/).forEach((pair) => {
+          const colonIdx = pair.indexOf(":");
+          if (colonIdx !== -1) {
+            const key = pair.slice(0, colonIdx).trim().toUpperCase();
+            const val = pair.slice(colonIdx + 1).trim();
+            if (key && val) {
+              tagReplacements.set(key, val);
+            }
+          }
+        });
+      }
       const subjectTd = personLink ? personLink.closest("td") : cardLink ? cardLink.closest("td")?.nextElementSibling : null;
       if (subjectTd) {
-        const rawSubject = subjectTd.textContent.replace(/\s+/g, " ").trim();
+        const rawSubject = getCleanCellText(subjectTd);
         const tokens = rawSubject.split(" ");
         const tagParts = [];
         tokens.forEach((token) => {
           const clean = token.replace(/,/g, "").trim();
-          if (/^SN\d+$/i.test(clean)) {
-            printRun = clean.replace(/^SN/i, "");
+          if (/^(?:SN|PR)\d+$/i.test(clean)) {
+            printRun = clean.replace(/^(?:SN|PR)/i, "");
           } else if (/^[A-Z0-9]{2,4}$/.test(clean) && !/^(Jr|Sr|II|III|IV|V)$/i.test(clean)) {
-            tagParts.push(clean);
+            const upperClean = clean.toUpperCase();
+            let targetTag = clean;
+            if (tagReplacements.has(upperClean)) {
+              targetTag = tagReplacements.get(upperClean);
+            }
+            if (targetTag && !ignoredTagsSet.has(targetTag.toUpperCase())) {
+              tagParts.push(targetTag);
+            }
           }
         });
-        tags = tagParts.join(" ");
+        tags = tagParts.join(tagSeparator);
       }
       let playerName = "";
       if (personLink) {
         playerName = personLink.textContent.trim();
-      } else if (subjectTd) {
-        let rawName = subjectTd.textContent.replace(/\s+/g, " ").trim();
+      } else if (cardLinks.length >= 2) {
+        playerName = cardLinks[1].textContent.trim();
+      }
+      if (!playerName && subjectTd) {
+        let rawName = getCleanCellText(subjectTd);
         if (printRun) {
-          rawName = rawName.replace(new RegExp(`\\bSN${printRun}\\b`, "i"), "");
+          rawName = rawName.replace(new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"), "");
         }
         if (tags) {
-          const tagList = tags.split(" ");
+          const tagList = tags.split(tagSeparator);
           tagList.forEach((t) => {
-            const escT = String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const trimmedTag = String(t).trim();
+            if (!trimmedTag) return;
+            const escT = trimmedTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             rawName = rawName.replace(new RegExp(`\\b${escT}\\b`, "g"), "");
           });
         }
@@ -5322,13 +5953,32 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         }
         if (!playerName) playerName = selectedText;
       }
+      let playerTeam = "";
+      if (teamLink) {
+        playerTeam = teamLink.textContent.trim();
+      } else if (cardLinks.length >= 3 && !cardLinks[2].querySelector("img")) {
+        const thirdText = cardLinks[2].textContent.trim();
+        if (thirdText && thirdText !== cardNo) {
+          playerTeam = thirdText;
+        }
+      } else if (subjectTd && subjectTd.nextElementSibling) {
+        const nextTd = subjectTd.nextElementSibling;
+        const linkInNext = nextTd.querySelector("a");
+        if (linkInNext) {
+          playerTeam = linkInNext.textContent.trim();
+        } else {
+          playerTeam = getCleanCellText(nextTd);
+        }
+      }
       return {
         Year: year,
         SetName: setName,
+        InsertSetName: insertSetName,
         PlayerName: playerName,
+        PlayerTeam: playerTeam,
         CardNo: cardNo,
         Tags: tags,
-        PR: printRun ? `/${printRun}` : ""
+        PR: printRun ? String(printRun).replace(/^\//, "") : ""
       };
     },
     /**
@@ -5339,7 +5989,8 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
      */
     compile: function(template, tokens) {
       if (!tokens || !template) return "";
-      let result = template;
+      const isTSV = template.includes("	") || template.includes("\\t");
+      let result = template.replace(/\\t/g, "	");
       if (!tokens.CardNo) {
         result = result.replace(/#\{CardNo\}/g, "{CardNo}");
       }
@@ -5348,6 +5999,9 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         const val = (tokens[key] || "").trim();
         result = result.replace(pattern, val);
       });
+      if (isTSV) {
+        return result;
+      }
       return result.replace(/\s+/g, " ").replace(/\s+#$/, "").replace(/\s+-\s+$/, "").replace(/^\s+-\s+/, "").replace(/\s+-\s+(?=-|\s|$)/g, " ").trim();
     }
   };
@@ -5402,8 +6056,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         copyBtn.innerHTML = icon("copy");
         copyBtn.title = "Copy formatted text";
         copyBtn.setAttribute("aria-label", "Copy formatted text");
-        copyBtn.style.height = "20px";
-        copyBtn.style.padding = "0 6px";
         copyBtn.addEventListener("click", () => {
           const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(formattedText) : Promise.resolve();
           writePromise.then(() => {
@@ -5419,6 +6071,30 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         });
         popover.appendChild(copyBtn);
       }
+      if (Config.global.cardFormatterShowTSV !== false) {
+        const tsvBtn = targetDoc.createElement("button");
+        tsvBtn.type = "button";
+        tsvBtn.className = "sctk-btn";
+        tsvBtn.innerHTML = icon("tsv");
+        tsvBtn.title = "Copy tab-separated values (TSV)";
+        tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
+        tsvBtn.addEventListener("click", () => {
+          const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
+          const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(tsvLine) : Promise.resolve();
+          writePromise.then(() => {
+            tsvBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied TSV: <b>${Utils.escape.html(tsvLine)}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => this.hide(targetDoc), 1e3);
+          }).catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+        });
+        popover.appendChild(tsvBtn);
+      }
       const playerName = tokens?.PlayerName || "";
       if (playerName) {
         const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
@@ -5429,11 +6105,10 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           brefBtn.innerHTML = icon("bref");
           brefBtn.title = "Search Baseball Reference";
           brefBtn.setAttribute("aria-label", "Search Baseball Reference");
-          brefBtn.style.height = "20px";
-          brefBtn.style.padding = "0 6px";
           brefBtn.addEventListener("click", () => {
             const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
-            win.open(brefUrl, "_blank", "noopener,noreferrer");
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(brefUrl, inBackground, win);
           });
           popover.appendChild(brefBtn);
         }
@@ -5444,11 +6119,10 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
           googleBtn.innerHTML = icon("google");
           googleBtn.title = "Search Google";
           googleBtn.setAttribute("aria-label", "Search Google");
-          googleBtn.style.height = "20px";
-          googleBtn.style.padding = "0 6px";
           googleBtn.addEventListener("click", () => {
             const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
-            win.open(googleUrl, "_blank", "noopener,noreferrer");
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(googleUrl, inBackground, win);
           });
           popover.appendChild(googleBtn);
         }
@@ -5474,9 +6148,185 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       if (existing) existing.remove();
     }
   };
+  function renderInlineQuickLinks(doc = document) {
+    const targetDoc = doc || (typeof document !== "undefined" ? document : null);
+    if (!targetDoc) return;
+    const showCopy = Config.global.cardFormatterShowCopy !== false;
+    const showTSV = Config.global.cardFormatterShowTSV !== false;
+    const showBRef = Config.global.cardFormatterShowBRef !== false;
+    const showGoogle = Config.global.cardFormatterShowGoogle !== false;
+    if (!showCopy && !showTSV && !showBRef && !showGoogle) return;
+    const win = targetDoc.defaultView || (typeof window !== "undefined" ? window : null);
+    const rows = targetDoc.querySelectorAll("tr, .yourcol-item");
+    rows.forEach((row) => {
+      if (row.querySelector("th")) return;
+      if (row.closest?.(
+        ".col-md-3, .col-md-4, nav, #topnav, #sctk-toolbar, .menu-linksV, .dropdown-menu, .modal"
+      ))
+        return;
+      const personLink = row.querySelector('a[href*="Person.cfm"]');
+      const cardLinks = Array.from(
+        row.querySelectorAll(
+          'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]'
+        )
+      ).filter(
+        (a) => !a.querySelector("img") && !a.querySelector("i") && a.textContent.trim().length > 0 && !isActionLink(a)
+      );
+      let targetCell = null;
+      let targetNode = null;
+      if (personLink) {
+        targetNode = personLink;
+        targetCell = personLink.closest("td");
+      } else if (cardLinks.length >= 2) {
+        targetNode = cardLinks[1];
+        targetCell = cardLinks[1].closest("td");
+      } else if (cardLinks.length === 1) {
+        const cardNoTd = cardLinks[0].closest("td");
+        if (cardNoTd && cardNoTd.nextElementSibling && !cardNoTd.nextElementSibling.querySelector('a[href*="Team.cfm"]')) {
+          targetCell = cardNoTd.nextElementSibling;
+          targetNode = targetCell.querySelector("a") || cardLinks[0];
+        } else {
+          targetNode = cardLinks[0];
+          targetCell = cardNoTd;
+        }
+      }
+      if (!targetCell) return;
+      const existingContainers = row.querySelectorAll(
+        ".tk-player-quick-links-inline"
+      );
+      existingContainers.forEach((c) => {
+        if (c.parentElement !== targetCell) {
+          c.remove();
+        }
+      });
+      if (targetCell.querySelector(".tk-player-quick-links-inline")) return;
+      const evalNode = targetNode || targetCell;
+      const fakeSelection = {
+        isCollapsed: false,
+        anchorNode: evalNode.firstChild || evalNode,
+        toString: () => evalNode.textContent.trim()
+      };
+      const tokens = CardMetadataExtractor.extract(fakeSelection, targetDoc);
+      if (!tokens || !tokens.PlayerName) return;
+      const template = Config.global.cardFormatterTemplate || "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
+      const formatted = CardMetadataExtractor.compile(template, tokens);
+      const inlineContainer = targetDoc.createElement("div");
+      inlineContainer.className = "tk-player-quick-links-inline";
+      if (showCopy && formatted) {
+        const copyBtn = targetDoc.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "sctk-inline-btn";
+        copyBtn.innerHTML = icon("copy");
+        copyBtn.title = "Copy formatted text";
+        copyBtn.setAttribute("aria-label", "Copy formatted text");
+        copyBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const writePromise = win?.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(formatted) : Promise.resolve();
+          writePromise.then(() => {
+            copyBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied: <b>${Utils.escape.html(formatted)}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => {
+              copyBtn.innerHTML = icon("copy");
+            }, 1200);
+          }).catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+        });
+        inlineContainer.appendChild(copyBtn);
+      }
+      if (showTSV) {
+        const tsvBtn = targetDoc.createElement("button");
+        tsvBtn.type = "button";
+        tsvBtn.className = "sctk-inline-btn";
+        tsvBtn.innerHTML = icon("tsv");
+        tsvBtn.title = "Copy tab-separated values (TSV)";
+        tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
+        tsvBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens);
+          const writePromise = win?.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(tsvLine) : Promise.resolve();
+          writePromise.then(() => {
+            tsvBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied TSV: <b>${Utils.escape.html(tsvLine)}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => {
+              tsvBtn.innerHTML = icon("tsv");
+            }, 1200);
+          }).catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+        });
+        inlineContainer.appendChild(tsvBtn);
+      }
+      const playerName = tokens.PlayerName;
+      if (playerName) {
+        const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+        if (showBRef) {
+          const brefBtn = targetDoc.createElement("button");
+          brefBtn.type = "button";
+          brefBtn.className = "sctk-inline-btn";
+          brefBtn.innerHTML = icon("bref");
+          brefBtn.title = "Search Baseball Reference";
+          brefBtn.setAttribute("aria-label", "Search Baseball Reference");
+          brefBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(brefUrl, inBackground, win);
+          });
+          inlineContainer.appendChild(brefBtn);
+        }
+        if (showGoogle) {
+          const googleBtn = targetDoc.createElement("button");
+          googleBtn.type = "button";
+          googleBtn.className = "sctk-inline-btn";
+          googleBtn.innerHTML = icon("google");
+          googleBtn.title = "Search Google";
+          googleBtn.setAttribute("aria-label", "Search Google");
+          googleBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(googleUrl, inBackground, win);
+          });
+          inlineContainer.appendChild(googleBtn);
+        }
+      }
+      if (inlineContainer.childElementCount > 0) {
+        targetCell.appendChild(inlineContainer);
+      }
+    });
+  }
+  var activeObserver = null;
   function initCardNameFormatter() {
-    Log("Initializing Card Name Formatter module", "info");
+    Log("Initializing Player Quick Links module", "info");
+    if (activeObserver) {
+      activeObserver.disconnect();
+      activeObserver = null;
+    }
+    if (Config.global.cardFormatterOutputMode === "inline") {
+      renderInlineQuickLinks(document);
+      const targetArea = document.querySelector("#main-content-area") || document.querySelector("#content") || document.body;
+      if (targetArea && typeof MutationObserver !== "undefined") {
+        const debouncedRender = debounce(() => {
+          renderInlineQuickLinks(document);
+        }, 150);
+        activeObserver = new MutationObserver(debouncedRender);
+        activeObserver.observe(targetArea, { childList: true, subtree: true });
+      }
+      return;
+    }
     const handleSelection = debounce(() => {
+      if (Config.global.cardFormatterOutputMode === "inline") {
+        FormattedCopyPopover.hide();
+        return;
+      }
       const selection = window.getSelection();
       if (!selection || selection.isCollapsed) {
         FormattedCopyPopover.hide();
@@ -5494,14 +6344,15 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         return;
       }
       const showCopy = Config.global.cardFormatterShowCopy !== false;
+      const showTSV = Config.global.cardFormatterShowTSV !== false;
       const showBRef = Config.global.cardFormatterShowBRef !== false;
       const showGoogle = Config.global.cardFormatterShowGoogle !== false;
       const hasSearch = showBRef || showGoogle;
-      if (!showCopy && !hasSearch) {
+      if (!showCopy && !showTSV && !hasSearch) {
         FormattedCopyPopover.hide();
         return;
       }
-      if (!hasSearch && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
+      if (!hasSearch && !showTSV && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
         if (window.navigator?.clipboard?.writeText) {
           window.navigator.clipboard.writeText(formatted).then(() => {
             showToast({
@@ -5529,7 +6380,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
   }
 
   // src/modules/collectionQuantityCounter.js
-  var activeObserver = null;
+  var activeObserver2 = null;
   var boundListeners = [];
   function countCollectionQuantities(root = document) {
     let distinctQtyCount = 0;
@@ -5555,7 +6406,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         if (!isNaN(parsed)) qty = Math.max(0, parsed);
       }
       if (qty === 0) {
-        const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]');
+        const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]:not(.tk-qty-input)');
         if (qtyInput && qtyInput.value) {
           const parsed = parseInt(qtyInput.value.trim(), 10);
           if (!isNaN(parsed)) qty = Math.max(0, parsed);
@@ -5597,7 +6448,7 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         if (!isNaN(parsed)) qty = Math.max(0, parsed);
       }
       if (qty === 0) {
-        const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]');
+        const qtyInput = row.querySelector('input[name*="QTY" i], input[type="number"]:not(.tk-qty-input)');
         if (qtyInput && qtyInput.value) {
           const parsed = parseInt(qtyInput.value.trim(), 10);
           if (!isNaN(parsed)) qty = Math.max(0, parsed);
@@ -5793,24 +6644,31 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         setTimeout(update, 50);
       }
     };
+    const handleCustomEvent = () => setTimeout(update, 50);
     document.addEventListener("change", handleEvent, true);
     document.addEventListener("input", handleEvent, true);
     document.addEventListener("click", handleEvent, true);
-    boundListeners.push({ type: "change", fn: handleEvent }, { type: "input", fn: handleEvent }, { type: "click", fn: handleEvent });
+    document.addEventListener("sctk:collection-changed", handleCustomEvent, true);
+    boundListeners.push(
+      { type: "change", fn: handleEvent },
+      { type: "input", fn: handleEvent },
+      { type: "click", fn: handleEvent },
+      { type: "sctk:collection-changed", fn: handleCustomEvent }
+    );
     const targetArea = document.querySelector("#main-content-area") || document.querySelector("#content") || document.body;
     if (targetArea && typeof MutationObserver !== "undefined") {
       let debounceTimer = null;
-      activeObserver = new MutationObserver(() => {
+      activeObserver2 = new MutationObserver(() => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(update, 100);
       });
-      activeObserver.observe(targetArea, { childList: true, subtree: true, attributes: true });
+      activeObserver2.observe(targetArea, { childList: true, subtree: true, attributes: true });
     }
   }
   function cleanupCollectionQuantityCounter() {
-    if (activeObserver) {
-      activeObserver.disconnect();
-      activeObserver = null;
+    if (activeObserver2) {
+      activeObserver2.disconnect();
+      activeObserver2 = null;
     }
     boundListeners.forEach(({ type, fn }) => {
       document.removeEventListener(type, fn, true);
@@ -5910,6 +6768,402 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     }
   }
 
+  // src/modules/quickAddGridEnhancer.js
+  function getListContext(pathname = window.location.pathname) {
+    const lowerPath = pathname.toLowerCase();
+    if (lowerPath.includes("wantlist")) return "W";
+    if (lowerPath.includes("forsaletrade")) return "S";
+    return "G";
+  }
+  function getContextSetId(pathname = window.location.pathname, search = window.location.search) {
+    const pathMatch = pathname.match(/\/sid\/(\d+)/i);
+    if (pathMatch) return pathMatch[1];
+    const urlParams = new URLSearchParams(search);
+    return urlParams.get("SetID") || "";
+  }
+  function getSportType(search = window.location.search) {
+    const breadcrumb = document.querySelector(".breadcrumb, #topnav");
+    if (breadcrumb) {
+      const typeMatch = breadcrumb.textContent.match(
+        /(Baseball|Basketball|Football|Hockey|Soccer|Racing|Non-Sport)/i
+      );
+      if (typeMatch) return typeMatch[1];
+    }
+    const urlParams = new URLSearchParams(search);
+    return urlParams.get("sp") || "Baseball";
+  }
+  function buildQuickAddPayload({
+    cardId,
+    quantity,
+    listContext = getListContext(),
+    contextSetId = getContextSetId(),
+    sportType = getSportType(),
+    search = window.location.search,
+    href = window.location.href
+  }) {
+    const urlParams = new URLSearchParams(search);
+    const refererUrl = href.split("?")[0];
+    return new URLSearchParams({
+      SetID: contextSetId,
+      CardID: cardId,
+      iID: "",
+      Type: sportType,
+      sReferer: refererUrl,
+      ReturnRow: "0",
+      Filter: urlParams.get("Filter") || "",
+      sTeamID: urlParams.get("sTeamID") || "",
+      PageIndex: urlParams.get("PageIndex") || "1",
+      ColType: "1",
+      sYear: "0",
+      sTeam: "",
+      sCardNum: "",
+      sNote: "",
+      sSetName: "",
+      BasicID: urlParams.get("BasicID") || "",
+      MultiID: urlParams.get("MultiID") || "",
+      AddTo: listContext,
+      Quantity: quantity
+    });
+  }
+  function isRowCollected(row) {
+    if (!row) return false;
+    const qtyCell = row.querySelector("td:nth-child(1)");
+    if (qtyCell?.querySelector(".badge")) return true;
+    const statusCell = row.querySelector("td:nth-child(4)");
+    if (statusCell) {
+      if (statusCell.querySelector("img, svg, .fa-handshake, .fa-heart, .fa-box")) return true;
+      const checkbox = statusCell.querySelector('input[type="checkbox"]');
+      if (checkbox?.checked) return true;
+    }
+    if (row.classList.contains("table-success") || row.classList.contains("table-info") || row.classList.contains("table-danger")) {
+      return true;
+    }
+    const bg = (row.getAttribute("bgcolor") || row.style.backgroundColor || "").toLowerCase();
+    if (bg && bg !== "#ffffff" && bg !== "#f7f9f9" && bg !== "rgb(247, 249, 249)" && bg !== "transparent") {
+      return true;
+    }
+    return false;
+  }
+  function syncRowControlVisibility(row) {
+    if (!row) return;
+    const customUI = row.querySelector(".tk-inline-add");
+    const nativeCheckbox = row.querySelector('td:nth-child(4) input[type="checkbox"]');
+    const nativeLabel = nativeCheckbox?.closest("label") || nativeCheckbox;
+    const collected = isRowCollected(row);
+    if (collected) {
+      if (nativeLabel) nativeLabel.style.display = "none";
+      if (customUI) customUI.style.display = "inline-flex";
+    } else {
+      if (nativeLabel) nativeLabel.style.display = "";
+      if (customUI) customUI.style.display = "none";
+    }
+  }
+  function injectRowQuickAdd(row, context = {}) {
+    const cardLink = row.querySelector('a[href*="/cid/"]');
+    if (!cardLink) return false;
+    const href = cardLink.getAttribute("href") || "";
+    const cidMatch = href.match(/\/cid\/(\d+)/i);
+    if (!cidMatch) return false;
+    const cardId = cidMatch[1];
+    const targetCell = row.querySelector("td:nth-child(4)") || cardLink.closest("td");
+    if (!targetCell || targetCell.querySelector(".tk-inline-add")) return false;
+    const container = document.createElement("div");
+    container.className = "tk-inline-add";
+    container.style.cssText = "display: inline-flex !important; flex-direction: row !important; align-items: center !important; flex-wrap: nowrap !important; margin-top: 4px !important; margin-bottom: 2px !important; width: max-content !important; min-width: 0 !important; max-width: 100% !important; vertical-align: middle !important;";
+    const qtyInput = document.createElement("input");
+    qtyInput.type = "number";
+    qtyInput.className = "tk-qty-input";
+    qtyInput.value = "1";
+    qtyInput.min = "1";
+    qtyInput.style.cssText = "width: 28px !important; min-width: 28px !important; max-width: 28px !important; flex: 0 0 28px !important; height: 22px !important; text-align: center !important; border: 1px solid var(--tk-border-strong, #ccc) !important; border-right: none !important; border-radius: 3px 0 0 3px !important; font-size: 11px !important; font-family: monospace !important; padding: 0 !important; margin: 0 !important; outline: none !important; background: var(--tk-bg-elevated, #ffffff) !important; color: var(--tk-text, #000000) !important; box-sizing: border-box !important; line-height: 20px !important; -moz-appearance: textfield;";
+    const actionBtn = document.createElement("button");
+    actionBtn.type = "button";
+    actionBtn.className = "tk-add-btn";
+    actionBtn.textContent = "+";
+    actionBtn.style.cssText = "width: 24px !important; min-width: 24px !important; max-width: 24px !important; flex: 0 0 24px !important; height: 22px !important; background: var(--tk-accent, #0d6efd) !important; color: #ffffff !important; border: 1px solid var(--tk-accent, #0d6efd) !important; border-radius: 0 3px 3px 0 !important; padding: 0 !important; margin: 0 !important; font-size: 12px !important; font-weight: 700 !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; box-sizing: border-box !important; line-height: 1 !important; user-select: none !important;";
+    actionBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const addQty = qtyInput.value || "1";
+      const listContext = context.listContext || getListContext();
+      Log(
+        `Quick Add Grid: Executing POST for CardID: ${cardId} | Qty: ${addQty} | List: ${listContext}`,
+        "info",
+        "server"
+      );
+      const payload = buildQuickAddPayload({
+        cardId,
+        quantity: addQty,
+        listContext,
+        contextSetId: context.contextSetId || getContextSetId(),
+        sportType: context.sportType || getSportType()
+      });
+      actionBtn.disabled = true;
+      actionBtn.textContent = "...";
+      actionBtn.classList.remove("tk-add-btn-success", "tk-add-btn-error");
+      try {
+        const response = await fetch("/CollectionAddM2.cfm", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "XMLHttpRequest",
+            Referer: window.location.href
+          },
+          body: payload.toString()
+        });
+        const responseText = await response.text();
+        if (response.ok && !responseText.includes("<title>Error") && !responseText.includes("Login")) {
+          Log(`Quick Add Grid: Server response 200 OK for CardID: ${cardId}. Parsing response DOM...`, "info", "server");
+          const virtualDOM = new DOMParser().parseFromString(responseText, "text/html");
+          const backgroundCardLink = virtualDOM.querySelector(`a[href*="/cid/${cardId}"]`);
+          if (backgroundCardLink) {
+            const backgroundRow = backgroundCardLink.closest("tr");
+            if (backgroundRow) {
+              updateRowFromBackground(row, backgroundRow, cardId, addQty, listContext);
+            }
+          } else {
+            Log(`Quick Add Grid: CardID ${cardId} not found in response DOM.`, "warn", "server");
+          }
+          actionBtn.classList.add("tk-add-btn-success");
+          setTimeout(() => {
+            actionBtn.disabled = false;
+            actionBtn.textContent = "+";
+            actionBtn.classList.remove("tk-add-btn-success");
+          }, 1200);
+        } else {
+          throw new Error(`HTTP ${response.status} or error page returned`);
+        }
+      } catch (err) {
+        Log(`Quick Add Grid: Error submitting quick add for CardID ${cardId}: ${err.message}`, "error", "server");
+        actionBtn.classList.add("tk-add-btn-error");
+        actionBtn.textContent = "!";
+        setTimeout(() => {
+          actionBtn.disabled = false;
+          actionBtn.textContent = "+";
+          actionBtn.classList.remove("tk-add-btn-error");
+        }, 2e3);
+      }
+    });
+    container.appendChild(qtyInput);
+    container.appendChild(actionBtn);
+    targetCell.appendChild(container);
+    const nativeCheckbox = targetCell.querySelector('input[type="checkbox"]');
+    if (nativeCheckbox && !nativeCheckbox.dataset.sctkVisWired) {
+      nativeCheckbox.dataset.sctkVisWired = "true";
+      nativeCheckbox.addEventListener("change", () => {
+        if (nativeCheckbox.checked) {
+          Log(`Quick Add Grid [Card ${cardId}]: Native checkbox checked. Toggling control visibility...`, "info", "server");
+          setTimeout(() => {
+            syncRowControlVisibility(row);
+            if (window.SCToolkit?.modules?.collectionQuantityCounter?.init) {
+              window.SCToolkit.modules.collectionQuantityCounter.init();
+            } else if (typeof window !== "undefined" && typeof window.CustomEvent !== "undefined") {
+              document.dispatchEvent(new window.CustomEvent("sctk:collection-changed"));
+            }
+          }, 350);
+        }
+      });
+    }
+    row.dataset.quickAddInjected = "true";
+    syncRowControlVisibility(row);
+    return true;
+  }
+  function updateRowFromBackground(row, backgroundRow, cardId, addQty, listContext) {
+    if (!row || !backgroundRow) {
+      Log(`Quick Add Grid: updateRowFromBackground missing row or backgroundRow for CardID ${cardId}`, "warn", "server");
+      return;
+    }
+    if (backgroundRow.getAttribute("class")) {
+      row.className = backgroundRow.className;
+    }
+    if (backgroundRow.hasAttribute("bgcolor")) {
+      const bg = backgroundRow.getAttribute("bgcolor");
+      row.setAttribute("bgcolor", bg);
+      row.style.backgroundColor = bg;
+      row.setAttribute("onmouseout", `this.bgColor='${bg}';`);
+    } else if (row.hasAttribute("bgcolor")) {
+      row.removeAttribute("bgcolor");
+    }
+    if (backgroundRow.hasAttribute("style")) {
+      row.setAttribute("style", backgroundRow.getAttribute("style"));
+    }
+    if (backgroundRow.hasAttribute("onmouseout")) {
+      row.setAttribute("onmouseout", backgroundRow.getAttribute("onmouseout"));
+    }
+    if (backgroundRow.hasAttribute("onmouseover")) {
+      row.setAttribute("onmouseover", backgroundRow.getAttribute("onmouseover"));
+    }
+    Log(
+      `Quick Add Grid [Card ${cardId}]: Updated row styling (class: '${row.className}', bgcolor: '${row.getAttribute(
+        "bgcolor"
+      )}').`,
+      "info",
+      "server"
+    );
+    const serverQtyCell = backgroundRow.querySelector("td:nth-child(1)");
+    const liveQtyCell = row.querySelector("td:nth-child(1)");
+    if (liveQtyCell) {
+      const serverBadge = serverQtyCell?.querySelector(".badge");
+      if (serverBadge) {
+        liveQtyCell.innerHTML = serverQtyCell.innerHTML;
+        Log(`Quick Add Grid [Card ${cardId}]: Synced Column 1 badge from server response: ${liveQtyCell.innerHTML}`, "info", "server");
+      } else {
+        const existingBadge = liveQtyCell.querySelector(".badge");
+        const addedNum = parseInt(addQty, 10) || 1;
+        if (existingBadge) {
+          const currentQty = parseInt(existingBadge.textContent.trim(), 10) || 0;
+          existingBadge.textContent = String(currentQty + addedNum);
+        } else {
+          liveQtyCell.innerHTML = `<span class="badge bg-primary">${addedNum}</span>`;
+        }
+        Log(`Quick Add Grid [Card ${cardId}]: Injected Column 1 quantity badge: ${liveQtyCell.innerHTML}`, "info", "server");
+      }
+    }
+    const liveStatusCell = row.querySelector(".tk-inline-add")?.parentElement || row.querySelector("td:nth-child(4)");
+    const serverStatusCell = backgroundRow.querySelector("td:nth-child(4)");
+    if (liveStatusCell) {
+      const customUI = liveStatusCell.querySelector(".tk-inline-add");
+      const hasStatusIcon = serverStatusCell && (serverStatusCell.querySelector("img, i, svg, .fa-handshake, .fa-heart, .fa-box") || !serverStatusCell.querySelector('input[type="checkbox"]') && serverStatusCell.textContent.trim() !== "");
+      if (hasStatusIcon) {
+        liveStatusCell.innerHTML = serverStatusCell.innerHTML;
+        Log(`Quick Add Grid [Card ${cardId}]: Synced Column 4 status icon from server response.`, "info", "server");
+      } else {
+        let iconHtml = '<i class="fa-solid fa-box text-primary" title="In Collection"></i>';
+        if (listContext === "S") {
+          iconHtml = '<i class="fa-solid fa-handshake text-success" title="For Sale / Trade"></i>';
+        } else if (listContext === "W") {
+          iconHtml = '<i class="fa-solid fa-heart text-danger" title="On Wantlist"></i>';
+        }
+        liveStatusCell.innerHTML = iconHtml;
+        Log(`Quick Add Grid [Card ${cardId}]: Injected Column 4 status icon '${iconHtml}'.`, "info", "server");
+      }
+      if (customUI) {
+        liveStatusCell.appendChild(customUI);
+      }
+    }
+    const serverActions = backgroundRow.querySelector('div[id^="nActions"]') || backgroundRow.querySelector(`#nActions${cardId}`) || backgroundRow.querySelector(".btn-group");
+    const liveActions = row.querySelector('div[id^="nActions"]') || row.querySelector(`#nActions${cardId}`) || row.querySelector(".btn-group");
+    if (serverActions && liveActions) {
+      if (serverActions.id) {
+        liveActions.id = serverActions.id;
+      }
+      liveActions.innerHTML = serverActions.innerHTML;
+      Log(`Quick Add Grid [Card ${cardId}]: Synced context menu element ID '${liveActions.id}'.`, "info", "server");
+    } else {
+      Log(`Quick Add Grid [Card ${cardId}]: Could not locate serverActions or liveActions container.`, "warn", "server");
+    }
+    syncRowControlVisibility(row);
+  }
+  function resetRowToUncollected(row, cardId) {
+    if (!row) return;
+    row.className = "collection_row";
+    row.removeAttribute("bgcolor");
+    row.style.backgroundColor = "";
+    row.setAttribute("onmouseout", "this.bgColor='#F7F9F9';");
+    row.setAttribute("onmouseover", "this.bgColor='#FFCC00';");
+    const liveQtyCell = row.querySelector("td:nth-child(1)");
+    if (liveQtyCell) {
+      liveQtyCell.innerHTML = "";
+    }
+    const liveStatusCell = row.querySelector(".tk-inline-add")?.parentElement || row.querySelector("td:nth-child(4)");
+    if (liveStatusCell) {
+      const customUI = liveStatusCell.querySelector(".tk-inline-add");
+      const checkboxHtml = `<label><input type="checkbox" class="form-check-input" style="transform: scale(1.4); margin: 3px;"></label>`;
+      liveStatusCell.innerHTML = checkboxHtml;
+      if (customUI) {
+        liveStatusCell.appendChild(customUI);
+        const qtyInput = customUI.querySelector(".tk-qty-input");
+        if (qtyInput) qtyInput.value = "1";
+      }
+    }
+    syncRowControlVisibility(row);
+    if (window.SCToolkit?.modules?.collectionQuantityCounter?.init) {
+      try {
+        window.SCToolkit.modules.collectionQuantityCounter.init();
+      } catch (err) {
+        Log(`Quick Add Grid: Could not update counter: ${err.message}`, "debug");
+      }
+    } else if (typeof window !== "undefined" && typeof window.CustomEvent !== "undefined") {
+      document.dispatchEvent(new window.CustomEvent("sctk:collection-changed"));
+    }
+    Log(`Quick Add Grid [Card ${cardId}]: Row reset to uncollected state.`, "info", "server");
+  }
+  function patchNativeChange2() {
+    if (typeof window !== "undefined" && typeof window.change2 === "function" && !window.change2._sctkWrapped) {
+      const originalChange2 = window.change2;
+      window.change2 = function(...args) {
+        try {
+          return originalChange2.apply(this, args);
+        } catch (err) {
+          Log(`Quick Add Grid: Suppressed native change2 error (checkbox missing from DOM): ${err.message}`, "debug", "server");
+        }
+      };
+      window.change2._sctkWrapped = true;
+      Log("Quick Add Grid: Patched window.change2 error handler.", "debug", "server");
+    }
+  }
+  function handleCardRemoval(row, cardId) {
+    if (!row) return;
+    const liveQtyCell = row.querySelector("td:nth-child(1)");
+    const existingBadge = liveQtyCell?.querySelector(".badge");
+    if (existingBadge) {
+      const currentQty = parseInt(existingBadge.textContent.trim(), 10) || 1;
+      if (currentQty > 1) {
+        existingBadge.textContent = String(currentQty - 1);
+        Log(`Quick Add Grid [Card ${cardId}]: Decremented quantity badge to ${currentQty - 1}.`, "info", "server");
+      } else {
+        resetRowToUncollected(row, cardId);
+      }
+    } else {
+      resetRowToUncollected(row, cardId);
+    }
+  }
+  function setupRemoveListener() {
+    if (typeof document !== "undefined" && !document._sctkRemoveListenerWired) {
+      document._sctkRemoveListenerWired = true;
+      document.addEventListener("click", (e) => {
+        patchNativeChange2();
+        const removeLink = e.target?.closest?.('a[href*="CollectionRemove"], a[onclick*="CollectionRemove"], a[href*="RemoveQ"]');
+        if (removeLink) {
+          const row = removeLink.closest("tr");
+          if (row) {
+            const cardLink = row.querySelector('a[href*="/cid/"]');
+            const cardIdMatch = cardLink?.href.match(/\/cid\/(\d+)/i);
+            const cardId = cardIdMatch ? cardIdMatch[1] : "";
+            Log(`Quick Add Grid: Detected Remove click for CardID ${cardId}. Scheduling row cleanup...`, "info", "server");
+            setTimeout(() => {
+              handleCardRemoval(row, cardId);
+            }, 300);
+          }
+        }
+      });
+    }
+  }
+  function initQuickAddGridEnhancer() {
+    const ok = assertContract("quickAddGridEnhancer", [
+      { selector: "table tr", label: "table rows" },
+      { selector: 'a[href*="/cid/"]', label: "card links", optional: true }
+    ]);
+    if (!ok) return;
+    patchNativeChange2();
+    setupRemoveListener();
+    const listContext = getListContext();
+    const contextSetId = getContextSetId();
+    const sportType = getSportType();
+    Log(
+      `Quick Add Grid Enhancer initialized (Context: ${listContext}, SetID: ${contextSetId || "N/A"}, Sport: ${sportType})`,
+      "info"
+    );
+    const rows = document.querySelectorAll("table tr");
+    let injectedCount = 0;
+    rows.forEach((row) => {
+      if (injectRowQuickAdd(row, { listContext, contextSetId, sportType })) {
+        injectedCount++;
+      }
+    });
+    Log(`Quick Add Grid Enhancer: Injected quick-add controls into ${injectedCount} row(s).`, "debug");
+  }
+
   // src/core/registry.js
   var ModuleRegistry = [
     {
@@ -5969,8 +7223,8 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
     },
     {
       id: "cardNameFormatter",
-      name: "Card Name Formatter",
-      description: "Dynamically extracts card metadata based on text selection and formats/copies card strings according to a customizable template.",
+      name: "Player Quick Links",
+      description: "Dynamically extracts card metadata and adds quick copy/search links (Baseball Reference, Google) via floating popover, inline buttons, or direct copy.",
       init: initCardNameFormatter,
       isAsync: false
     },
@@ -5993,6 +7247,13 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       name: "Collection Defaulter",
       description: "Automatically selects a preferred Collection on the ViewCollection (Add / Update) page.",
       init: initCollectionDefaulter,
+      isAsync: false
+    },
+    {
+      id: "quickAddGridEnhancer",
+      name: "Quick Add Grid Enhancer",
+      description: "Injects styled inline quantity inputs and quick-add buttons across Collection, Wantlist, and For Sale/Trade views.",
+      init: initQuickAddGridEnhancer,
       isAsync: false
     }
   ];
@@ -6246,10 +7507,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       globalTab.type = "button";
       globalTab.className = "tk-settings-tab active";
       globalTab.textContent = "Global";
-      const pinsTab = document.createElement("button");
-      pinsTab.type = "button";
-      pinsTab.className = "tk-settings-tab";
-      pinsTab.textContent = "Pins";
       const routesTab = document.createElement("button");
       routesTab.type = "button";
       routesTab.className = "tk-settings-tab";
@@ -6269,13 +7526,12 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       const badgesTab = document.createElement("button");
       badgesTab.type = "button";
       badgesTab.className = "tk-settings-tab";
-      badgesTab.textContent = "Badges";
-      tabBar.append(globalTab, pinsTab, badgesTab, routesTab, regexTab, routeTesterTab, diagTab);
+      badgesTab.textContent = "Badges & Hotlinks";
+      tabBar.append(globalTab, badgesTab, routesTab, regexTab, routeTesterTab, diagTab);
       const content = document.createElement("div");
       content.id = "tk-settings-tab-content";
       const panes = {
         global: SettingsUI._buildGlobalPane(),
-        pins: SettingsUI._buildPinsPane(),
         badges: SettingsUI._buildBadgesPane(),
         routes: SettingsUI._buildModulesPane(),
         regex: SettingsUI._buildRegexPane(),
@@ -6284,7 +7540,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       };
       const tabs = {
         global: globalTab,
-        pins: pinsTab,
         badges: badgesTab,
         routes: routesTab,
         regex: regexTab,
@@ -6306,165 +7561,6 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       return body;
     },
     /**
-     * Pin Configuration tab.
-     *
-     * Lists every stored pin with a toggle (enabled/disabled), a drag handle for
-     * reordering, Up/Down keyboard controls, and a remove button. Every mutation
-     * writes immediately to storage and re-renders the toolbar.
-     */
-    _buildPinsPane: () => {
-      const pane = document.createElement("div");
-      pane.id = "tk-settings-pins";
-      const title = document.createElement("div");
-      title.className = "tk-settings-section-title";
-      title.textContent = "Pin Configuration";
-      pane.appendChild(title);
-      const hint = document.createElement("div");
-      hint.className = "tk-settings-hint";
-      hint.style.marginBottom = "10px";
-      hint.textContent = "Toggle pins on/off and drag rows (or use the ↑↓ buttons) to set their order. Disabled pins are hidden from the toolbar but remain saved. Changes apply immediately.";
-      pane.appendChild(hint);
-      const list = document.createElement("div");
-      list.className = "tk-pin-config-list";
-      pane.appendChild(list);
-      let workingPins = Pins.all();
-      const flush = () => {
-        Pins.reorder(workingPins);
-        Toolbar.renderPins();
-      };
-      const rebuild = () => {
-        list.innerHTML = "";
-        workingPins = Pins.all();
-        if (workingPins.length === 0) {
-          const empty = document.createElement("div");
-          empty.className = "tk-pin-config-empty";
-          empty.textContent = "No pins saved. Pin a set from any set page to get started.";
-          list.appendChild(empty);
-          return;
-        }
-        workingPins.forEach((pin, idx) => {
-          const row = document.createElement("div");
-          row.className = "tk-pin-config-row" + (pin.enabled === false ? " tk-pin-disabled" : "");
-          row.draggable = true;
-          row.dataset.pinId = pin.id;
-          const handle = document.createElement("span");
-          handle.className = "tk-pin-drag-handle";
-          handle.title = "Drag to reorder";
-          handle.innerHTML = "&#9776;";
-          handle.setAttribute("aria-hidden", "true");
-          row.appendChild(handle);
-          const toggle = document.createElement("input");
-          toggle.type = "checkbox";
-          toggle.className = "tk-pin-config-toggle";
-          toggle.checked = pin.enabled !== false;
-          toggle.title = toggle.checked ? "Disable this pin" : "Enable this pin";
-          toggle.setAttribute("aria-label", `Toggle ${pin.name}`);
-          toggle.addEventListener("change", () => {
-            Pins.toggle(pin.id);
-            workingPins = Pins.all();
-            Toolbar.renderPins();
-            rebuild();
-            Log(`Pin '${pin.name}' ${toggle.checked ? "enabled" : "disabled"}.`, "debug");
-          });
-          row.appendChild(toggle);
-          const nameWrap = document.createElement("span");
-          nameWrap.className = "tk-pin-config-name";
-          const nameLink = document.createElement("a");
-          nameLink.href = pin.url;
-          nameLink.textContent = pin.name;
-          nameLink.title = `Navigate to ${pin.name}`;
-          nameWrap.appendChild(nameLink);
-          row.appendChild(nameWrap);
-          const yearLabel = document.createElement("span");
-          yearLabel.className = "tk-pin-config-year";
-          yearLabel.textContent = pin.year || "";
-          row.appendChild(yearLabel);
-          const actions = document.createElement("span");
-          actions.className = "tk-pin-config-actions";
-          const upBtn = document.createElement("button");
-          upBtn.type = "button";
-          upBtn.className = "tk-pin-reorder-btn";
-          upBtn.title = "Move up";
-          upBtn.setAttribute("aria-label", `Move ${pin.name} up`);
-          upBtn.innerHTML = "&#8593;";
-          upBtn.disabled = idx === 0;
-          upBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (idx === 0) return;
-            workingPins = Pins.all();
-            [workingPins[idx - 1], workingPins[idx]] = [workingPins[idx], workingPins[idx - 1]];
-            flush();
-            rebuild();
-          });
-          const downBtn = document.createElement("button");
-          downBtn.type = "button";
-          downBtn.className = "tk-pin-reorder-btn";
-          downBtn.title = "Move down";
-          downBtn.setAttribute("aria-label", `Move ${pin.name} down`);
-          downBtn.innerHTML = "&#8595;";
-          downBtn.disabled = idx === workingPins.length - 1;
-          downBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (idx === workingPins.length - 1) return;
-            workingPins = Pins.all();
-            [workingPins[idx], workingPins[idx + 1]] = [workingPins[idx + 1], workingPins[idx]];
-            flush();
-            rebuild();
-          });
-          const removeBtn = document.createElement("button");
-          removeBtn.type = "button";
-          removeBtn.className = "tk-pin-remove-btn";
-          removeBtn.title = `Remove ${pin.name}`;
-          removeBtn.setAttribute("aria-label", `Remove pin: ${pin.name}`);
-          removeBtn.innerHTML = icon("x");
-          removeBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            Pins.remove(pin.id);
-            workingPins = Pins.all();
-            Toolbar.renderPins();
-            rebuild();
-            Log(`Pin removed from settings: ${pin.name}`, "debug");
-          });
-          actions.appendChild(upBtn);
-          actions.appendChild(downBtn);
-          actions.appendChild(removeBtn);
-          row.appendChild(actions);
-          row.addEventListener("dragstart", (e) => {
-            e.dataTransfer.effectAllowed = "move";
-            e.dataTransfer.setData("text/plain", String(idx));
-            setTimeout(() => row.classList.add("tk-pin-row-dragging"), 0);
-          });
-          row.addEventListener("dragend", () => {
-            row.classList.remove("tk-pin-row-dragging");
-            list.querySelectorAll(".tk-pin-row-drag-over").forEach((r) => r.classList.remove("tk-pin-row-drag-over"));
-          });
-          row.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "move";
-            list.querySelectorAll(".tk-pin-row-drag-over").forEach((r) => r.classList.remove("tk-pin-row-drag-over"));
-            row.classList.add("tk-pin-row-drag-over");
-          });
-          row.addEventListener("dragleave", () => {
-            row.classList.remove("tk-pin-row-drag-over");
-          });
-          row.addEventListener("drop", (e) => {
-            e.preventDefault();
-            row.classList.remove("tk-pin-row-drag-over");
-            const srcIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
-            if (isNaN(srcIdx) || srcIdx === idx) return;
-            workingPins = Pins.all();
-            const [moved] = workingPins.splice(srcIdx, 1);
-            workingPins.splice(idx, 0, moved);
-            flush();
-            rebuild();
-          });
-          list.appendChild(row);
-        });
-      };
-      rebuild();
-      return pane;
-    },
-    /**
      * Badge Configuration tab.
      *
      * Two groups — Toolbar Badges and Set Link Badges — each rendered as a
@@ -6476,72 +7572,100 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       pane.id = "tk-settings-badges";
       const title = document.createElement("div");
       title.className = "tk-settings-section-title";
-      title.textContent = "Badge Configuration";
+      title.textContent = "Badges & Hotlinks Configuration";
       pane.appendChild(title);
       const hint = document.createElement("div");
       hint.className = "tk-settings-hint";
       hint.style.marginBottom = "12px";
-      hint.textContent = "Toggle individual action badges on/off and drag rows (or use the ↑↓ buttons) to set their order. Changes apply immediately to the toolbar and injected set-link badges.";
+      hint.textContent = "Configure toolbar action badges, set-link badges, and center-toolbar hotlinks (Top, Bottom, Search, or custom links). Click section headers to expand/collapse. Each item allows custom text, tooltip, launch target mode, and placement ordering.";
       pane.appendChild(hint);
-      const buildSection = (sectionTitle, configKey, onApply) => {
+      const buildCollapsibleSection = (sectionTitle, configKey, onApply, isHotlinkSection = false) => {
         const section = document.createElement("div");
-        section.style.marginBottom = "16px";
-        const secTitle = document.createElement("div");
-        secTitle.style.cssText = "font-family:var(--tk-font-mono);font-size:10px;font-weight:700;color:var(--tk-teal);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;";
-        secTitle.textContent = sectionTitle;
-        section.appendChild(secTitle);
+        section.style.cssText = "margin-bottom:12px;border:1px solid var(--tk-border);border-radius:var(--tk-radius-sm);overflow:hidden;background:var(--tk-bg-base);";
+        const getEntries = () => Config.global[configKey] || [];
+        const header = document.createElement("div");
+        header.style.cssText = "background:var(--tk-bg-elevated);padding:10px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;border-bottom:1px solid var(--tk-border);";
+        const headerLeft = document.createElement("div");
+        headerLeft.style.cssText = "display:flex;align-items:center;gap:8px;";
+        const titleEl = document.createElement("span");
+        titleEl.style.cssText = "font-family:var(--tk-font-mono);font-size:11px;font-weight:700;color:var(--tk-teal);text-transform:uppercase;letter-spacing:0.06em;";
+        titleEl.textContent = sectionTitle;
+        const countBadge = document.createElement("span");
+        countBadge.style.cssText = "font-family:var(--tk-font-mono);font-size:9.5px;color:var(--tk-text-muted);background:var(--tk-bg-base);padding:2px 6px;border-radius:10px;border:1px solid var(--tk-border);";
+        headerLeft.appendChild(titleEl);
+        headerLeft.appendChild(countBadge);
+        const toggleIcon = document.createElement("span");
+        toggleIcon.style.cssText = "font-size:12px;color:var(--tk-text-muted);transition:transform 0.2s;";
+        toggleIcon.textContent = "▼";
+        header.appendChild(headerLeft);
+        header.appendChild(toggleIcon);
+        const body = document.createElement("div");
+        body.style.cssText = "padding:12px;display:block;";
+        let isCollapsed = false;
+        header.addEventListener("click", () => {
+          isCollapsed = !isCollapsed;
+          body.style.display = isCollapsed ? "none" : "block";
+          toggleIcon.textContent = isCollapsed ? "▶" : "▼";
+        });
         const list = document.createElement("div");
         list.className = "tk-pin-config-list";
-        section.appendChild(list);
-        const getEntries = () => Config.global[configKey] || [];
+        body.appendChild(list);
+        const updateCount = () => {
+          const entries = getEntries();
+          const activeCount = entries.filter((e) => e.enabled !== false).length;
+          countBadge.textContent = `${activeCount}/${entries.length} active`;
+        };
         const flush = () => {
           SettingsUI._persist();
+          updateCount();
           onApply();
         };
         const rebuild = () => {
           list.innerHTML = "";
-          const entries = getEntries();
-          entries.forEach((entry, idx) => {
-            const badgeDef = BADGES[entry.key];
-            if (!badgeDef) return;
-            const row = document.createElement("div");
-            row.className = "tk-pin-config-row" + (entry.enabled === false ? " tk-pin-disabled" : "");
-            row.draggable = true;
-            row.dataset.badgeKey = entry.key;
+          const currentEntries = getEntries();
+          updateCount();
+          currentEntries.forEach((entry, idx) => {
+            const isCustomHotlink = isHotlinkSection && entry.id !== "top" && entry.id !== "bottom" && entry.id !== "search";
+            const badgeDef = !isHotlinkSection ? BADGES[entry.key] : null;
+            if (!isHotlinkSection && !badgeDef) return;
+            const card = document.createElement("div");
+            card.className = "tk-pin-config-row" + (entry.enabled === false ? " tk-pin-disabled" : "");
+            card.style.cssText = "background:var(--tk-bg-base);border:1px solid var(--tk-border);border-radius:var(--tk-radius-sm);padding:10px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;";
+            card.draggable = true;
+            const topRow = document.createElement("div");
+            topRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--tk-border);padding-bottom:6px;";
+            const leftHeader = document.createElement("div");
+            leftHeader.style.cssText = "display:inline-flex;align-items:center;gap:6px;";
             const handle = document.createElement("span");
             handle.className = "tk-pin-drag-handle";
             handle.title = "Drag to reorder";
             handle.innerHTML = "&#9776;";
             handle.setAttribute("aria-hidden", "true");
-            row.appendChild(handle);
+            leftHeader.appendChild(handle);
             const toggle = document.createElement("input");
             toggle.type = "checkbox";
             toggle.className = "tk-pin-config-toggle";
             toggle.checked = entry.enabled !== false;
-            toggle.title = toggle.checked ? "Disable this badge" : "Enable this badge";
-            toggle.setAttribute("aria-label", `Toggle ${badgeDef.text || entry.key} badge`);
+            toggle.title = toggle.checked ? "Disable item" : "Enable item";
             toggle.addEventListener("change", () => {
               entry.enabled = toggle.checked;
-              row.classList.toggle("tk-pin-disabled", !toggle.checked);
-              Log(`Config change: ${configKey}[${entry.key}].enabled = ${toggle.checked}`, "info");
+              card.classList.toggle("tk-pin-disabled", !toggle.checked);
               flush();
             });
-            row.appendChild(toggle);
+            leftHeader.appendChild(toggle);
             const nameWrap = document.createElement("span");
             nameWrap.className = "tk-pin-config-name";
-            nameWrap.textContent = badgeDef.title || entry.key;
-            row.appendChild(nameWrap);
-            const keyChip = document.createElement("span");
-            keyChip.className = "tk-pin-config-year";
-            keyChip.textContent = badgeDef.text || entry.key;
-            row.appendChild(keyChip);
+            nameWrap.style.cssText = "font-family:var(--tk-font-mono);font-size:11px;font-weight:700;color:var(--tk-text);";
+            const displayName = isHotlinkSection ? entry.text || entry.id || `Hotlink ${idx + 1}` : badgeDef.title || entry.key;
+            nameWrap.textContent = displayName;
+            leftHeader.appendChild(nameWrap);
+            topRow.appendChild(leftHeader);
             const actions = document.createElement("span");
             actions.className = "tk-pin-config-actions";
             const upBtn = document.createElement("button");
             upBtn.type = "button";
             upBtn.className = "tk-pin-reorder-btn";
             upBtn.title = "Move up";
-            upBtn.setAttribute("aria-label", `Move ${entry.key} up`);
             upBtn.innerHTML = "&#8593;";
             upBtn.disabled = idx === 0;
             upBtn.addEventListener("click", (e) => {
@@ -6549,8 +7673,10 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
               if (idx === 0) return;
               const arr = getEntries();
               [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+              if (isHotlinkSection) arr.forEach((item, i) => {
+                item.placement = i + 1;
+              });
               Config.global[configKey] = arr;
-              Log(`Config change: ${configKey} reordered`, "info");
               flush();
               rebuild();
             });
@@ -6558,68 +7684,197 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
             downBtn.type = "button";
             downBtn.className = "tk-pin-reorder-btn";
             downBtn.title = "Move down";
-            downBtn.setAttribute("aria-label", `Move ${entry.key} down`);
             downBtn.innerHTML = "&#8595;";
-            downBtn.disabled = idx === entries.length - 1;
+            downBtn.disabled = idx === currentEntries.length - 1;
             downBtn.addEventListener("click", (e) => {
               e.stopPropagation();
-              if (idx === entries.length - 1) return;
+              if (idx === currentEntries.length - 1) return;
               const arr = getEntries();
               [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+              if (isHotlinkSection) arr.forEach((item, i) => {
+                item.placement = i + 1;
+              });
               Config.global[configKey] = arr;
-              Log(`Config change: ${configKey} reordered`, "info");
               flush();
               rebuild();
             });
             actions.appendChild(upBtn);
             actions.appendChild(downBtn);
-            row.appendChild(actions);
-            row.addEventListener("dragstart", (e) => {
+            if (isCustomHotlink) {
+              const delBtn = document.createElement("button");
+              delBtn.type = "button";
+              delBtn.className = "tk-pin-remove-btn";
+              delBtn.title = "Remove hotlink";
+              delBtn.innerHTML = icon("x");
+              delBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                Config.global[configKey].splice(idx, 1);
+                (Config.global[configKey] || []).forEach((item, i) => {
+                  item.placement = i + 1;
+                });
+                flush();
+                rebuild();
+              });
+              actions.appendChild(delBtn);
+            }
+            topRow.appendChild(actions);
+            card.appendChild(topRow);
+            card.addEventListener("dragstart", (e) => {
               e.dataTransfer.effectAllowed = "move";
               e.dataTransfer.setData("text/plain", String(idx));
-              setTimeout(() => row.classList.add("tk-pin-row-dragging"), 0);
+              setTimeout(() => card.classList.add("tk-pin-row-dragging"), 0);
             });
-            row.addEventListener("dragend", () => {
-              row.classList.remove("tk-pin-row-dragging");
+            card.addEventListener("dragend", () => {
+              card.classList.remove("tk-pin-row-dragging");
               list.querySelectorAll(".tk-pin-row-drag-over").forEach((r) => r.classList.remove("tk-pin-row-drag-over"));
             });
-            row.addEventListener("dragover", (e) => {
+            card.addEventListener("dragover", (e) => {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
               list.querySelectorAll(".tk-pin-row-drag-over").forEach((r) => r.classList.remove("tk-pin-row-drag-over"));
-              row.classList.add("tk-pin-row-drag-over");
+              card.classList.add("tk-pin-row-drag-over");
             });
-            row.addEventListener("dragleave", () => {
-              row.classList.remove("tk-pin-row-drag-over");
+            card.addEventListener("dragleave", () => {
+              card.classList.remove("tk-pin-row-drag-over");
             });
-            row.addEventListener("drop", (e) => {
+            card.addEventListener("drop", (e) => {
               e.preventDefault();
-              row.classList.remove("tk-pin-row-drag-over");
+              card.classList.remove("tk-pin-row-drag-over");
               const srcIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
               if (isNaN(srcIdx) || srcIdx === idx) return;
               const arr = getEntries();
               const [moved] = arr.splice(srcIdx, 1);
               arr.splice(idx, 0, moved);
+              if (isHotlinkSection) arr.forEach((item, i) => {
+                item.placement = i + 1;
+              });
               Config.global[configKey] = arr;
-              Log(`Config change: ${configKey} reordered via drag`, "info");
               flush();
               rebuild();
             });
-            list.appendChild(row);
+            const fieldsRow = document.createElement("div");
+            fieldsRow.style.cssText = "display:grid;grid-template-columns:1fr 1.25fr 1.25fr 1fr;gap:8px;";
+            const textGroup = document.createElement("div");
+            const textLabel = document.createElement("label");
+            textLabel.style.cssText = "display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;";
+            textLabel.textContent = isHotlinkSection ? "Link Text" : "Badge Text";
+            const textInput = document.createElement("input");
+            textInput.type = "text";
+            textInput.value = isHotlinkSection ? entry.text || "" : entry.text !== void 0 ? entry.text : badgeDef.text || "";
+            textInput.style.cssText = "width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;";
+            textInput.addEventListener("change", () => {
+              entry.text = textInput.value.trim();
+              flush();
+            });
+            textGroup.appendChild(textLabel);
+            textGroup.appendChild(textInput);
+            const urlGroup = document.createElement("div");
+            const urlLabel = document.createElement("label");
+            urlLabel.style.cssText = "display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;";
+            urlLabel.textContent = isHotlinkSection ? "Link URL" : "Badge Key / Type";
+            const urlInput = document.createElement("input");
+            urlInput.type = "text";
+            if (isHotlinkSection) {
+              urlInput.value = entry.url || "";
+              urlInput.style.cssText = "width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;";
+              urlInput.addEventListener("change", () => {
+                entry.url = urlInput.value.trim();
+                flush();
+              });
+            } else {
+              urlInput.value = badgeDef.getUrl ? badgeDef.getUrl("SID", "PARENT") : `${entry.key} (Action)`;
+              urlInput.readOnly = true;
+              urlInput.style.cssText = "width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border);border-radius:3px;background:var(--tk-bg-base);color:var(--tk-text-muted);box-sizing:border-box;cursor:default;";
+            }
+            urlGroup.appendChild(urlLabel);
+            urlGroup.appendChild(urlInput);
+            const tooltipGroup = document.createElement("div");
+            const tooltipLabel = document.createElement("label");
+            tooltipLabel.style.cssText = "display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;";
+            tooltipLabel.textContent = isHotlinkSection ? "Link Tooltip" : "Badge Tooltip";
+            const tooltipInput = document.createElement("input");
+            tooltipInput.type = "text";
+            tooltipInput.value = isHotlinkSection ? entry.tooltip || "" : entry.tooltip !== void 0 ? entry.tooltip : badgeDef.title || "";
+            tooltipInput.style.cssText = "width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;";
+            tooltipInput.addEventListener("change", () => {
+              entry.tooltip = tooltipInput.value.trim();
+              flush();
+            });
+            tooltipGroup.appendChild(tooltipLabel);
+            tooltipGroup.appendChild(tooltipInput);
+            const targetGroup = document.createElement("div");
+            const targetLabel = document.createElement("label");
+            targetLabel.style.cssText = "display:block;font-family:var(--tk-font-mono);font-size:9.5px;font-weight:700;color:var(--tk-text-muted);margin-bottom:2px;";
+            targetLabel.textContent = "Launch Target";
+            const targetSelect = document.createElement("select");
+            targetSelect.style.cssText = "width:100%;padding:4px 6px;font-family:var(--tk-font-mono);font-size:10.5px;border:1px solid var(--tk-border-strong);border-radius:3px;background:var(--tk-bg-elevated);color:var(--tk-text);box-sizing:border-box;";
+            const optInline = document.createElement("option");
+            optInline.value = "inline";
+            optInline.textContent = "Directly In-Line";
+            if ((entry.target || "inline") === "inline") optInline.selected = true;
+            const optBg = document.createElement("option");
+            optBg.value = "background";
+            optBg.textContent = "New Background Tab";
+            if (entry.target === "background") optBg.selected = true;
+            targetSelect.appendChild(optInline);
+            targetSelect.appendChild(optBg);
+            targetSelect.addEventListener("change", () => {
+              entry.target = targetSelect.value;
+              flush();
+            });
+            targetGroup.appendChild(targetLabel);
+            targetGroup.appendChild(targetSelect);
+            fieldsRow.appendChild(textGroup);
+            fieldsRow.appendChild(urlGroup);
+            fieldsRow.appendChild(tooltipGroup);
+            fieldsRow.appendChild(targetGroup);
+            card.appendChild(fieldsRow);
+            list.appendChild(card);
           });
+          if (isHotlinkSection) {
+            const addBtn = document.createElement("button");
+            addBtn.type = "button";
+            addBtn.className = "sctk-btn";
+            addBtn.style.cssText = "margin-top:4px;font-size:10px;padding:4px 10px;";
+            addBtn.textContent = "+ Add Custom Hotlink";
+            addBtn.addEventListener("click", () => {
+              if (!Config.global.hotlinks) Config.global.hotlinks = [];
+              const nextPlacement = Config.global.hotlinks.length + 1;
+              Config.global.hotlinks.push({
+                id: `custom_${Date.now()}`,
+                text: "Link",
+                url: "/",
+                tooltip: "Custom link",
+                placement: nextPlacement,
+                enabled: true,
+                target: "inline"
+              });
+              flush();
+              rebuild();
+            });
+            list.appendChild(addBtn);
+          }
         };
         rebuild();
+        section.appendChild(header);
+        section.appendChild(body);
         return section;
       };
-      pane.appendChild(buildSection(
+      pane.appendChild(buildCollapsibleSection(
         "Toolbar Badges",
         "toolbarBadges",
         () => Toolbar.renderCenterContext()
       ));
-      pane.appendChild(buildSection(
+      pane.appendChild(buildCollapsibleSection(
         "Set Link Badges",
         "setLinkBadges",
         () => reinjectSetActions()
+      ));
+      pane.appendChild(buildCollapsibleSection(
+        "Toolbar Hotlinks",
+        "hotlinks",
+        () => Toolbar.renderCenterContext(),
+        true
       ));
       return pane;
     },
@@ -7019,12 +8274,12 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       const templateField = document.createElement("div");
       templateField.className = "tk-settings-field";
       const templateLabel = document.createElement("label");
-      templateLabel.textContent = "Template Format";
+      templateLabel.textContent = "Friendly Copy Template Format";
       const templateInput = document.createElement("input");
       templateInput.type = "text";
       templateInput.value = Config.global.cardFormatterTemplate || "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
       templateInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
-      templateInput.title = "Tokens: {PlayerName}, {Year}, {SetName}, {Tags}, {PR}, {CardNo}";
+      templateInput.title = "Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}";
       templateInput.addEventListener("change", () => {
         Config.global.cardFormatterTemplate = templateInput.value.trim();
         Log(`Config change: global.cardFormatterTemplate = ${Config.global.cardFormatterTemplate}`, "info");
@@ -7032,16 +8287,89 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       });
       const templateHint = document.createElement("div");
       templateHint.className = "tk-settings-hint";
-      templateHint.textContent = "Tokens: {PlayerName}, {Year}, {SetName}, {Tags}, {PR}, {CardNo}";
+      templateHint.textContent = "Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}";
       templateField.append(templateLabel, templateInput, templateHint);
+      const tsvTemplateField = document.createElement("div");
+      tsvTemplateField.className = "tk-settings-field";
+      const tsvTemplateLabel = document.createElement("label");
+      tsvTemplateLabel.textContent = "TSV Copy Template Format";
+      const tsvTemplateInput = document.createElement("input");
+      tsvTemplateInput.type = "text";
+      tsvTemplateInput.value = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+      tsvTemplateInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      tsvTemplateInput.title = "Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}";
+      tsvTemplateInput.addEventListener("change", () => {
+        Config.global.cardFormatterTSVTemplate = tsvTemplateInput.value;
+        Log(`Config change: global.cardFormatterTSVTemplate = ${Config.global.cardFormatterTSVTemplate}`, "info");
+        SettingsUI._persist();
+      });
+      const tsvTemplateHint = document.createElement("div");
+      tsvTemplateHint.className = "tk-settings-hint";
+      tsvTemplateHint.textContent = "Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}";
+      tsvTemplateField.append(tsvTemplateLabel, tsvTemplateInput, tsvTemplateHint);
+      const ignoredTagsField = document.createElement("div");
+      ignoredTagsField.className = "tk-settings-field";
+      const ignoredTagsLabel = document.createElement("label");
+      ignoredTagsLabel.textContent = "Ignored Tags List";
+      const ignoredTagsInput = document.createElement("input");
+      ignoredTagsInput.type = "text";
+      ignoredTagsInput.value = Config.global.cardFormatterIgnoredTags || "ASR, LL, TC, CL";
+      ignoredTagsInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      ignoredTagsInput.title = "Comma-separated list of card tags to ignore when extracting card metadata.";
+      ignoredTagsInput.addEventListener("change", () => {
+        Config.global.cardFormatterIgnoredTags = ignoredTagsInput.value.trim();
+        Log(`Config change: global.cardFormatterIgnoredTags = ${Config.global.cardFormatterIgnoredTags}`, "info");
+        SettingsUI._persist();
+      });
+      const ignoredTagsHint = document.createElement("div");
+      ignoredTagsHint.className = "tk-settings-hint";
+      ignoredTagsHint.textContent = "Comma-separated tags to ignore when extracting card metadata (e.g. ASR, LL, TC, CL)";
+      ignoredTagsField.append(ignoredTagsLabel, ignoredTagsInput, ignoredTagsHint);
+      const tagSeparatorField = document.createElement("div");
+      tagSeparatorField.className = "tk-settings-field";
+      const tagSeparatorLabel = document.createElement("label");
+      tagSeparatorLabel.textContent = "Tag Separator";
+      const tagSeparatorInput = document.createElement("input");
+      tagSeparatorInput.type = "text";
+      tagSeparatorInput.value = Config.global.cardFormatterTagSeparator ?? "";
+      tagSeparatorInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      tagSeparatorInput.title = "Separator character(s) between tags (e.g. space, comma, semicolon). Blank (default) resolves to space.";
+      tagSeparatorInput.addEventListener("change", () => {
+        Config.global.cardFormatterTagSeparator = tagSeparatorInput.value;
+        Log(`Config change: global.cardFormatterTagSeparator = ${Config.global.cardFormatterTagSeparator}`, "info");
+        SettingsUI._persist();
+      });
+      const tagSeparatorHint = document.createElement("div");
+      tagSeparatorHint.className = "tk-settings-hint";
+      tagSeparatorHint.textContent = "Delimiter used between tags when formatted (e.g. space, comma, semicolon). Blank defaults to single space.";
+      tagSeparatorField.append(tagSeparatorLabel, tagSeparatorInput, tagSeparatorHint);
+      const tagReplacerField = document.createElement("div");
+      tagReplacerField.className = "tk-settings-field";
+      const tagReplacerLabel = document.createElement("label");
+      tagReplacerLabel.textContent = "Tag Replacements";
+      const tagReplacerInput = document.createElement("input");
+      tagReplacerInput.type = "text";
+      tagReplacerInput.value = Config.global.cardFormatterTagReplacer ?? "";
+      tagReplacerInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      tagReplacerInput.title = "Key-value mapping pairs for tag replacements (e.g. AU: AUTO, TC: CL).";
+      tagReplacerInput.addEventListener("change", () => {
+        Config.global.cardFormatterTagReplacer = tagReplacerInput.value.trim();
+        Log(`Config change: global.cardFormatterTagReplacer = ${Config.global.cardFormatterTagReplacer}`, "info");
+        SettingsUI._persist();
+      });
+      const tagReplacerHint = document.createElement("div");
+      tagReplacerHint.className = "tk-settings-hint";
+      tagReplacerHint.textContent = "Comma-separated pairs (e.g. AU: AUTO, TC: CL). Replaces left-side tag with right-side tag value.";
+      tagReplacerField.append(tagReplacerLabel, tagReplacerInput, tagReplacerHint);
       const outputModeField = document.createElement("div");
       outputModeField.className = "tk-settings-field";
       const outputModeLabel = document.createElement("label");
       outputModeLabel.textContent = "Output Mode";
       const outputModeSelect = document.createElement("select");
-      outputModeSelect.title = "popover: show floating copy button near text. clipboard: auto-copy to clipboard.";
+      outputModeSelect.title = "popover: show floating copy button near text. inline: render small buttons below card/player. clipboard: auto-copy to clipboard.";
       [
         { value: "popover", label: "Floating Popover" },
+        { value: "inline", label: "Inline Buttons" },
         { value: "clipboard", label: "Auto-Copy to Clipboard" }
       ].forEach(({ value, label }) => {
         const opt = document.createElement("option");
@@ -7056,6 +8384,50 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         SettingsUI._persist();
       });
       outputModeField.append(outputModeLabel, outputModeSelect);
+      const linkTargetField = document.createElement("div");
+      linkTargetField.className = "tk-settings-field";
+      const linkTargetLabel = document.createElement("label");
+      linkTargetLabel.textContent = "Link Opening Target";
+      const linkTargetSelect = document.createElement("select");
+      linkTargetSelect.title = "Specify whether external links (Baseball Reference & Google) open in background tab or focused tab.";
+      [
+        { value: "background", label: "New Tab (Background)" },
+        { value: "focus", label: "New Tab with Focus" }
+      ].forEach(({ value, label }) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        if ((Config.global.cardFormatterLinkTarget || "background") === value) opt.selected = true;
+        linkTargetSelect.appendChild(opt);
+      });
+      linkTargetSelect.addEventListener("change", () => {
+        Config.global.cardFormatterLinkTarget = linkTargetSelect.value;
+        Log(`Config change: global.cardFormatterLinkTarget = ${linkTargetSelect.value}`, "info");
+        SettingsUI._persist();
+      });
+      linkTargetField.append(linkTargetLabel, linkTargetSelect);
+      const popoverDurationField = document.createElement("div");
+      popoverDurationField.className = "tk-settings-field";
+      const popoverDurationLabel = document.createElement("label");
+      popoverDurationLabel.textContent = "Popover Duration (ms)";
+      const popoverDurationInput = document.createElement("input");
+      popoverDurationInput.type = "number";
+      popoverDurationInput.min = "500";
+      popoverDurationInput.max = "30000";
+      popoverDurationInput.step = "500";
+      popoverDurationInput.value = Config.global.cardFormatterPopoverDurationMs || 4e3;
+      popoverDurationInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      popoverDurationInput.title = "How long the floating copy popover stays visible before auto-dismissing.";
+      popoverDurationInput.addEventListener("change", () => {
+        const val = parseInt(popoverDurationInput.value, 10);
+        Config.global.cardFormatterPopoverDurationMs = isNaN(val) ? 4e3 : val;
+        Log(`Config change: global.cardFormatterPopoverDurationMs = ${Config.global.cardFormatterPopoverDurationMs}`, "info");
+        SettingsUI._persist();
+      });
+      const popoverDurationHint = document.createElement("div");
+      popoverDurationHint.className = "tk-settings-hint";
+      popoverDurationHint.textContent = "How long the floating copy popover stays visible before auto-dismissing (in milliseconds).";
+      popoverDurationField.append(popoverDurationLabel, popoverDurationInput, popoverDurationHint);
       const showCopyField = document.createElement("div");
       showCopyField.className = "tk-settings-field";
       const showCopyLabel = document.createElement("label");
@@ -7066,6 +8438,16 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       const showCopyCheckbox = document.createElement("input");
       showCopyCheckbox.type = "checkbox";
       showCopyCheckbox.checked = Config.global.cardFormatterShowCopy !== false;
+      const showTSVField = document.createElement("div");
+      showTSVField.className = "tk-settings-field";
+      const showTSVLabel = document.createElement("label");
+      showTSVLabel.style.display = "flex";
+      showTSVLabel.style.alignItems = "center";
+      showTSVLabel.style.gap = "6px";
+      showTSVLabel.style.cursor = "pointer";
+      const showTSVCheckbox = document.createElement("input");
+      showTSVCheckbox.type = "checkbox";
+      showTSVCheckbox.checked = Config.global.cardFormatterShowTSV !== false;
       const showBRefField = document.createElement("div");
       showBRefField.className = "tk-settings-field";
       const showBRefLabel = document.createElement("label");
@@ -7088,20 +8470,21 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       showGoogleCheckbox.checked = Config.global.cardFormatterShowGoogle !== false;
       const updateOutputModeState = () => {
         const showCopy = showCopyCheckbox.checked;
+        const showTSV = showTSVCheckbox.checked;
         const showBRef = showBRefCheckbox.checked;
         const showGoogle = showGoogleCheckbox.checked;
         const hasSearch = showBRef || showGoogle;
-        if (hasSearch) {
-          outputModeSelect.value = "popover";
-          outputModeSelect.disabled = true;
-          outputModeSelect.title = "Floating Popover is required when Baseball Reference or Google search is enabled.";
-          if (Config.global.cardFormatterOutputMode !== "popover") {
+        if (hasSearch || showTSV) {
+          outputModeSelect.disabled = false;
+          outputModeSelect.title = "Choose Floating Popover or Inline Buttons mode for active actions.";
+          if (Config.global.cardFormatterOutputMode === "clipboard") {
             Config.global.cardFormatterOutputMode = "popover";
-            Log("Config change: global.cardFormatterOutputMode = popover (required by active search actions)", "info");
+            outputModeSelect.value = "popover";
+            Log("Config change: global.cardFormatterOutputMode = popover (clipboard invalid for active actions)", "info");
           }
         } else if (showCopy) {
           outputModeSelect.disabled = false;
-          outputModeSelect.title = "popover: show floating copy button near text. clipboard: auto-copy to clipboard.";
+          outputModeSelect.title = "popover: show floating copy popover. inline: render inline buttons. clipboard: auto-copy.";
         } else {
           outputModeSelect.value = "clipboard";
           outputModeSelect.disabled = true;
@@ -7117,8 +8500,16 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
         updateOutputModeState();
         SettingsUI._persist();
       });
-      showCopyLabel.append(showCopyCheckbox, document.createTextNode("Show Copy Button"));
+      showCopyLabel.append(showCopyCheckbox, document.createTextNode("Show Friendly Copy Button"));
       showCopyField.appendChild(showCopyLabel);
+      showTSVCheckbox.addEventListener("change", () => {
+        Config.global.cardFormatterShowTSV = showTSVCheckbox.checked;
+        Log(`Config change: global.cardFormatterShowTSV = ${showTSVCheckbox.checked}`, "info");
+        updateOutputModeState();
+        SettingsUI._persist();
+      });
+      showTSVLabel.append(showTSVCheckbox, document.createTextNode("Show TSV Copy Button"));
+      showTSVField.appendChild(showTSVLabel);
       showBRefCheckbox.addEventListener("change", () => {
         Config.global.cardFormatterShowBRef = showBRefCheckbox.checked;
         Log(`Config change: global.cardFormatterShowBRef = ${showBRefCheckbox.checked}`, "info");
@@ -7138,9 +8529,9 @@ body { padding-top: var(--tk-toolbar-height, 38px) !important; }
       updateOutputModeState();
       pane.appendChild(
         SettingsUI._buildCollapsibleSection(
-          "Card Name Formatter Settings",
-          [templateField, outputModeField, showCopyField, showBRefField, showGoogleField],
-          "Configure custom copy templates, floating popover output modes, and search actions.",
+          "Player Quick Links Settings",
+          [templateField, tsvTemplateField, ignoredTagsField, tagSeparatorField, tagReplacerField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
+          "Configure custom copy templates, output modes (popover, inline buttons, clipboard), link opening targets, and search actions.",
           false
         )
       );

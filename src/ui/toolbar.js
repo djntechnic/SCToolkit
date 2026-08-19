@@ -10,12 +10,13 @@ import { Log } from '../core/log.js';
 import { Pins, SET_YEAR_REGEX } from '../core/storage.js';
 import { Utils } from '../core/utils.js';
 import { CurrentRun, cancelCurrentExport, exportSetCSV } from '../net/setExport.js';
-import { exportSingleParentSetHierarchy } from '../net/setHierarchyExport.js';
+import { exportSingleParentSetHierarchy, resolveSportFromDocument, resolveYearFromDocument } from '../net/setHierarchyExport.js';
 import { createBadge, renderBadgeSet, getToolbarBadges } from './badges.js';
 import { createBtn, injectStyle } from './dom.js';
 import { icon, installIconSprite } from './icons.js';
 import { TOOLBAR_CSS } from './styles.js';
 import { initDropdown, initDropdownDismissal } from './dropdown.js';
+import { showToast } from './toast.js';
 
 /**
  * Append the shortcut links plus a CSV action for a set.
@@ -35,6 +36,19 @@ export function appendShortcutBadges(
 ) {
   renderBadgeSet(container, sid, {
     include: getToolbarBadges(),
+    onPin: (e) => {
+      e.preventDefault();
+      const pageUrl = window.location.href;
+      const added = Pins.add({
+        id: sid,
+        name: label,
+        url: pageUrl,
+        year: Utils.extractYear(label, pageUrl)
+      });
+      if (!added) return;
+      Toolbar.renderPins();
+      showToast({ message: `Pinned: <b>${Utils.escape.html(label)}</b>` });
+    },
     onExport: (e) => {
       e.preventDefault();
       const fullUrl = Utils.toFullUrl(`/Checklist.cfm/sid/${sid}/`);
@@ -65,16 +79,25 @@ export function cleanDocTitle(rawTitle) {
   // 1. Strip site branding / suffix (e.g. "| Trading Card Database", "- Trading Card Database", "| TCDB", "- TCDB")
   t = t.replace(/\s*([|-])\s*(Trading Card Database|TCDB).*/i, '');
 
-  // 2. Strip collection navigation prefix at start (e.g. "Collection - ", "Collection For Sale/Trade - ", "Collection Wantlist - ", "SuperDan's Collection - ")
-  t = t.replace(/^(Collection(\s+[^-\n]+)?|.*?'s\s+Collection)\s*-\s*/i, '');
-
-  // 3. Strip page context / qualifier suffix preceded by " - " (e.g. " - Inserts and Related Sets", " - For Sale/Trade", " - Wantlist", " - Add Multiples")
+  // 2. Strip page context / collection / section prefixes at start
   t = t.replace(
-    /\s*-\s*(Inserts and Related Sets|Inserts & Related Sets|Inserts|Checklist|Overview|Cards|For Sale\/Trade|For Sale|Trade|Wantlist|Add Multiples(\s+Text)?|Add\/Edit|Member Ratings|Ratings|User Comments|Comments|Price Guide|Trivia|Gallery|Errors\s*\/\s*Variations|Packaging|Documentation)\s*$/i,
+    /^(Collection(\s+[^-\n]+)?|.*?'s\s+Collection|Rookies|Errors(\s*\/\s*Variations)?|Gallery|Packaging|Trivia|Comments|Member\s+Ratings|Ratings|Price\s+Guide|Pricing|Overview|Hall\s+of\s+(?:Famers|Teams|Fame)|Teams|Coaches|Umpires|External\s+Links|Contributors|Sell\s+Sheets(\s*\/\s*Ads)?|Videos|Glossary|Card\s+Rankings)\s*-\s*/i,
     ''
   );
 
-  // 4. Strip any leftover trailing dashes, pipes, colons, or slashes
+  // 3. Strip page context / qualifier suffix
+  t = t.replace(
+    /\s*(?:-\s*|\b(?:Baseball|Basketball|Football|Hockey|Soccer|Racing|Golf|Boxing|MMA|Wrestling|Bowling|Tennis|Track\s+(?:&|and)\s+Field|Multi-Sport|Non-Sport|Gaming|College)\s+)?(Inserts and Related Sets|Inserts & Related Sets|Inserts|Checklist|Overview|Cards|For Sale\/Trade|For Sale|Trade|Wantlist|Add Multiples(\s+Text)?|Add\/Edit|Member Ratings|Ratings|User Comments|Comments|Price Guide|Pricing|Trivia|Gallery|Errors\s*\/\s*Variations|Packaging|Documentation|Teams|External Links|Contributors|Sell Sheets(\s*\/\s*Ads)?|Videos|Glossary|Card Rankings|Forum)\s*$/i,
+    ''
+  );
+
+  // 4. Strip sport/category designation (e.g. "Baseball", "Basketball") when trailing or preceding a set separator (" - ") unless followed by "Sets" (e.g. "2022 Baseball Sets")
+  t = t.replace(
+    /\s+\b(Baseball|Basketball|Football|Hockey|Soccer|Racing|Golf|Boxing|MMA|Wrestling|Bowling|Tennis|Track\s+(?:&|and)\s+Field|Multi-Sport|Non-Sport|Gaming|College)\b(?=\s*-|\s*$)(?!\s+Sets\b)/i,
+    ''
+  );
+
+  // 5. Strip any leftover trailing dashes, pipes, colons, or slashes
   t = t.replace(/\s*[-|:/]\s*$/g, '');
 
   return t.trim();
@@ -210,7 +233,18 @@ export const Toolbar = {
       return acc;
     }, {});
 
-    Object.keys(grouped).sort((a, b) => b.localeCompare(a)).forEach((year) => {
+    const sortedYears = Object.keys(grouped).sort((a, b) => {
+      if (a === 'Misc') return 1;
+      if (b === 'Misc') return -1;
+      const numA = parseInt(a, 10);
+      const numB = parseInt(b, 10);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB;
+      }
+      return a.localeCompare(b);
+    });
+
+    sortedYears.forEach((year) => {
       const dropDiv = document.createElement('div');
       dropDiv.className = 'tk-dropdown';
 
@@ -271,28 +305,90 @@ export const Toolbar = {
 
     const currentSid = extractSid(window.location.href);
 
-    const scrollTopBtn = document.createElement('button');
-    scrollTopBtn.type = 'button';
-    scrollTopBtn.className = 'tk-scroll-btn';
-    scrollTopBtn.innerHTML = `${icon('chevronUp')}<span>Top</span>`;
-    scrollTopBtn.title = 'Scroll to top of page';
-    scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-    container.appendChild(scrollTopBtn);
+    const displayMode = Config.global?.toolbarButtonDisplay || 'both';
 
-    const scrollBottomBtn = document.createElement('button');
-    scrollBottomBtn.type = 'button';
-    scrollBottomBtn.className = 'tk-scroll-btn';
-    scrollBottomBtn.innerHTML = `${icon('chevronDown')}<span>Bottom</span>`;
-    scrollBottomBtn.title = 'Scroll to bottom of page';
-    scrollBottomBtn.addEventListener('click', () => {
-      const footer = document.querySelector('#bottomnav, footer, #footer, .footer');
-      if (footer) {
-        footer.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else {
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      }
-    });
-    container.appendChild(scrollBottomBtn);
+    const rawHotlinks = Config.global?.hotlinks || [];
+    const hotlinks = Array.isArray(rawHotlinks) ? [...rawHotlinks] : [];
+    hotlinks
+      .filter((hl) => hl.enabled !== false)
+      .sort((a, b) => Number(a.placement || 0) - Number(b.placement || 0))
+      .forEach((hl) => {
+        const isViewAllC = hl.action === 'viewAllC' || hl.id === 'year' || (hl.url && hl.url.includes('ViewAllC.cfm'));
+        const isAction = hl.action || hl.url === '#top' || hl.url === '#bottom' || isViewAllC;
+        const targetMode = hl.target || 'inline';
+        const el = document.createElement(isAction ? 'button' : 'a');
+        el.className = 'tk-scroll-btn tk-hotlink-btn';
+        el.title = hl.tooltip || hl.text || '';
+
+        if (isAction) {
+          el.type = 'button';
+          el.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (hl.action === 'scrollToTop' || hl.url === '#top') {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else if (hl.action === 'scrollToBottom' || hl.url === '#bottom') {
+              const footer = document.querySelector('#bottomnav, footer, #footer, .footer');
+              if (footer) {
+                footer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              } else {
+                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+              }
+            } else if (isViewAllC) {
+              const sport = resolveSportFromDocument(document);
+              const year = resolveYearFromDocument('', document);
+              const targetUrl = `/ViewAllC.cfm/sp/${encodeURIComponent(sport)}/year/${encodeURIComponent(year)}`;
+              if (targetMode === 'background') {
+                Utils.openInTab(targetUrl, true);
+              } else {
+                window.location.href = Utils.toFullUrl(targetUrl);
+              }
+            } else if (hl.url) {
+              if (targetMode === 'background') {
+                Utils.openInTab(hl.url, true);
+              } else {
+                window.location.href = Utils.toFullUrl(hl.url);
+              }
+            }
+          });
+        } else {
+          el.href = Utils.toFullUrl(hl.url);
+          if (targetMode === 'background') {
+            el.target = '_blank';
+            el.addEventListener('click', (e) => {
+              e.preventDefault();
+              Utils.openInTab(hl.url, true);
+            });
+          }
+        }
+
+        const iconName = hl.icon || (hl.id === 'top' ? 'chevronUp' : hl.id === 'bottom' ? 'chevronDown' : hl.id === 'search' ? 'search' : hl.id === 'year' ? 'calendar' : null);
+        const hasIcon = Boolean(iconName);
+        const hasText = Boolean(hl.text && hl.text.trim());
+
+        let renderIcon = false;
+        let renderText = false;
+
+        if (displayMode === 'both') {
+          renderIcon = hasIcon;
+          renderText = hasText;
+        } else if (displayMode === 'icon') {
+          renderIcon = hasIcon;
+          renderText = !hasIcon && hasText;
+        } else if (displayMode === 'text') {
+          renderText = hasText;
+          renderIcon = !hasText && hasIcon;
+        }
+
+        if (!renderIcon && !renderText) {
+          renderIcon = hasIcon;
+          renderText = hasText;
+        }
+
+        const iconHtml = renderIcon ? icon(iconName) : '';
+        const textHtml = renderText ? `<span>${Utils.escape.html(hl.text || '')}</span>` : '';
+        el.innerHTML = `${iconHtml}${textHtml}`;
+        container.appendChild(el);
+      });
 
     if (Routes.isCardPage()) {
       const titleNode = document.querySelector('#setname-content h1') || document.querySelector('#main-content-area h1');
@@ -321,16 +417,38 @@ export const Toolbar = {
     if (currentSid && Routes.isSetPage()) {
       let setName = cleanDocTitle();
 
-      if (!setName) {
+      const genericLabels = [
+        'change log', 'forum', 'change log prices', 'recently added',
+        'inaccuracy reports', 'sctoolkit active', 'set view'
+      ];
+
+      if (!setName || genericLabels.includes(setName.toLowerCase())) {
         const setHeader = document.querySelector('#setname-content h1')
           || document.querySelector('#main-content-area h2')
-          || document.querySelector('#main-content-area h1');
+          || document.querySelector('#main-content-area h1')
+          || document.querySelector('h1.site');
         const subHeader = document.querySelector('#setname-content h3') || document.querySelector('#main-content-area h3');
 
-        if (setHeader && !setHeader.innerText.toLowerCase().includes('set links')) {
+        if (setHeader && !setHeader.innerText.toLowerCase().includes('set links') && !setHeader.innerText.toLowerCase().includes('change log')) {
           setName = setHeader.innerText.replace(/\s*-\s*Cards$/i, '').trim();
         }
-        if (subHeader && !setName.includes(subHeader.innerText.trim())) {
+
+        if (!setName || genericLabels.includes(setName.toLowerCase())) {
+          const viewSetLink = document.querySelector(`a[href*="ViewSet.cfm/sid/${currentSid}"], a[href*="ViewSet.cfm?sid=${currentSid}"], a[href*="/sid/${currentSid}/"]`);
+          if (viewSetLink) {
+            const titleAttr = viewSetLink.getAttribute('title');
+            if (titleAttr && titleAttr.toLowerCase().startsWith('navigate to ')) {
+              setName = titleAttr.replace(/^navigate to /i, '').trim();
+            } else {
+              const linkText = viewSetLink.innerText.trim();
+              if (linkText && !genericLabels.includes(linkText.toLowerCase()) && linkText !== 'View') {
+                setName = cleanDocTitle(linkText);
+              }
+            }
+          }
+        }
+
+        if (subHeader && setName && !setName.includes(subHeader.innerText.trim())) {
           setName += (setName ? ' - ' : '') + subHeader.innerText.trim();
         }
       }

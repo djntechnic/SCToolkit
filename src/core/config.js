@@ -74,7 +74,10 @@ export const DEFAULT_CONFIG = {
     },
     addMultiplesEnhancer: {
       enabled: true,
-      urlMatch: [{ pattern: "/collectionaddmultiples", exclude: false }],
+      urlMatch: [
+        { pattern: "/collectionaddmultiples", exclude: false },
+        { pattern: "/collectionaddm", exclude: false }
+      ],
       actions: {},
     },
     csvExportEngine: {
@@ -125,6 +128,15 @@ export const DEFAULT_CONFIG = {
       urlMatch: [{ pattern: "/viewcollection\\.cfm", exclude: false }],
       actions: {}
     },
+    quickAddGridEnhancer: {
+      enabled: true,
+      urlMatch: [
+        { pattern: "/viewcollection\\.cfm", exclude: false },
+        { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
+        { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
+      ],
+      actions: {}
+    },
   },
   global: {
     exportBaseDelayMs: EXPORT_CONFIG.baseDelayMs,
@@ -158,9 +170,16 @@ export const DEFAULT_CONFIG = {
     settingsSaveDebounceMs: 400,
     cardFormatterTemplate:
       '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}',
+    cardFormatterTSVTemplate:
+      '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}',
+    cardFormatterIgnoredTags: 'ASR, LL, TC, CL',
+    cardFormatterTagSeparator: '',
+    cardFormatterTagReplacer: '',
     cardFormatterOutputMode: "popover",
+    cardFormatterLinkTarget: "background",
     cardFormatterPopoverDurationMs: 4000,
     cardFormatterShowCopy: true,
+    cardFormatterShowTSV: true,
     cardFormatterShowBRef: true,
     cardFormatterShowGoogle: true,
     quantityCounterPosition: "bottom-right",
@@ -174,6 +193,8 @@ export const DEFAULT_CONFIG = {
     defaultCollectionId: 6,
     toolbarBadges: [
       { key: 'CHECKLIST', enabled: true },
+      { key: 'PIN', enabled: true },
+      { key: 'YEAR', enabled: true },
       { key: 'INSERTS', enabled: true },
       { key: 'PARALLELS', enabled: true },
       { key: 'FOR_SALE', enabled: true },
@@ -187,11 +208,57 @@ export const DEFAULT_CONFIG = {
       { key: 'PIN', enabled: true },
       { key: 'CSV', enabled: true },
       { key: 'HIERARCHY', enabled: true },
+      { key: 'YEAR', enabled: true },
       { key: 'INSERTS', enabled: true },
       { key: 'PARALLELS', enabled: true },
       { key: 'FOR_SALE', enabled: true },
       { key: 'MULTI', enabled: true },
       { key: 'WANTLIST', enabled: true }
+    ],
+    hotlinks: [
+      {
+        id: 'top',
+        url: '#top',
+        text: 'Top',
+        tooltip: 'Scroll to top of page',
+        placement: 1,
+        enabled: true,
+        icon: 'chevronUp',
+        action: 'scrollToTop',
+        target: 'inline'
+      },
+      {
+        id: 'bottom',
+        url: '#bottom',
+        text: 'Bottom',
+        tooltip: 'Scroll to bottom of page',
+        placement: 2,
+        enabled: true,
+        icon: 'chevronDown',
+        action: 'scrollToBottom',
+        target: 'inline'
+      },
+      {
+        id: 'search',
+        url: 'https://www.tcdb.com/AdvancedSearch.cfm',
+        text: 'Search',
+        tooltip: 'Perform Advanced Search',
+        placement: 3,
+        enabled: true,
+        icon: 'search',
+        target: 'inline'
+      },
+      {
+        id: 'year',
+        url: '/ViewAllC.cfm',
+        text: 'Year',
+        tooltip: 'View All Sets for Year in Collection',
+        placement: 4,
+        enabled: true,
+        icon: 'calendar',
+        action: 'viewAllC',
+        target: 'inline'
+      }
     ],
   },
 };
@@ -290,6 +357,25 @@ export const SettingsStore = {
           `Stored config contains obsolete global setting '${key}' — pruned during migration.`,
           "warn",
         );
+      }
+    });
+
+    ['toolbarBadges', 'setLinkBadges'].forEach((badgeListKey) => {
+      if (Array.isArray(global[badgeListKey])) {
+        const defaultList = DEFAULT_CONFIG.global[badgeListKey] || [];
+        const storedList = global[badgeListKey];
+        const storedKeys = new Set(
+          storedList.map((item) => (typeof item === 'string' ? item : item.key))
+        );
+
+        const missingDefaults = defaultList.filter((defaultItem) => {
+          const key = typeof defaultItem === 'string' ? defaultItem : defaultItem.key;
+          return !storedKeys.has(key);
+        });
+
+        if (missingDefaults.length > 0) {
+          global[badgeListKey] = [...storedList, ...missingDefaults];
+        }
       }
     });
 

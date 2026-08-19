@@ -169,6 +169,8 @@ function installFilter(mainContent) {
   Log(`Checklist filter indexed ${index.length} data item(s).`, 'info');
   recordContract('checklistEnhancer', `indexed ${index.length} data item(s)`, index.length > 0);
 
+  const hasCheckboxes = index.some(({ el }) => el.querySelector('input[type="checkbox"]') !== null);
+  Log(`Checklist filter: hasCheckboxes=${hasCheckboxes}`, 'debug');
   const placeholderText = getFilterPlaceholder();
 
   const filterWrap = document.createElement('div');
@@ -182,6 +184,9 @@ function installFilter(mainContent) {
         ${icon('x')}
       </button>
     </div>
+    <button type="button" id="tk-checklist-filter-select-all" class="sctk-btn" title="Select all visible matching items" aria-label="Select all visible items" style="display: none;">
+      Select All
+    </button>
     <span id="tk-filter-count" aria-live="polite"></span>
   `;
   targetElement.before(filterWrap);
@@ -189,6 +194,7 @@ function installFilter(mainContent) {
   const countEl = filterWrap.querySelector('#tk-filter-count');
   const input = filterWrap.querySelector('#tk-checklist-filter');
   const clearBtn = filterWrap.querySelector('#tk-checklist-filter-clear');
+  const selectAllBtn = filterWrap.querySelector('#tk-checklist-filter-select-all');
 
   const updateClearVisibility = () => {
     if (clearBtn) {
@@ -199,6 +205,11 @@ function installFilter(mainContent) {
   const run = debounce((term) => {
     const visible = applyFilter(index, term);
     countEl.textContent = term === '' ? '' : `${visible} of ${index.length}`;
+    if (selectAllBtn) {
+      const showBtn = hasCheckboxes && term !== '' && visible > 0;
+      selectAllBtn.style.display = showBtn ? 'inline-flex' : 'none';
+    }
+    Log(`Checklist filter: applied term "${term}" (${visible} of ${index.length} visible)`, 'debug');
   }, Config.global.checklistFilterDebounceMs);
 
   const performFilter = () => {
@@ -222,6 +233,22 @@ function installFilter(mainContent) {
       input.value = '';
       input.focus();
       performFilter();
+    });
+  }
+
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', () => {
+      let count = 0;
+      index.forEach(({ el }) => {
+        if (!el.classList.contains(HIDDEN_CLASS)) {
+          const cb = el.querySelector('input[type="checkbox"]');
+          if (cb && !cb.checked) {
+            cb.click();
+            count++;
+          }
+        }
+      });
+      Log(`Checklist filter: "Select All" clicked, checked ${count} matching item checkbox(es).`, 'debug');
     });
   }
 

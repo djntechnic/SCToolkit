@@ -10,7 +10,7 @@
 import { Config } from '../core/config.js';
 import { recordContract } from '../core/contracts.js';
 import { Log } from '../core/log.js';
-import { InputIndex } from './inputOptimization.js';
+import { InputIndex, isEligibleInput } from './inputOptimization.js';
 
 /** How long to keep re-asserting focus if the page keeps taking it away. */
 export const FOCUS_DEADLINE_MS = 1200;
@@ -623,9 +623,17 @@ export function showAddedDetailsModal(batchData, root = document) {
 /**
  * Focus the first quantity field, and keep it focused against the page's own
  * scripts — but stop the instant the user does anything.
+ *
+ * @param {Document|HTMLElement} [root=document]
  */
-function focusFirstQuantityField() {
+export function focusFirstQuantityField(root = (typeof document !== 'undefined' ? document : null)) {
+  if (!root) return;
+  const doc = root.ownerDocument || (root.nodeType === 9 ? root : (typeof document !== 'undefined' ? document : null));
+  if (!doc) return;
+
   const target = (() => {
+    const singleQtyInput = root.querySelector ? root.querySelector('input#Quantity, input[name="Quantity"]') : null;
+    if (singleQtyInput && isEligibleInput(singleQtyInput)) return singleQtyInput;
     const inputs = InputIndex.getValidInputs();
     return inputs.find((el) => el.value === '0') || inputs[0] || null;
   })();
@@ -639,17 +647,21 @@ function focusFirstQuantityField() {
   const stop = () => {
     if (cancelled) return;
     cancelled = true;
-    USER_INTENT_EVENTS.forEach((type) => document.removeEventListener(type, stop, true));
+    USER_INTENT_EVENTS.forEach((type) => doc.removeEventListener(type, stop, true));
   };
 
-  USER_INTENT_EVENTS.forEach((type) => document.addEventListener(type, stop, true));
+  USER_INTENT_EVENTS.forEach((type) => doc.addEventListener(type, stop, true));
 
   const assert = () => {
     if (cancelled) return;
 
-    if (document.activeElement !== target) {
-      target.focus({ preventScroll: true });
-      target.select();
+    if (doc.activeElement !== target) {
+      if (typeof target.focus === 'function') {
+        target.focus({ preventScroll: true });
+      }
+      if (typeof target.select === 'function') {
+        target.select();
+      }
     }
     autoScrollIfOutsideMiddle80(target);
 
@@ -662,6 +674,80 @@ function focusFirstQuantityField() {
   };
 
   assert();
+}
+
+/**
+ * Find the primary submit button on the Add Multiples form or page.
+ *
+ * @param {Document|HTMLElement} [root=document]
+ * @returns {HTMLButtonElement|HTMLInputElement|null}
+ */
+export function getSubmitButton(root = (typeof document !== 'undefined' ? document : null)) {
+  if (!root || typeof root.querySelector !== 'function') return null;
+
+  const form = root.querySelector ? (root.querySelector('form#add') || root.querySelector('form[name="add"]') || root.querySelector('form[action*="CollectionAddMultiples"]') || root.querySelector('form')) : null;
+  const scope = form || root;
+
+  let btn = scope.querySelector('button[type="submit"].btn-primary, button[type="submit"]');
+  if (btn) return btn;
+
+  btn = scope.querySelector('input[type="submit"]');
+  if (btn) return btn;
+
+  btn = scope.querySelector('.btn-primary');
+  if (btn) return btn;
+
+  const buttons = Array.from(scope.querySelectorAll('button'));
+  btn = buttons.find((b) => (b.textContent || '').trim().toLowerCase().includes('add'));
+  if (btn) return btn;
+
+  return null;
+}
+
+/**
+ * Setup keydown listener so that pressing Enter in the last quantity row
+ * moves focus to the 'Add' submit button at the bottom of the page.
+ *
+ * @param {Document|HTMLElement} [root=document]
+ */
+export function setupLastRowEnterHandler(root = (typeof document !== 'undefined' ? document : null)) {
+  if (!root || typeof root.addEventListener !== 'function') return;
+
+  root.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.code !== 'NumpadEnter') return;
+
+    const doc = root.ownerDocument || (root.nodeType === 9 ? root : (typeof document !== 'undefined' ? document : null));
+    const active = (doc && doc.activeElement) || (typeof document !== 'undefined' ? document.activeElement : null);
+
+    if (!active || active.tagName !== 'INPUT') return;
+    if (active.id === 'tk-checklist-filter' || active.name?.toLowerCase() === 'pageindex' || active.id?.toLowerCase() === 'pageindex') return;
+
+    const inputs = InputIndex.getValidInputs();
+    if (!inputs || inputs.length === 0) return;
+
+    const index = inputs.indexOf(active);
+    if (index === -1) return;
+
+    if (index === inputs.length - 1) {
+      const submitBtn = getSubmitButton(root);
+      if (submitBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof submitBtn.focus === 'function') {
+          try {
+            submitBtn.focus({ preventScroll: true });
+          } catch {
+            submitBtn.focus();
+          }
+          if (doc && doc.activeElement !== submitBtn) {
+            submitBtn.focus();
+          }
+        }
+        autoScrollIfOutsideMiddle80(submitBtn);
+        Log('Add Multiples: Focus moved from last quantity input row to Add button.', 'info');
+      }
+    }
+  }, true);
 }
 
 export function initAddMultiplesEnhancer(root = (typeof document !== 'undefined' ? document : null)) {
@@ -689,7 +775,9 @@ export function initAddMultiplesEnhancer(root = (typeof document !== 'undefined'
   setupDirtyTracking(root);
   setupBeforeUnloadWarning(typeof window !== 'undefined' ? window : null, root);
   setupSubmitHandler(root);
+  setupLastRowEnterHandler(root);
   checkAndHandlePostReloadSuccess(root);
 
-  focusFirstQuantityField();
+  focusFirstQuantityField(root);
 }
+

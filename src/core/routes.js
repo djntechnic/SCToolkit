@@ -9,6 +9,8 @@
 
 const path = () => window.location.pathname.toLowerCase();
 
+import { extractSid } from './sid.js';
+
 /** Path fragments that identify a page belonging to a single card set. */
 const SET_PAGE_PREDICATES = [
   'isChecklist',
@@ -51,14 +53,14 @@ export const Routes = {
     path().includes('/year/'),
   isForSaleTrade: () => path().includes('/viewcollectionforsaletrade.cfm'),
   isWantlist: () => path().includes('/viewcollectionwantlist.cfm'),
-  isAddMultiples: () => path().includes('/collectionaddmultiples'),
+  isAddMultiples: () => path().includes('/collectionaddmultiples') || path().includes('/collectionaddm'),
 
   /**
    * True on any page scoped to one set. Composed from the individual
    * predicates rather than re-listing the same seven path fragments, so adding
    * a set-scoped route cannot leave this out of date.
    */
-  isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()),
+  isSetPage: () => SET_PAGE_PREDICATES.some((key) => Routes[key]()) || !!extractSid(typeof window !== 'undefined' ? window.location.href : ''),
 
   hasPagination: (root = document) => !path().includes('addmultiples') && (!!root.querySelector('.pagination') || Routes.isSetPage() || Routes.isCollection() || Routes.isPlayerCollection())
 };

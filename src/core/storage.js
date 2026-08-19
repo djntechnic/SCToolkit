@@ -58,11 +58,43 @@ export const Pins = {
    */
   all: () => getValue(PINNED_SETS_KEY, []),
 
+  /**
+   * Sort an array of pins (or the persisted list) by Year (newest first),
+   * then by Set Name (alphabetical A-Z).
+   *
+   * @param {Array<{id: string, name: string, url: string, year: string, enabled?: boolean}>} [pins]
+   * @returns {Array<{id: string, name: string, url: string, year: string, enabled?: boolean}>}
+   */
+  sort: (pins) => {
+    const list = pins || Pins.all();
+    list.sort((a, b) => {
+      const yearA = (a.year && SET_YEAR_REGEX.test(a.year)) ? a.year : (Utils.extractYear(a.name, a.url) || 'Misc');
+      const yearB = (b.year && SET_YEAR_REGEX.test(b.year)) ? b.year : (Utils.extractYear(b.name, b.url) || 'Misc');
+
+      if (yearA !== yearB) {
+        if (yearA === 'Misc') return 1;
+        if (yearB === 'Misc') return -1;
+        const numA = parseInt(yearA, 10);
+        const numB = parseInt(yearB, 10);
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return numA - numB;
+        }
+        return yearA.localeCompare(yearB);
+      }
+
+      const nameA = (a.name || '').trim();
+      const nameB = (b.name || '').trim();
+      return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    return list;
+  },
+
   /** @param {{id: string, name: string, url: string, year: string}} pin */
   add: (pin) => {
     const pins = Pins.all();
     if (pins.find((p) => p.id === pin.id)) return false;
     pins.push(pin);
+    Pins.sort(pins);
     setValue(PINNED_SETS_KEY, pins);
     return true;
   },
@@ -70,36 +102,6 @@ export const Pins = {
   /** @param {string} id */
   remove: (id) => {
     setValue(PINNED_SETS_KEY, Pins.all().filter((p) => p.id !== id));
-  },
-
-  /**
-   * Replace the entire stored pin list in one write.
-   *
-   * Used by drag-and-drop reordering: the caller assembles the new order and
-   * passes it here so storage is always consistent with the UI.
-   *
-   * @param {Array<{id: string, name: string, url: string, year: string, enabled?: boolean}>} pins
-   */
-  reorder: (pins) => {
-    setValue(PINNED_SETS_KEY, pins);
-  },
-
-  /**
-   * Flip the `enabled` field for a single pin and persist.
-   *
-   * Pins with no `enabled` field are treated as enabled; toggling them once
-   * sets `enabled: false`.
-   *
-   * @param {string} id
-   * @returns {boolean} the new enabled state, or `true` if pin not found
-   */
-  toggle: (id) => {
-    const pins = Pins.all();
-    const pin = pins.find((p) => p.id === id);
-    if (!pin) return true;
-    pin.enabled = !(pin.enabled !== false); // treat absent as true
-    setValue(PINNED_SETS_KEY, pins);
-    return pin.enabled;
   }
 };
 

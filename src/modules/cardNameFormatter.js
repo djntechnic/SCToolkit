@@ -12,6 +12,96 @@ import { Utils } from "../core/utils.js";
 import { debounce } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { showToast } from "../ui/toast.js";
+import { cleanDocTitle } from "../ui/toolbar.js";
+
+/**
+ * Resolve full set title using Toolbar title logic.
+ * @param {Document} [doc=document]
+ * @returns {string}
+ */
+export function getToolbarTitle(doc = document) {
+  const rawTitle = doc ? doc.title : "";
+  let title = cleanDocTitle(rawTitle);
+
+  const genericLabels = [
+    "",
+    "collection",
+    "change log",
+    "forum",
+    "change log prices",
+    "recently added",
+    "inaccuracy reports",
+    "sctoolkit active",
+    "set view",
+    "browse",
+  ];
+
+  if (!title || genericLabels.includes(title.toLowerCase())) {
+    const setWrapperTitle = doc.querySelector?.(".set-title, #setHeader .set-title");
+    if (setWrapperTitle && setWrapperTitle.textContent.trim()) {
+      title = cleanDocTitle(setWrapperTitle.textContent.trim());
+    }
+  }
+
+  if (!title || genericLabels.includes(title.toLowerCase())) {
+    const setHeader =
+      doc.querySelector?.("#setname-content h1") ||
+      doc.querySelector?.("#main-content-area h2") ||
+      doc.querySelector?.("#main-content-area h1") ||
+      doc.querySelector?.("h1.site");
+    const subHeader =
+      doc.querySelector?.("#setname-content h3") ||
+      doc.querySelector?.("#main-content-area h3");
+
+    if (
+      setHeader &&
+      !setHeader.textContent.toLowerCase().includes("set links") &&
+      !setHeader.textContent.toLowerCase().includes("change log")
+    ) {
+      title = setHeader.textContent.replace(/\s*-\s*Cards$/i, "").trim();
+    }
+
+    if (
+      subHeader &&
+      title &&
+      !title.toLowerCase().includes(subHeader.textContent.trim().toLowerCase())
+    ) {
+      title += ` - ${subHeader.textContent.trim()}`;
+    }
+  }
+
+  return title;
+}
+
+function isActionLink(a) {
+  const href = a?.href || "";
+  return (
+    href.includes("CollectionAdd") ||
+    href.includes("CollectionEdit") ||
+    href.includes("CollectionWant") ||
+    href.includes("CollectionStatus") ||
+    href.includes("CollectionMove") ||
+    href.includes("CollectionRemove") ||
+    href.includes("SalesLinks") ||
+    href.includes("MODE=") ||
+    href.includes("Team.cfm") ||
+    href.includes("Person.cfm")
+  );
+}
+
+function getCleanCellText(cell) {
+  if (!cell) return "";
+  const doc = cell.ownerDocument || (typeof document !== "undefined" ? document : null);
+  const clone = cell.cloneNode(true);
+  clone.querySelectorAll(".tk-player-quick-links-inline, figcaption, .figure-caption").forEach((el) => el.remove());
+  if (doc) {
+    clone.querySelectorAll("br").forEach((br) => {
+      const space = doc.createTextNode(" ");
+      br.parentNode?.replaceChild(space, br);
+    });
+  }
+  return clone.textContent.replace(/\s+/g, " ").trim();
+}
 
 /**
  * Contextual Metadata Extractor and Compiler.
@@ -41,47 +131,54 @@ export const CardMetadataExtractor = {
     const selectedText = selection.toString().trim();
     if (!selectedText) return null;
 
-    // 1. Year & Set Name Resolution
+    // 1. Year, Set Name & Insert Set Name Resolution via Toolbar Title Logic
+    const toolbarTitle = getToolbarTitle(doc);
     let year = "";
     let setName = "";
-    const setHeader =
-      doc.querySelector("#setname-content h1") ||
-      doc.querySelector("#main-content-area h1");
-    if (setHeader) {
-      const headerText = setHeader.textContent
-        .replace(/\s*-\s*Cards$/i, "")
-        .trim();
-      const yearMatch = headerText.match(/^(\d{4})\s+(.+)/);
+    let insertSetName = "";
+
+    if (toolbarTitle) {
+      const yearMatch = toolbarTitle.match(/^(\d{4}(?:-\d{2,4})?)\s+(.+)/);
       if (yearMatch) {
         year = yearMatch[1];
-        setName = yearMatch[2];
+        const rest = yearMatch[2];
+        const dashIdx = rest.indexOf("-");
+        if (dashIdx !== -1) {
+          setName = rest.slice(0, dashIdx).trim();
+          insertSetName = rest.slice(dashIdx + 1).trim();
+        } else {
+          setName = rest.trim();
+        }
       } else {
-        setName = headerText;
+        const dashIdx = toolbarTitle.indexOf("-");
+        if (dashIdx !== -1) {
+          setName = toolbarTitle.slice(0, dashIdx).trim();
+          insertSetName = toolbarTitle.slice(dashIdx + 1).trim();
+        } else {
+          setName = toolbarTitle.trim();
+        }
       }
-    }
-    const subHeader = doc.querySelector("#setname-content h3");
-    if (subHeader && setName) {
-      setName += ` ${subHeader.textContent.trim()}`;
-    } else if (subHeader && !setName) {
-      setName = subHeader.textContent.trim();
     }
 
     // 2. Card Number Resolution
     let cardNo = "";
     let cardLink = null;
-    const cardLinks = row.querySelectorAll(
-      'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="cid="]',
+    const cardLinks = Array.from(
+      row.querySelectorAll(
+        'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]',
+      ),
+    ).filter(
+      (a) =>
+        !a.querySelector("img") &&
+        !a.querySelector("i") &&
+        a.textContent.trim().length > 0 &&
+        !isActionLink(a),
     );
-    for (const link of cardLinks) {
-      if (link.querySelector("img")) continue;
-      const text = link.textContent.trim();
-      if (text) {
-        cardNo = text;
-        cardLink = link;
-        break;
-      }
-    }
-    if (!cardNo) {
+
+    if (cardLinks.length > 0) {
+      cardNo = cardLinks[0].textContent.trim();
+      cardLink = cardLinks[0];
+    } else {
       const firstTd = row.querySelector("td");
       if (firstTd) {
         const text = firstTd.textContent.trim();
@@ -98,6 +195,41 @@ export const CardMetadataExtractor = {
     let tags = "";
     let printRun = "";
     const personLink = row.querySelector('a[href*="Person.cfm"]');
+    const teamLink = row.querySelector('a[href*="Team.cfm"]');
+
+    const ignoredTagsRaw = Config.global.cardFormatterIgnoredTags ?? "ASR, LL, TC, CL";
+    const ignoredTagsSet = new Set(
+      String(ignoredTagsRaw)
+        .split(",")
+        .map((t) => t.trim().toUpperCase())
+        .filter(Boolean)
+    );
+
+    const tagSeparatorRaw = Config.global.cardFormatterTagSeparator;
+    const tagSeparator =
+      tagSeparatorRaw !== undefined &&
+      tagSeparatorRaw !== null &&
+      String(tagSeparatorRaw) !== ""
+        ? String(tagSeparatorRaw)
+        : " ";
+
+    const tagReplacerRaw = Config.global.cardFormatterTagReplacer ?? "";
+    const tagReplacements = new Map();
+    if (tagReplacerRaw) {
+      String(tagReplacerRaw)
+        .split(/,|\n/)
+        .forEach((pair) => {
+          const colonIdx = pair.indexOf(":");
+          if (colonIdx !== -1) {
+            const key = pair.slice(0, colonIdx).trim().toUpperCase();
+            const val = pair.slice(colonIdx + 1).trim();
+            if (key && val) {
+              tagReplacements.set(key, val);
+            }
+          }
+        });
+    }
+
     const subjectTd = personLink
       ? personLink.closest("td")
       : cardLink
@@ -105,45 +237,56 @@ export const CardMetadataExtractor = {
         : null;
 
     if (subjectTd) {
-      const rawSubject = subjectTd.textContent.replace(/\s+/g, " ").trim();
+      const rawSubject = getCleanCellText(subjectTd);
       const tokens = rawSubject.split(" ");
       const tagParts = [];
 
       tokens.forEach((token) => {
         const clean = token.replace(/,/g, "").trim();
-        if (/^SN\d+$/i.test(clean)) {
-          printRun = clean.replace(/^SN/i, "");
+        if (/^(?:SN|PR)\d+$/i.test(clean)) {
+          printRun = clean.replace(/^(?:SN|PR)/i, "");
         } else if (
           /^[A-Z0-9]{2,4}$/.test(clean) &&
           !/^(Jr|Sr|II|III|IV|V)$/i.test(clean)
         ) {
-          tagParts.push(clean);
+          const upperClean = clean.toUpperCase();
+          let targetTag = clean;
+          if (tagReplacements.has(upperClean)) {
+            targetTag = tagReplacements.get(upperClean);
+          }
+          if (targetTag && !ignoredTagsSet.has(targetTag.toUpperCase())) {
+            tagParts.push(targetTag);
+          }
         }
       });
-      tags = tagParts.join(" ");
+      tags = tagParts.join(tagSeparator);
     }
 
-    // 4. Player / Subject Name Resolution (Full Detail, not partial highlight snippet)
+    // 4. Player / Subject Name Resolution
     let playerName = "";
     if (personLink) {
       playerName = personLink.textContent.trim();
-    } else if (subjectTd) {
-      let rawName = subjectTd.textContent.replace(/\s+/g, " ").trim();
-      // Remove tags and print run tokens from full subject cell text
+    } else if (cardLinks.length >= 2) {
+      playerName = cardLinks[1].textContent.trim();
+    }
+
+    if (!playerName && subjectTd) {
+      let rawName = getCleanCellText(subjectTd);
       if (printRun) {
-        rawName = rawName.replace(new RegExp(`\\bSN${printRun}\\b`, "i"), "");
+        rawName = rawName.replace(new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"), "");
       }
       if (tags) {
-        const tagList = tags.split(" ");
+        const tagList = tags.split(tagSeparator);
         tagList.forEach((t) => {
-          const escT = String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const trimmedTag = String(t).trim();
+          if (!trimmedTag) return;
+          const escT = trimmedTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           rawName = rawName.replace(new RegExp(`\\b${escT}\\b`, "g"), "");
         });
       }
       playerName = rawName.replace(/\s+/g, " ").trim();
     }
 
-    // Fallback if no person link or subject cell name found
     if (!playerName) {
       playerName = selectedText;
       if (cardNo) {
@@ -162,13 +305,34 @@ export const CardMetadataExtractor = {
       if (!playerName) playerName = selectedText;
     }
 
+    // 5. Player Team Resolution
+    let playerTeam = "";
+    if (teamLink) {
+      playerTeam = teamLink.textContent.trim();
+    } else if (cardLinks.length >= 3 && !cardLinks[2].querySelector("img")) {
+      const thirdText = cardLinks[2].textContent.trim();
+      if (thirdText && thirdText !== cardNo) {
+        playerTeam = thirdText;
+      }
+    } else if (subjectTd && subjectTd.nextElementSibling) {
+      const nextTd = subjectTd.nextElementSibling;
+      const linkInNext = nextTd.querySelector("a");
+      if (linkInNext) {
+        playerTeam = linkInNext.textContent.trim();
+      } else {
+        playerTeam = getCleanCellText(nextTd);
+      }
+    }
+
     return {
       Year: year,
       SetName: setName,
+      InsertSetName: insertSetName,
       PlayerName: playerName,
+      PlayerTeam: playerTeam,
       CardNo: cardNo,
       Tags: tags,
-      PR: printRun ? `/${printRun}` : "",
+      PR: printRun ? String(printRun).replace(/^\//, "") : "",
     };
   },
 
@@ -180,7 +344,8 @@ export const CardMetadataExtractor = {
    */
   compile: function (template, tokens) {
     if (!tokens || !template) return "";
-    let result = template;
+    const isTSV = template.includes("\t") || template.includes("\\t");
+    let result = template.replace(/\\t/g, "\t");
     if (!tokens.CardNo) {
       result = result.replace(/#\{CardNo\}/g, "{CardNo}");
     }
@@ -189,6 +354,9 @@ export const CardMetadataExtractor = {
       const val = (tokens[key] || "").trim();
       result = result.replace(pattern, val);
     });
+    if (isTSV) {
+      return result;
+    }
     // Sanitize extra consecutive spaces and orphaned trailing/leading delimiters
     return result
       .replace(/\s+/g, " ")
@@ -262,8 +430,6 @@ export const FormattedCopyPopover = {
       copyBtn.innerHTML = icon("copy");
       copyBtn.title = "Copy formatted text";
       copyBtn.setAttribute("aria-label", "Copy formatted text");
-      copyBtn.style.height = "20px";
-      copyBtn.style.padding = "0 6px";
 
       copyBtn.addEventListener("click", () => {
         const writePromise = win.navigator?.clipboard?.writeText
@@ -286,6 +452,40 @@ export const FormattedCopyPopover = {
       popover.appendChild(copyBtn);
     }
 
+    if (Config.global.cardFormatterShowTSV !== false) {
+      const tsvBtn = targetDoc.createElement("button");
+      tsvBtn.type = "button";
+      tsvBtn.className = "sctk-btn";
+      tsvBtn.innerHTML = icon("tsv");
+      tsvBtn.title = "Copy tab-separated values (TSV)";
+      tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
+
+      tsvBtn.addEventListener("click", () => {
+        const tsvTemplate =
+          Config.global.cardFormatterTSVTemplate ||
+          "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+        const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
+
+        const writePromise = win.navigator?.clipboard?.writeText
+          ? win.navigator.clipboard.writeText(tsvLine)
+          : Promise.resolve();
+
+        writePromise
+          .then(() => {
+            tsvBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied TSV: <b>${Utils.escape.html(tsvLine)}</b>`,
+              variant: "success",
+            });
+            setTimeout(() => this.hide(targetDoc), 1000);
+          })
+          .catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+      });
+      popover.appendChild(tsvBtn);
+    }
+
     const playerName = tokens?.PlayerName || "";
     if (playerName) {
       const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
@@ -297,12 +497,11 @@ export const FormattedCopyPopover = {
         brefBtn.innerHTML = icon("bref");
         brefBtn.title = "Search Baseball Reference";
         brefBtn.setAttribute("aria-label", "Search Baseball Reference");
-        brefBtn.style.height = "20px";
-        brefBtn.style.padding = "0 6px";
 
         brefBtn.addEventListener("click", () => {
           const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
-          win.open(brefUrl, "_blank", "noopener,noreferrer");
+          const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+          Utils.openInTab(brefUrl, inBackground, win);
         });
         popover.appendChild(brefBtn);
       }
@@ -314,12 +513,11 @@ export const FormattedCopyPopover = {
         googleBtn.innerHTML = icon("google");
         googleBtn.title = "Search Google";
         googleBtn.setAttribute("aria-label", "Search Google");
-        googleBtn.style.height = "20px";
-        googleBtn.style.padding = "0 6px";
 
         googleBtn.addEventListener("click", () => {
           const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
-          win.open(googleUrl, "_blank", "noopener,noreferrer");
+          const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+          Utils.openInTab(googleUrl, inBackground, win);
         });
         popover.appendChild(googleBtn);
       }
@@ -350,12 +548,253 @@ export const FormattedCopyPopover = {
 };
 
 /**
- * Initialize Card Name Formatter Module.
+ * Render inline quick links below player/card elements in table rows.
+ * @param {Document} [doc=document]
+ */
+export function renderInlineQuickLinks(doc = document) {
+  const targetDoc = doc || (typeof document !== "undefined" ? document : null);
+  if (!targetDoc) return;
+
+  const showCopy = Config.global.cardFormatterShowCopy !== false;
+  const showTSV = Config.global.cardFormatterShowTSV !== false;
+  const showBRef = Config.global.cardFormatterShowBRef !== false;
+  const showGoogle = Config.global.cardFormatterShowGoogle !== false;
+
+  if (!showCopy && !showTSV && !showBRef && !showGoogle) return;
+
+  const win = targetDoc.defaultView || (typeof window !== "undefined" ? window : null);
+  const rows = targetDoc.querySelectorAll("tr, .yourcol-item");
+
+  rows.forEach((row) => {
+    if (row.querySelector("th")) return;
+
+    if (
+      row.closest?.(
+        ".col-md-3, .col-md-4, nav, #topnav, #sctk-toolbar, .menu-linksV, .dropdown-menu, .modal"
+      )
+    )
+      return;
+
+    const personLink = row.querySelector('a[href*="Person.cfm"]');
+    const cardLinks = Array.from(
+      row.querySelectorAll(
+        'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]'
+      )
+    ).filter(
+      (a) =>
+        !a.querySelector("img") &&
+        !a.querySelector("i") &&
+        a.textContent.trim().length > 0 &&
+        !isActionLink(a)
+    );
+
+    let targetCell = null;
+    let targetNode = null;
+
+    if (personLink) {
+      targetNode = personLink;
+      targetCell = personLink.closest("td");
+    } else if (cardLinks.length >= 2) {
+      targetNode = cardLinks[1];
+      targetCell = cardLinks[1].closest("td");
+    } else if (cardLinks.length === 1) {
+      const cardNoTd = cardLinks[0].closest("td");
+      if (
+        cardNoTd &&
+        cardNoTd.nextElementSibling &&
+        !cardNoTd.nextElementSibling.querySelector('a[href*="Team.cfm"]')
+      ) {
+        targetCell = cardNoTd.nextElementSibling;
+        targetNode = targetCell.querySelector("a") || cardLinks[0];
+      } else {
+        targetNode = cardLinks[0];
+        targetCell = cardNoTd;
+      }
+    }
+
+    if (!targetCell) return;
+
+    // Purge any misaligned or duplicate containers in this row outside targetCell
+    const existingContainers = row.querySelectorAll(
+      ".tk-player-quick-links-inline"
+    );
+    existingContainers.forEach((c) => {
+      if (c.parentElement !== targetCell) {
+        c.remove();
+      }
+    });
+
+    if (targetCell.querySelector(".tk-player-quick-links-inline")) return;
+
+    const evalNode = targetNode || targetCell;
+    const fakeSelection = {
+      isCollapsed: false,
+      anchorNode: evalNode.firstChild || evalNode,
+      toString: () => evalNode.textContent.trim(),
+    };
+
+    const tokens = CardMetadataExtractor.extract(fakeSelection, targetDoc);
+    if (!tokens || !tokens.PlayerName) return;
+
+    const template =
+      Config.global.cardFormatterTemplate ||
+      "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
+    const formatted = CardMetadataExtractor.compile(template, tokens);
+
+    const inlineContainer = targetDoc.createElement("div");
+    inlineContainer.className = "tk-player-quick-links-inline";
+
+    if (showCopy && formatted) {
+      const copyBtn = targetDoc.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "sctk-inline-btn";
+      copyBtn.innerHTML = icon("copy");
+      copyBtn.title = "Copy formatted text";
+      copyBtn.setAttribute("aria-label", "Copy formatted text");
+
+      copyBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const writePromise = win?.navigator?.clipboard?.writeText
+          ? win.navigator.clipboard.writeText(formatted)
+          : Promise.resolve();
+
+        writePromise
+          .then(() => {
+            copyBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied: <b>${Utils.escape.html(formatted)}</b>`,
+              variant: "success",
+            });
+            setTimeout(() => {
+              copyBtn.innerHTML = icon("copy");
+            }, 1200);
+          })
+          .catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+      });
+      inlineContainer.appendChild(copyBtn);
+    }
+
+    if (showTSV) {
+      const tsvBtn = targetDoc.createElement("button");
+      tsvBtn.type = "button";
+      tsvBtn.className = "sctk-inline-btn";
+      tsvBtn.innerHTML = icon("tsv");
+      tsvBtn.title = "Copy tab-separated values (TSV)";
+      tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
+
+      tsvBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const tsvTemplate =
+          Config.global.cardFormatterTSVTemplate ||
+          "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+        const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens);
+
+        const writePromise = win?.navigator?.clipboard?.writeText
+          ? win.navigator.clipboard.writeText(tsvLine)
+          : Promise.resolve();
+
+        writePromise
+          .then(() => {
+            tsvBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied TSV: <b>${Utils.escape.html(tsvLine)}</b>`,
+              variant: "success",
+            });
+            setTimeout(() => {
+              tsvBtn.innerHTML = icon("tsv");
+            }, 1200);
+          })
+          .catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+      });
+      inlineContainer.appendChild(tsvBtn);
+    }
+
+    const playerName = tokens.PlayerName;
+    if (playerName) {
+      const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+
+      if (showBRef) {
+        const brefBtn = targetDoc.createElement("button");
+        brefBtn.type = "button";
+        brefBtn.className = "sctk-inline-btn";
+        brefBtn.innerHTML = icon("bref");
+        brefBtn.title = "Search Baseball Reference";
+        brefBtn.setAttribute("aria-label", "Search Baseball Reference");
+
+        brefBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
+          const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+          Utils.openInTab(brefUrl, inBackground, win);
+        });
+        inlineContainer.appendChild(brefBtn);
+      }
+
+      if (showGoogle) {
+        const googleBtn = targetDoc.createElement("button");
+        googleBtn.type = "button";
+        googleBtn.className = "sctk-inline-btn";
+        googleBtn.innerHTML = icon("google");
+        googleBtn.title = "Search Google";
+        googleBtn.setAttribute("aria-label", "Search Google");
+
+        googleBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
+          const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+          Utils.openInTab(googleUrl, inBackground, win);
+        });
+        inlineContainer.appendChild(googleBtn);
+      }
+    }
+
+    if (inlineContainer.childElementCount > 0) {
+      targetCell.appendChild(inlineContainer);
+    }
+  });
+}
+
+let activeObserver = null;
+
+/**
+ * Initialize Player Quick Links Module.
  */
 export function initCardNameFormatter() {
-  Log("Initializing Card Name Formatter module", "info");
+  Log("Initializing Player Quick Links module", "info");
+
+  if (activeObserver) {
+    activeObserver.disconnect();
+    activeObserver = null;
+  }
+
+  if (Config.global.cardFormatterOutputMode === "inline") {
+    renderInlineQuickLinks(document);
+
+    const targetArea =
+      document.querySelector("#main-content-area") ||
+      document.querySelector("#content") ||
+      document.body;
+
+    if (targetArea && typeof MutationObserver !== "undefined") {
+      const debouncedRender = debounce(() => {
+        renderInlineQuickLinks(document);
+      }, 150);
+      activeObserver = new MutationObserver(debouncedRender);
+      activeObserver.observe(targetArea, { childList: true, subtree: true });
+    }
+    return;
+  }
 
   const handleSelection = debounce(() => {
+    if (Config.global.cardFormatterOutputMode === "inline") {
+      FormattedCopyPopover.hide();
+      return;
+    }
+
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) {
       FormattedCopyPopover.hide();
@@ -379,16 +818,17 @@ export function initCardNameFormatter() {
     }
 
     const showCopy = Config.global.cardFormatterShowCopy !== false;
+    const showTSV = Config.global.cardFormatterShowTSV !== false;
     const showBRef = Config.global.cardFormatterShowBRef !== false;
     const showGoogle = Config.global.cardFormatterShowGoogle !== false;
     const hasSearch = showBRef || showGoogle;
 
-    if (!showCopy && !hasSearch) {
+    if (!showCopy && !showTSV && !hasSearch) {
       FormattedCopyPopover.hide();
       return;
     }
 
-    if (!hasSearch && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
+    if (!hasSearch && !showTSV && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
       if (window.navigator?.clipboard?.writeText) {
         window.navigator.clipboard.writeText(formatted).then(() => {
           showToast({
@@ -417,3 +857,5 @@ export function initCardNameFormatter() {
     }
   });
 }
+
+
