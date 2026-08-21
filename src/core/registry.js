@@ -21,6 +21,7 @@ import { initSetHierarchyExport } from '../modules/setHierarchyExport.js';
 import { initCollectionDefaulter } from '../modules/collectionDefaulter.js';
 import { initSetDropdownSearchEnhancer } from '../modules/setDropdownSearchEnhancer.js';
 import { initQuickAddGridEnhancer } from '../modules/quickAddGridEnhancer.js';
+import { initCollectionAddCardNumberEnhancer } from '../modules/collectionAddCardNumberEnhancer.js';
 
 /**
  * @typedef {object} ModuleDefinition
@@ -125,6 +126,19 @@ export const ModuleRegistry = [
     description: 'Injects styled inline quantity inputs and quick-add buttons across Collection, Wantlist, and For Sale/Trade views.',
     init: initQuickAddGridEnhancer,
     isAsync: false
+  },
+  {
+    id: 'collectionAddCardNumberEnhancer',
+    name: 'Collection Add Card Number Enhancer',
+    description: 'Supports multi-card additions with default sale option, collection mismatch warnings, card counter, and input validation on CollectionAddCardNumber.cfm.',
+    init: initCollectionAddCardNumberEnhancer,
+    isAsync: false,
+    actionLabels: {
+      defaultAddToSale: 'Default Add To Dropdown to For Sale/Trade',
+      collectionWarning: 'Preferred Collection Mismatch Warning',
+      liveCounter: 'Live Card Counter',
+      validateInput: 'Input Validation on Submit'
+    }
   }
 ];
 

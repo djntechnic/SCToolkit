@@ -545,6 +545,18 @@
           { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false }
         ],
         actions: {}
+      },
+      collectionAddCardNumberEnhancer: {
+        enabled: true,
+        urlMatch: [
+          { pattern: "collectionaddcardnumber", exclude: false }
+        ],
+        actions: {
+          defaultAddToSale: true,
+          collectionWarning: true,
+          liveCounter: true,
+          validateInput: true
+        }
       }
     },
     global: {
@@ -1269,237 +1281,95 @@
     ]
   };
 
-  // src/modules/checklistEnhancer.js
-  function getFilterPlaceholder() {
-    if (Routes.isViewAll()) {
-      return "Filter sets by name, year, or category...";
+  // src/ui/toast.js
+  var TOAST_VARIANTS = {
+    info: "var(--tk-teal)",
+    success: "var(--tk-green)",
+    warn: "var(--tk-accent)",
+    error: "var(--tk-red)",
+    progress: "var(--tk-blue)",
+    muted: "var(--tk-text-muted)"
+  };
+  var STACK_LIMIT = 4;
+  function containerFor(location) {
+    const id = `tk-toast-container-${location}`;
+    let container = document.getElementById(id);
+    if (!container) {
+      container = document.createElement("div");
+      container.id = id;
+      container.className = `tk-toast-container tk-toast-${location}`;
+      container.setAttribute("aria-live", "polite");
+      container.setAttribute("role", "status");
+      document.body.appendChild(container);
     }
-    if (Routes.isChecklist() || Routes.isViewSet()) {
-      return "Filter cards by #, player, team, note, or serial #...";
-    }
-    if (Routes.isCollection() || Routes.isForSaleTrade() || Routes.isWantlist()) {
-      return "Filter collection by player, set, card #, or status...";
-    }
-    if (Routes.isPlayerPage() || Routes.isPlayerCollection()) {
-      return "Filter cards by set, year, card #, or attribute...";
-    }
-    return "Filter items by name, number, or keyword...";
+    return container;
   }
-  var FILTER_SCOPES = SELECTOR_REGISTRY.checklist.scopes;
-  var DATA_ROW_SELECTOR = SELECTOR_REGISTRY.checklist.dataRows;
-  var ITEM_ELEMENT_SELECTOR = SELECTOR_REGISTRY.checklist.itemElements;
-  var HIDDEN_CLASS = "tk-hidden";
-  var SIDEBAR_CHROME_SELECTOR = SELECTOR_REGISTRY.checklist.chrome;
-  function buildRowIndex(mainContent) {
-    const index = [];
-    const elements = mainContent.querySelectorAll(ITEM_ELEMENT_SELECTOR);
-    elements.forEach((el) => {
-      if (el.closest(SIDEBAR_CHROME_SELECTOR)) return;
-      if (el.parentElement && el.parentElement.closest(ITEM_ELEMENT_SELECTOR)) return;
-      if (el.tagName === "TR" && el.querySelector("th")) return;
-      if (!el.querySelector(DATA_ROW_SELECTOR)) return;
-      index.push({ el, haystack: el.textContent.replace(/\s+/g, " ").toLowerCase() });
-    });
-    return index;
-  }
-  function applyFilter(index, term) {
-    let visible = 0;
-    const updates = [];
-    const rawTerm = (term || "").trim().toLowerCase();
-    const conditions = rawTerm ? rawTerm.split(/[,;|\s.]+/).filter(Boolean) : [];
-    index.forEach(({ el, haystack }) => {
-      const match = conditions.length === 0 || conditions.some((cond) => haystack.includes(cond));
-      updates.push({ el, match });
-      if (match) visible++;
-    });
-    const updateVisibility = () => {
-      updates.forEach(({ el, match }) => {
-        el.classList.toggle(HIDDEN_CLASS, !match);
-      });
-    };
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(updateVisibility);
+  function showToast({
+    message = "",
+    variant = "info",
+    location = "bottom-right",
+    duration = Config.global.toastDurationMs,
+    accent
+  } = {}) {
+    const container = containerFor(location);
+    const toasts = Array.from(container.querySelectorAll(".tk-toast-message"));
+    const stackLimit = Config.global?.toastStackLimit ?? STACK_LIMIT;
+    while (toasts.length >= stackLimit) {
+      const oldest = toasts.shift();
+      oldest.remove();
+    }
+    const toast = document.createElement("div");
+    toast.className = "tk-toast-message";
+    toast.style.borderLeftColor = accent ?? TOAST_VARIANTS[variant] ?? TOAST_VARIANTS.info;
+    toast.innerHTML = message;
+    const widget = container.querySelector(".sctk-qty-counter");
+    if (widget) {
+      container.insertBefore(toast, widget);
     } else {
-      updateVisibility();
+      container.appendChild(toast);
     }
-    return visible;
+    setTimeout(() => toast.classList.add("tk-toast-show"), 10);
+    if (duration !== Infinity) scheduleDismiss(toast, container, duration);
+    return toast;
   }
-  function findFilterScope(root = document) {
-    for (const selector of FILTER_SCOPES) {
-      const el = root.querySelector(selector);
-      if (el && (el.querySelector("table") || el.querySelector("ul, ol"))) return el;
+  function scheduleDismiss(toast, container, delay) {
+    setTimeout(() => {
+      toast.classList.remove("tk-toast-show");
+      setTimeout(() => {
+        toast.remove();
+        if (container.children.length === 0) container.remove();
+      }, 300);
+    }, delay);
+  }
+  function showProgressToast({ title = "Working", onCancel = null } = {}) {
+    const toast = showToast({ variant: "progress", duration: Infinity, message: "" });
+    const heading = document.createElement("b");
+    heading.textContent = title;
+    const detail = document.createElement("div");
+    detail.className = "tk-toast-detail";
+    toast.append(heading, detail);
+    if (onCancel) {
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "tk-toast-cancel";
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", () => {
+        cancel.disabled = true;
+        onCancel();
+      });
+      toast.appendChild(cancel);
     }
-    return null;
-  }
-  function findFilterTarget(mainContent) {
-    const moreDiv = mainContent.querySelector("div.more");
-    if (moreDiv && !moreDiv.closest(SIDEBAR_CHROME_SELECTOR)) return moreDiv;
-    const targets = mainContent.querySelectorAll("table, ul, ol");
-    for (const el of targets) {
-      if (el.closest(SIDEBAR_CHROME_SELECTOR)) continue;
-      return el;
-    }
-    return null;
-  }
-  function installFilter(mainContent) {
-    if (document.getElementById("tk-checklist-filter-wrap")) return true;
-    const targetElement = findFilterTarget(mainContent);
-    if (!targetElement) return false;
-    const index = buildRowIndex(mainContent);
-    Log(`Checklist filter indexed ${index.length} data item(s).`, "info");
-    recordContract("checklistEnhancer", `indexed ${index.length} data item(s)`, index.length > 0);
-    const hasCheckboxes = index.some(({ el }) => el.querySelector('input[type="checkbox"]') !== null);
-    Log(`Checklist filter: hasCheckboxes=${hasCheckboxes}`, "debug");
-    const placeholderText = getFilterPlaceholder();
-    const filterWrap = document.createElement("div");
-    filterWrap.id = "tk-checklist-filter-wrap";
-    filterWrap.innerHTML = `
-    <strong>Filter Items:</strong>
-    <div id="tk-checklist-filter-container">
-      <input type="text" id="tk-checklist-filter" placeholder="${placeholderText}"
-             title="Type to filter active listing items in real time" aria-label="Filter items">
-      <button type="button" id="tk-checklist-filter-clear" title="Clear filter" aria-label="Clear filter" style="display: none;">
-        ${icon("x")}
-      </button>
-    </div>
-    <button type="button" id="tk-checklist-filter-select-all" class="sctk-btn" title="Select all visible matching items" aria-label="Select all visible items" style="display: none;">
-      Select All
-    </button>
-    <span id="tk-filter-count" aria-live="polite"></span>
-  `;
-    targetElement.before(filterWrap);
-    const countEl = filterWrap.querySelector("#tk-filter-count");
-    const input = filterWrap.querySelector("#tk-checklist-filter");
-    const clearBtn = filterWrap.querySelector("#tk-checklist-filter-clear");
-    const selectAllBtn = filterWrap.querySelector("#tk-checklist-filter-select-all");
-    const updateClearVisibility = () => {
-      if (clearBtn) {
-        clearBtn.style.display = input.value.trim() !== "" ? "inline-flex" : "none";
+    return {
+      update: (message) => {
+        detail.textContent = message;
+      },
+      finish: (message, variant = "success") => {
+        detail.textContent = message;
+        toast.querySelector(".tk-toast-cancel")?.remove();
+        toast.style.borderLeftColor = TOAST_VARIANTS[variant] ?? TOAST_VARIANTS.info;
+        scheduleDismiss(toast, toast.parentElement, Config.global.toastDurationMs);
       }
     };
-    const run = debounce((term) => {
-      const visible = applyFilter(index, term);
-      countEl.textContent = term === "" ? "" : `${visible} of ${index.length}`;
-      if (selectAllBtn) {
-        const showBtn = hasCheckboxes && term !== "" && visible > 0;
-        selectAllBtn.style.display = showBtn ? "inline-flex" : "none";
-      }
-      Log(`Checklist filter: applied term "${term}" (${visible} of ${index.length} visible)`, "debug");
-    }, Config.global.checklistFilterDebounceMs);
-    const performFilter = () => {
-      const val = input.value.toLowerCase().trim();
-      updateClearVisibility();
-      run(val);
-    };
-    input.addEventListener("input", performFilter);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && input.value !== "") {
-        e.stopPropagation();
-        input.value = "";
-        performFilter();
-      }
-    });
-    if (clearBtn) {
-      clearBtn.addEventListener("click", () => {
-        input.value = "";
-        input.focus();
-        performFilter();
-      });
-    }
-    if (selectAllBtn) {
-      selectAllBtn.addEventListener("click", () => {
-        let count = 0;
-        index.forEach(({ el }) => {
-          if (!el.classList.contains(HIDDEN_CLASS)) {
-            const cb = el.querySelector('input[type="checkbox"]');
-            if (cb && !cb.checked) {
-              cb.click();
-              count++;
-            }
-          }
-        });
-        Log(`Checklist filter: "Select All" clicked, checked ${count} matching item checkbox(es).`, "debug");
-      });
-    }
-    return true;
-  }
-  var ActiveObservers = /* @__PURE__ */ new Set();
-  function disconnectChecklistEnhancer() {
-    ActiveObservers.forEach((obs) => {
-      try {
-        obs.disconnect();
-      } catch {
-      }
-    });
-    ActiveObservers.clear();
-  }
-  function observeChecklistFilter(options = {}) {
-    disconnectChecklistEnhancer();
-    if (typeof MutationObserver !== "function" || typeof document === "undefined") return null;
-    const target = document.getElementById("main-content-area") || document.getElementById("content") || document.body;
-    if (!target) return null;
-    let debounceTimer = null;
-    const observer = new MutationObserver((mutations) => {
-      const isSelfMutation = mutations.every(
-        (m) => Array.from(m.addedNodes).every(
-          (node) => node.nodeType === 1 && (node.id === "tk-checklist-filter-wrap" || node.querySelector?.("#tk-checklist-filter-wrap") !== null)
-        )
-      );
-      if (isSelfMutation) return;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        try {
-          if (!document.getElementById("tk-checklist-filter-wrap")) {
-            const scope = findFilterScope();
-            if (scope) {
-              const installed = installFilter(scope);
-              if (installed) {
-                Log("Checklist Enhancer: Installed filter bar via late DOM update / AJAX observer.", "info");
-              }
-            }
-          }
-        } catch (err) {
-          Log(`Checklist Enhancer observer error: ${err.message}`, "warn");
-        }
-      }, 150);
-    });
-    try {
-      observer.observe(target, { childList: true, subtree: true });
-      ActiveObservers.add(observer);
-      if (options.timeoutMs > 0) {
-        setTimeout(() => {
-          if (debounceTimer) clearTimeout(debounceTimer);
-          try {
-            observer.disconnect();
-          } finally {
-            ActiveObservers.delete(observer);
-          }
-        }, options.timeoutMs);
-      }
-    } catch (err) {
-      Log(`Checklist Enhancer: Failed to observe target element: ${err.message}`, "warn");
-      observer.disconnect();
-      return null;
-    }
-    return observer;
-  }
-  function initChecklistEnhancer() {
-    if (!Config.modules.checklistEnhancer.actions.realtimeFilter) return;
-    disconnectChecklistEnhancer();
-    if (document.getElementById("tk-checklist-filter-wrap")) {
-      observeChecklistFilter();
-      return;
-    }
-    const scope = findFilterScope();
-    if (!scope) {
-      Log("Checklist Enhancer: Waiting for listing container to render...", "info");
-      assertContract("checklistEnhancer", [
-        { selector: FILTER_SCOPES.join(", "), label: "a listing container holding a table or list", optional: true }
-      ]);
-    } else {
-      installFilter(scope);
-    }
-    observeChecklistFilter();
   }
 
   // src/data/csv.js
@@ -1876,97 +1746,6 @@
   function enableAction(id) {
     const btn = document.getElementById(id);
     if (btn) btn.disabled = false;
-  }
-
-  // src/ui/toast.js
-  var TOAST_VARIANTS = {
-    info: "var(--tk-teal)",
-    success: "var(--tk-green)",
-    warn: "var(--tk-accent)",
-    error: "var(--tk-red)",
-    progress: "var(--tk-blue)",
-    muted: "var(--tk-text-muted)"
-  };
-  var STACK_LIMIT = 4;
-  function containerFor(location) {
-    const id = `tk-toast-container-${location}`;
-    let container = document.getElementById(id);
-    if (!container) {
-      container = document.createElement("div");
-      container.id = id;
-      container.className = `tk-toast-container tk-toast-${location}`;
-      container.setAttribute("aria-live", "polite");
-      container.setAttribute("role", "status");
-      document.body.appendChild(container);
-    }
-    return container;
-  }
-  function showToast({
-    message = "",
-    variant = "info",
-    location = "bottom-right",
-    duration = Config.global.toastDurationMs,
-    accent
-  } = {}) {
-    const container = containerFor(location);
-    const toasts = Array.from(container.querySelectorAll(".tk-toast-message"));
-    const stackLimit = Config.global?.toastStackLimit ?? STACK_LIMIT;
-    while (toasts.length >= stackLimit) {
-      const oldest = toasts.shift();
-      oldest.remove();
-    }
-    const toast = document.createElement("div");
-    toast.className = "tk-toast-message";
-    toast.style.borderLeftColor = accent ?? TOAST_VARIANTS[variant] ?? TOAST_VARIANTS.info;
-    toast.innerHTML = message;
-    const widget = container.querySelector(".sctk-qty-counter");
-    if (widget) {
-      container.insertBefore(toast, widget);
-    } else {
-      container.appendChild(toast);
-    }
-    setTimeout(() => toast.classList.add("tk-toast-show"), 10);
-    if (duration !== Infinity) scheduleDismiss(toast, container, duration);
-    return toast;
-  }
-  function scheduleDismiss(toast, container, delay) {
-    setTimeout(() => {
-      toast.classList.remove("tk-toast-show");
-      setTimeout(() => {
-        toast.remove();
-        if (container.children.length === 0) container.remove();
-      }, 300);
-    }, delay);
-  }
-  function showProgressToast({ title = "Working", onCancel = null } = {}) {
-    const toast = showToast({ variant: "progress", duration: Infinity, message: "" });
-    const heading = document.createElement("b");
-    heading.textContent = title;
-    const detail = document.createElement("div");
-    detail.className = "tk-toast-detail";
-    toast.append(heading, detail);
-    if (onCancel) {
-      const cancel = document.createElement("button");
-      cancel.type = "button";
-      cancel.className = "tk-toast-cancel";
-      cancel.textContent = "Cancel";
-      cancel.addEventListener("click", () => {
-        cancel.disabled = true;
-        onCancel();
-      });
-      toast.appendChild(cancel);
-    }
-    return {
-      update: (message) => {
-        detail.textContent = message;
-      },
-      finish: (message, variant = "success") => {
-        detail.textContent = message;
-        toast.querySelector(".tk-toast-cancel")?.remove();
-        toast.style.borderLeftColor = TOAST_VARIANTS[variant] ?? TOAST_VARIANTS.info;
-        scheduleDismiss(toast, toast.parentElement, Config.global.toastDurationMs);
-      }
-    };
   }
 
   // src/net/cache.js
@@ -3290,6 +3069,7 @@
 #tk-checklist-filter-clear { position: absolute; right: 4px; background: transparent; border: none; color: var(--tk-text-muted); padding: 2px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 2px; height: 16px; width: 16px; margin: 0; }
 #tk-checklist-filter-clear:hover { color: var(--tk-red); background: var(--tk-bg-hover); }
 #tk-checklist-filter-select-all { height: 22px; padding: 1px 8px 0 8px; font-size: 10.5px; flex-shrink: 0; }
+#tk-checklist-filter-copy-friendly, #tk-checklist-filter-copy-tsv { height: 22px; width: 22px; padding: 0; flex-shrink: 0; }
 #tk-filter-count { font-family: var(--tk-font-mono); font-size: 10px; color: var(--tk-text-muted); white-space: nowrap; flex-shrink: 0; }
 #tk-checklist-filter:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; border-color: var(--tk-accent); }
 
@@ -4020,6 +3800,1004 @@ button.tk-add-btn {
       appendContextLabel(container, cleanDocTitle() || "SCToolkit Active");
     }
   };
+
+  // src/modules/cardNameFormatter.js
+  function getToolbarTitle(doc = document) {
+    const rawTitle = doc ? doc.title : "";
+    let title = cleanDocTitle(rawTitle);
+    const genericLabels = [
+      "",
+      "collection",
+      "change log",
+      "forum",
+      "change log prices",
+      "recently added",
+      "inaccuracy reports",
+      "sctoolkit active",
+      "set view",
+      "browse"
+    ];
+    if (!title || genericLabels.includes(title.toLowerCase())) {
+      const setWrapperTitle = doc.querySelector?.(".set-title, #setHeader .set-title");
+      if (setWrapperTitle && setWrapperTitle.textContent.trim()) {
+        title = cleanDocTitle(setWrapperTitle.textContent.trim());
+      }
+    }
+    if (!title || genericLabels.includes(title.toLowerCase())) {
+      const setHeader = doc.querySelector?.("#setname-content h1") || doc.querySelector?.("#main-content-area h2") || doc.querySelector?.("#main-content-area h1") || doc.querySelector?.("h1.site");
+      const subHeader = doc.querySelector?.("#setname-content h3") || doc.querySelector?.("#main-content-area h3");
+      if (setHeader && !setHeader.textContent.toLowerCase().includes("set links") && !setHeader.textContent.toLowerCase().includes("change log")) {
+        title = setHeader.textContent.replace(/\s*-\s*Cards$/i, "").trim();
+      }
+      if (subHeader && title && !title.toLowerCase().includes(subHeader.textContent.trim().toLowerCase())) {
+        title += ` - ${subHeader.textContent.trim()}`;
+      }
+    }
+    return title;
+  }
+  function isActionLink(a) {
+    const href = a?.href || "";
+    return href.includes("CollectionAdd") || href.includes("CollectionEdit") || href.includes("CollectionWant") || href.includes("CollectionStatus") || href.includes("CollectionMove") || href.includes("CollectionRemove") || href.includes("SalesLinks") || href.includes("MODE=") || href.includes("Team.cfm") || href.includes("Person.cfm");
+  }
+  function getCleanCellText(cell) {
+    if (!cell) return "";
+    const doc = cell.ownerDocument || (typeof document !== "undefined" ? document : null);
+    const clone = cell.cloneNode(true);
+    clone.querySelectorAll(".tk-player-quick-links-inline, figcaption, .figure-caption").forEach((el) => el.remove());
+    if (doc) {
+      clone.querySelectorAll("br").forEach((br) => {
+        const space = doc.createTextNode(" ");
+        br.parentNode?.replaceChild(space, br);
+      });
+    }
+    return clone.textContent.replace(/\s+/g, " ").trim();
+  }
+  var CardMetadataExtractor = {
+    /**
+     * Extract token values for a given window Selection
+     * @param {Selection} selection
+     * @param {Document} [doc=document] - Document object (supports mock DOM in tests)
+     * @returns {Object|null} Token dictionary or null if invalid
+     */
+    extract: function(selection, doc = document) {
+      if (!selection || selection.isCollapsed) return null;
+      const anchorNode = selection.anchorNode;
+      if (!anchorNode) return null;
+      const containerEl = anchorNode.nodeType === 1 ? anchorNode : anchorNode.parentElement;
+      if (!containerEl) return null;
+      const row = containerEl.closest("tr, .yourcol-item, #main-content-area");
+      if (!row) return null;
+      const selectedText = selection.toString().trim();
+      if (!selectedText) return null;
+      const toolbarTitle = getToolbarTitle(doc);
+      let year = "";
+      let setName = "";
+      let insertSetName = "";
+      if (toolbarTitle) {
+        const yearMatch = toolbarTitle.match(/^(\d{4}(?:-\d{2,4})?)\s+(.+)/);
+        if (yearMatch) {
+          year = yearMatch[1];
+          const rest = yearMatch[2];
+          const dashIdx = rest.indexOf("-");
+          if (dashIdx !== -1) {
+            setName = rest.slice(0, dashIdx).trim();
+            insertSetName = rest.slice(dashIdx + 1).trim();
+          } else {
+            setName = rest.trim();
+          }
+        } else {
+          const dashIdx = toolbarTitle.indexOf("-");
+          if (dashIdx !== -1) {
+            setName = toolbarTitle.slice(0, dashIdx).trim();
+            insertSetName = toolbarTitle.slice(dashIdx + 1).trim();
+          } else {
+            setName = toolbarTitle.trim();
+          }
+        }
+      }
+      let cardNo = "";
+      let cardLink = null;
+      const cardLinks = Array.from(
+        row.querySelectorAll(
+          'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]'
+        )
+      ).filter(
+        (a) => !a.querySelector("img") && !a.querySelector("i") && a.textContent.trim().length > 0 && !isActionLink(a)
+      );
+      if (cardLinks.length > 0) {
+        cardNo = cardLinks[0].textContent.trim();
+        cardLink = cardLinks[0];
+      } else {
+        const firstTd = row.querySelector("td");
+        if (firstTd) {
+          const text = firstTd.textContent.trim();
+          if (/^#?[A-Z0-9-]{1,10}$/i.test(text) && !firstTd.querySelector("img")) {
+            cardNo = text;
+          }
+        }
+      }
+      let tags = "";
+      let printRun = "";
+      const personLink = row.querySelector('a[href*="Person.cfm"]');
+      const teamLink = row.querySelector('a[href*="Team.cfm"]');
+      const ignoredTagsRaw = Config.global.cardFormatterIgnoredTags ?? "ASR, LL, TC, CL";
+      const ignoredTagsSet = new Set(
+        String(ignoredTagsRaw).split(",").map((t) => t.trim().toUpperCase()).filter(Boolean)
+      );
+      const tagSeparatorRaw = Config.global.cardFormatterTagSeparator;
+      const tagSeparator = tagSeparatorRaw !== void 0 && tagSeparatorRaw !== null && String(tagSeparatorRaw) !== "" ? String(tagSeparatorRaw) : " ";
+      const tagReplacerRaw = Config.global.cardFormatterTagReplacer ?? "";
+      const tagReplacements = /* @__PURE__ */ new Map();
+      if (tagReplacerRaw) {
+        String(tagReplacerRaw).split(/,|\n/).forEach((pair) => {
+          const colonIdx = pair.indexOf(":");
+          if (colonIdx !== -1) {
+            const key = pair.slice(0, colonIdx).trim().toUpperCase();
+            const val = pair.slice(colonIdx + 1).trim();
+            if (key && val) {
+              tagReplacements.set(key, val);
+            }
+          }
+        });
+      }
+      const subjectTd = personLink ? personLink.closest("td") : cardLink ? cardLink.closest("td")?.nextElementSibling : null;
+      if (subjectTd) {
+        const rawSubject = getCleanCellText(subjectTd);
+        const tokens = rawSubject.split(" ");
+        const tagParts = [];
+        tokens.forEach((token) => {
+          const clean = token.replace(/,/g, "").trim();
+          if (/^(?:SN|PR)\d+$/i.test(clean)) {
+            printRun = clean.replace(/^(?:SN|PR)/i, "");
+          } else if (/^[A-Z0-9]{2,4}$/.test(clean) && !/^(Jr|Sr|II|III|IV|V)$/i.test(clean)) {
+            const upperClean = clean.toUpperCase();
+            let targetTag = clean;
+            if (tagReplacements.has(upperClean)) {
+              targetTag = tagReplacements.get(upperClean);
+            }
+            if (targetTag && !ignoredTagsSet.has(targetTag.toUpperCase())) {
+              tagParts.push(targetTag);
+            }
+          }
+        });
+        tags = tagParts.join(tagSeparator);
+      }
+      let playerName = "";
+      if (personLink) {
+        playerName = personLink.textContent.trim();
+      } else if (cardLinks.length >= 2) {
+        playerName = cardLinks[1].textContent.trim();
+      }
+      if (!playerName && subjectTd) {
+        let rawName = getCleanCellText(subjectTd);
+        if (printRun) {
+          rawName = rawName.replace(new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"), "");
+        }
+        if (tags) {
+          const tagList = tags.split(tagSeparator);
+          tagList.forEach((t) => {
+            const trimmedTag = String(t).trim();
+            if (!trimmedTag) return;
+            const escT = trimmedTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            rawName = rawName.replace(new RegExp(`\\b${escT}\\b`, "g"), "");
+          });
+        }
+        playerName = rawName.replace(/\s+/g, " ").trim();
+      }
+      if (!playerName) {
+        playerName = selectedText;
+        if (cardNo) {
+          const cleanCardNo = cardNo.replace(/^#/, "");
+          const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const prefixRegex = new RegExp(
+            `^(?:#?${escapeRegExp(cardNo)}|#?${escapeRegExp(cleanCardNo)})\\b\\s*`,
+            "i"
+          );
+          playerName = playerName.replace(prefixRegex, "").trim();
+        }
+        if (/^#?\d+[a-z]?\s+/i.test(playerName) && cardNo) {
+          playerName = playerName.replace(/^#?\d+[a-z]?\s+/i, "").trim();
+        }
+        if (!playerName) playerName = selectedText;
+      }
+      let playerTeam = "";
+      if (teamLink) {
+        playerTeam = teamLink.textContent.trim();
+      } else if (cardLinks.length >= 3 && !cardLinks[2].querySelector("img")) {
+        const thirdText = cardLinks[2].textContent.trim();
+        if (thirdText && thirdText !== cardNo) {
+          playerTeam = thirdText;
+        }
+      } else if (subjectTd && subjectTd.nextElementSibling) {
+        const nextTd = subjectTd.nextElementSibling;
+        const linkInNext = nextTd.querySelector("a");
+        if (linkInNext) {
+          playerTeam = linkInNext.textContent.trim();
+        } else {
+          playerTeam = getCleanCellText(nextTd);
+        }
+      }
+      return {
+        Year: year,
+        SetName: setName,
+        InsertSetName: insertSetName,
+        PlayerName: playerName,
+        PlayerTeam: playerTeam,
+        CardNo: cardNo,
+        Tags: tags,
+        PR: printRun ? String(printRun).replace(/^\//, "") : ""
+      };
+    },
+    /**
+     * Extract token values directly from a row element.
+     * @param {HTMLElement} row
+     * @param {Document} [doc=document]
+     * @returns {Object|null} Token dictionary or null if invalid
+     */
+    extractFromRow: function(row, doc = document) {
+      if (!row) return null;
+      const targetNode = row.querySelector("a") || row.firstChild || row;
+      const fakeSelection = {
+        isCollapsed: false,
+        anchorNode: targetNode,
+        toString: () => row.textContent.trim()
+      };
+      return this.extract(fakeSelection, doc);
+    },
+    /**
+     * Replace tokens in template string with extracted values
+     * @param {string} template - Tokenized template (e.g. "{PlayerName} - {Year}")
+     * @param {Object} tokens - Extracted token dictionary
+     * @returns {string} Formatted output string
+     */
+    compile: function(template, tokens) {
+      if (!tokens || !template) return "";
+      const isTSV = template.includes("	") || template.includes("\\t");
+      let result = template.replace(/\\t/g, "	");
+      if (!tokens.CardNo) {
+        result = result.replace(/#\{CardNo\}/g, "{CardNo}");
+      }
+      Object.keys(tokens).forEach((key) => {
+        const pattern = new RegExp(`\\{${key}\\}`, "g");
+        const val = (tokens[key] || "").trim();
+        result = result.replace(pattern, val);
+      });
+      if (isTSV) {
+        return result;
+      }
+      return result.replace(/\s+/g, " ").replace(/\s+#$/, "").replace(/\s+-\s+$/, "").replace(/^\s+-\s+/, "").replace(/\s+-\s+(?=-|\s|$)/g, " ").trim();
+    }
+  };
+  var FormattedCopyPopover = {
+    elementId: "tk-card-formatter-popover",
+    _dismissTimer: null,
+    /**
+     * Render popover near user selection coordinates
+     * @param {Selection} selection
+     * @param {string} formattedText
+     * @param {Object|Document} [tokensOrDoc=document] - Tokens dictionary or Document object
+     * @param {Document} [doc=document] - Document object
+     */
+    show: function(selection, formattedText, tokensOrDoc, doc) {
+      const defaultDoc = typeof document !== "undefined" ? document : null;
+      let tokens = null;
+      let targetDoc = doc || defaultDoc;
+      if (tokensOrDoc && (tokensOrDoc.nodeType === 9 || tokensOrDoc.defaultView)) {
+        targetDoc = tokensOrDoc;
+        tokens = null;
+      } else if (tokensOrDoc && typeof tokensOrDoc === "object") {
+        tokens = tokensOrDoc;
+        if (!doc) targetDoc = defaultDoc;
+      }
+      if (!targetDoc) return;
+      this.hide(targetDoc);
+      if (!selection || selection.rangeCount === 0) return;
+      let rect;
+      try {
+        const range = selection.getRangeAt(0);
+        rect = range.getBoundingClientRect();
+      } catch {
+        return;
+      }
+      const win = targetDoc.defaultView || window;
+      const top = (win.scrollY || 0) + rect.bottom + 6;
+      const left = Math.max(10, (win.scrollX || 0) + rect.left);
+      const popover = targetDoc.createElement("div");
+      popover.id = this.elementId;
+      popover.className = "tk-formatter-popover";
+      popover.style.top = `${top}px`;
+      popover.style.left = `${left}px`;
+      const label = targetDoc.createElement("span");
+      label.className = "tk-popover-label";
+      label.textContent = formattedText;
+      label.title = formattedText;
+      popover.appendChild(label);
+      if (Config.global.cardFormatterShowCopy !== false) {
+        const copyBtn = targetDoc.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "sctk-btn";
+        copyBtn.innerHTML = icon("copy");
+        copyBtn.title = "Copy formatted text";
+        copyBtn.setAttribute("aria-label", "Copy formatted text");
+        copyBtn.addEventListener("click", () => {
+          const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(formattedText) : Promise.resolve();
+          writePromise.then(() => {
+            copyBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied: <b>${Utils.escape.html(formattedText)}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => this.hide(targetDoc), 1e3);
+          }).catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+        });
+        popover.appendChild(copyBtn);
+      }
+      if (Config.global.cardFormatterShowTSV !== false) {
+        const tsvBtn = targetDoc.createElement("button");
+        tsvBtn.type = "button";
+        tsvBtn.className = "sctk-btn";
+        tsvBtn.innerHTML = icon("tsv");
+        tsvBtn.title = "Copy tab-separated values (TSV)";
+        tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
+        tsvBtn.addEventListener("click", () => {
+          const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
+          const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(tsvLine) : Promise.resolve();
+          writePromise.then(() => {
+            tsvBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied TSV: <b>${Utils.escape.html(tsvLine)}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => this.hide(targetDoc), 1e3);
+          }).catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+        });
+        popover.appendChild(tsvBtn);
+      }
+      const playerName = tokens?.PlayerName || "";
+      if (playerName) {
+        const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+        if (Config.global.cardFormatterShowBRef !== false) {
+          const brefBtn = targetDoc.createElement("button");
+          brefBtn.type = "button";
+          brefBtn.className = "sctk-btn";
+          brefBtn.innerHTML = icon("bref");
+          brefBtn.title = "Search Baseball Reference";
+          brefBtn.setAttribute("aria-label", "Search Baseball Reference");
+          brefBtn.addEventListener("click", () => {
+            const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(brefUrl, inBackground, win);
+          });
+          popover.appendChild(brefBtn);
+        }
+        if (Config.global.cardFormatterShowGoogle !== false) {
+          const googleBtn = targetDoc.createElement("button");
+          googleBtn.type = "button";
+          googleBtn.className = "sctk-btn";
+          googleBtn.innerHTML = icon("google");
+          googleBtn.title = "Search Google";
+          googleBtn.setAttribute("aria-label", "Search Google");
+          googleBtn.addEventListener("click", () => {
+            const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(googleUrl, inBackground, win);
+          });
+          popover.appendChild(googleBtn);
+        }
+      }
+      targetDoc.body.appendChild(popover);
+      const duration = Config.global.cardFormatterPopoverDurationMs || 4e3;
+      this._dismissTimer = setTimeout(() => {
+        this.hide(targetDoc);
+      }, duration);
+    },
+    /**
+     * Remove popover element if present
+     * @param {Document} [doc=document]
+     */
+    hide: function(doc) {
+      const targetDoc = doc || (typeof document !== "undefined" ? document : null);
+      if (!targetDoc) return;
+      if (this._dismissTimer) {
+        clearTimeout(this._dismissTimer);
+        this._dismissTimer = null;
+      }
+      const existing = targetDoc.getElementById(this.elementId);
+      if (existing) existing.remove();
+    }
+  };
+  function renderInlineQuickLinks(doc = document) {
+    const targetDoc = doc || (typeof document !== "undefined" ? document : null);
+    if (!targetDoc) return;
+    const showCopy = Config.global.cardFormatterShowCopy !== false;
+    const showTSV = Config.global.cardFormatterShowTSV !== false;
+    const showBRef = Config.global.cardFormatterShowBRef !== false;
+    const showGoogle = Config.global.cardFormatterShowGoogle !== false;
+    if (!showCopy && !showTSV && !showBRef && !showGoogle) return;
+    const win = targetDoc.defaultView || (typeof window !== "undefined" ? window : null);
+    const rows = targetDoc.querySelectorAll("tr, .yourcol-item");
+    rows.forEach((row) => {
+      if (row.querySelector("th")) return;
+      if (row.closest?.(
+        ".col-md-3, .col-md-4, nav, #topnav, #sctk-toolbar, .menu-linksV, .dropdown-menu, .modal"
+      ))
+        return;
+      const personLink = row.querySelector('a[href*="Person.cfm"]');
+      const cardLinks = Array.from(
+        row.querySelectorAll(
+          'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]'
+        )
+      ).filter(
+        (a) => !a.querySelector("img") && !a.querySelector("i") && a.textContent.trim().length > 0 && !isActionLink(a)
+      );
+      let targetCell = null;
+      let targetNode = null;
+      if (personLink) {
+        targetNode = personLink;
+        targetCell = personLink.closest("td");
+      } else if (cardLinks.length >= 2) {
+        targetNode = cardLinks[1];
+        targetCell = cardLinks[1].closest("td");
+      } else if (cardLinks.length === 1) {
+        const cardNoTd = cardLinks[0].closest("td");
+        if (cardNoTd && cardNoTd.nextElementSibling && !cardNoTd.nextElementSibling.querySelector('a[href*="Team.cfm"]')) {
+          targetCell = cardNoTd.nextElementSibling;
+          targetNode = targetCell.querySelector("a") || cardLinks[0];
+        } else {
+          targetNode = cardLinks[0];
+          targetCell = cardNoTd;
+        }
+      }
+      if (!targetCell) return;
+      const existingContainers = row.querySelectorAll(
+        ".tk-player-quick-links-inline"
+      );
+      existingContainers.forEach((c) => {
+        if (c.parentElement !== targetCell) {
+          c.remove();
+        }
+      });
+      if (targetCell.querySelector(".tk-player-quick-links-inline")) return;
+      const evalNode = targetNode || targetCell;
+      const fakeSelection = {
+        isCollapsed: false,
+        anchorNode: evalNode.firstChild || evalNode,
+        toString: () => evalNode.textContent.trim()
+      };
+      const tokens = CardMetadataExtractor.extract(fakeSelection, targetDoc);
+      if (!tokens || !tokens.PlayerName) return;
+      const template = Config.global.cardFormatterTemplate || "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
+      const formatted = CardMetadataExtractor.compile(template, tokens);
+      const inlineContainer = targetDoc.createElement("div");
+      inlineContainer.className = "tk-player-quick-links-inline";
+      if (showCopy && formatted) {
+        const copyBtn = targetDoc.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "sctk-inline-btn";
+        copyBtn.innerHTML = icon("copy");
+        copyBtn.title = "Copy formatted text";
+        copyBtn.setAttribute("aria-label", "Copy formatted text");
+        copyBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const writePromise = win?.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(formatted) : Promise.resolve();
+          writePromise.then(() => {
+            copyBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied: <b>${Utils.escape.html(formatted)}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => {
+              copyBtn.innerHTML = icon("copy");
+            }, 1200);
+          }).catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+        });
+        inlineContainer.appendChild(copyBtn);
+      }
+      if (showTSV) {
+        const tsvBtn = targetDoc.createElement("button");
+        tsvBtn.type = "button";
+        tsvBtn.className = "sctk-inline-btn";
+        tsvBtn.innerHTML = icon("tsv");
+        tsvBtn.title = "Copy tab-separated values (TSV)";
+        tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
+        tsvBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens);
+          const writePromise = win?.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(tsvLine) : Promise.resolve();
+          writePromise.then(() => {
+            tsvBtn.innerHTML = icon("check");
+            showToast({
+              message: `Copied TSV: <b>${Utils.escape.html(tsvLine)}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => {
+              tsvBtn.innerHTML = icon("tsv");
+            }, 1200);
+          }).catch((err) => {
+            Log(`Clipboard write failed: ${err.message}`, "error");
+          });
+        });
+        inlineContainer.appendChild(tsvBtn);
+      }
+      const playerName = tokens.PlayerName;
+      if (playerName) {
+        const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+        if (showBRef) {
+          const brefBtn = targetDoc.createElement("button");
+          brefBtn.type = "button";
+          brefBtn.className = "sctk-inline-btn";
+          brefBtn.innerHTML = icon("bref");
+          brefBtn.title = "Search Baseball Reference";
+          brefBtn.setAttribute("aria-label", "Search Baseball Reference");
+          brefBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(brefUrl, inBackground, win);
+          });
+          inlineContainer.appendChild(brefBtn);
+        }
+        if (showGoogle) {
+          const googleBtn = targetDoc.createElement("button");
+          googleBtn.type = "button";
+          googleBtn.className = "sctk-inline-btn";
+          googleBtn.innerHTML = icon("google");
+          googleBtn.title = "Search Google";
+          googleBtn.setAttribute("aria-label", "Search Google");
+          googleBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(googleUrl, inBackground, win);
+          });
+          inlineContainer.appendChild(googleBtn);
+        }
+      }
+      if (inlineContainer.childElementCount > 0) {
+        targetCell.appendChild(inlineContainer);
+      }
+    });
+  }
+  var activeObserver = null;
+  function initCardNameFormatter() {
+    Log("Initializing Player Quick Links module", "info");
+    if (activeObserver) {
+      activeObserver.disconnect();
+      activeObserver = null;
+    }
+    if (Config.global.cardFormatterOutputMode === "inline") {
+      renderInlineQuickLinks(document);
+      const targetArea = document.querySelector("#main-content-area") || document.querySelector("#content") || document.body;
+      if (targetArea && typeof MutationObserver !== "undefined") {
+        const debouncedRender = debounce(() => {
+          renderInlineQuickLinks(document);
+        }, 150);
+        activeObserver = new MutationObserver(debouncedRender);
+        activeObserver.observe(targetArea, { childList: true, subtree: true });
+      }
+      return;
+    }
+    const handleSelection = debounce(() => {
+      if (Config.global.cardFormatterOutputMode === "inline") {
+        FormattedCopyPopover.hide();
+        return;
+      }
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) {
+        FormattedCopyPopover.hide();
+        return;
+      }
+      const tokens = CardMetadataExtractor.extract(selection);
+      if (!tokens || !tokens.PlayerName) {
+        FormattedCopyPopover.hide();
+        return;
+      }
+      const template = Config.global.cardFormatterTemplate || "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
+      const formatted = CardMetadataExtractor.compile(template, tokens);
+      if (!formatted) {
+        FormattedCopyPopover.hide();
+        return;
+      }
+      const showCopy = Config.global.cardFormatterShowCopy !== false;
+      const showTSV = Config.global.cardFormatterShowTSV !== false;
+      const showBRef = Config.global.cardFormatterShowBRef !== false;
+      const showGoogle = Config.global.cardFormatterShowGoogle !== false;
+      const hasSearch = showBRef || showGoogle;
+      if (!showCopy && !showTSV && !hasSearch) {
+        FormattedCopyPopover.hide();
+        return;
+      }
+      if (!hasSearch && !showTSV && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
+        if (window.navigator?.clipboard?.writeText) {
+          window.navigator.clipboard.writeText(formatted).then(() => {
+            showToast({
+              message: `Copied: <b>${Utils.escape.html(formatted)}</b>`,
+              variant: "success"
+            });
+          });
+        }
+      } else {
+        FormattedCopyPopover.show(selection, formatted, tokens);
+      }
+    }, 250);
+    document.addEventListener("selectionchange", handleSelection);
+    document.addEventListener("mousedown", (e) => {
+      const popover = document.getElementById(FormattedCopyPopover.elementId);
+      if (popover && !popover.contains(e.target)) {
+        FormattedCopyPopover.hide();
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        FormattedCopyPopover.hide();
+      }
+    });
+  }
+
+  // src/modules/checklistEnhancer.js
+  function getFilterPlaceholder() {
+    if (Routes.isViewAll()) {
+      return "Filter sets by name, year, or category...";
+    }
+    if (Routes.isChecklist() || Routes.isViewSet()) {
+      return "Filter cards by #, player, team, note, or serial #...";
+    }
+    if (Routes.isCollection() || Routes.isForSaleTrade() || Routes.isWantlist()) {
+      return "Filter collection by player, set, card #, or status...";
+    }
+    if (Routes.isPlayerPage() || Routes.isPlayerCollection()) {
+      return "Filter cards by set, year, card #, or attribute...";
+    }
+    return "Filter items by name, number, or keyword...";
+  }
+  var FILTER_SCOPES = SELECTOR_REGISTRY.checklist.scopes;
+  var DATA_ROW_SELECTOR = SELECTOR_REGISTRY.checklist.dataRows;
+  var ITEM_ELEMENT_SELECTOR = SELECTOR_REGISTRY.checklist.itemElements;
+  var HIDDEN_CLASS = "tk-hidden";
+  var SIDEBAR_CHROME_SELECTOR = SELECTOR_REGISTRY.checklist.chrome;
+  function isActionLink2(a) {
+    const href = a?.href || "";
+    return href.includes("CollectionAdd") || href.includes("CollectionEdit") || href.includes("CollectionWant") || href.includes("CollectionStatus") || href.includes("CollectionMove") || href.includes("CollectionRemove") || href.includes("SalesLinks") || href.includes("MODE=") || href.includes("Team.cfm") || href.includes("Person.cfm");
+  }
+  function extractCardNo(el) {
+    if (!el) return "";
+    const cardLinks = Array.from(
+      el.querySelectorAll('a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]')
+    ).filter(
+      (a) => !a.querySelector("img") && !a.querySelector("i") && a.textContent.trim().length > 0 && !isActionLink2(a)
+    );
+    if (cardLinks.length > 0) {
+      return cardLinks[0].textContent.trim();
+    }
+    const firstTd = el.querySelector("td");
+    if (firstTd) {
+      const text = firstTd.textContent.trim();
+      if (/^#?[A-Z0-9-]{1,10}$/i.test(text) && !firstTd.querySelector("img")) {
+        return text;
+      }
+    }
+    const textContent = el.textContent.replace(/\s+/g, " ").trim();
+    const match = textContent.match(/\bcard\s*#?\s*([a-z0-9-]+)\b/i) || textContent.match(/#\s*([a-z0-9-]+)\b/i);
+    if (match) {
+      return match[1];
+    }
+    return "";
+  }
+  function buildRowIndex(mainContent) {
+    const index = [];
+    const elements = mainContent.querySelectorAll(ITEM_ELEMENT_SELECTOR);
+    elements.forEach((el) => {
+      if (el.closest(SIDEBAR_CHROME_SELECTOR)) return;
+      if (el.parentElement && el.parentElement.closest(ITEM_ELEMENT_SELECTOR)) return;
+      if (el.tagName === "TR" && el.querySelector("th")) return;
+      if (!el.querySelector(DATA_ROW_SELECTOR)) return;
+      const cardNo = extractCardNo(el);
+      const cleanCardNo = cardNo ? cardNo.replace(/^#/, "").trim().toLowerCase() : "";
+      index.push({
+        el,
+        haystack: el.textContent.replace(/\s+/g, " ").toLowerCase(),
+        cardNo,
+        cleanCardNo
+      });
+    });
+    return index;
+  }
+  function applyFilter(index, term) {
+    let visible = 0;
+    const updates = [];
+    const rawTerm = (term || "").trim().toLowerCase();
+    const conditions = rawTerm ? rawTerm.split(/[,;|\s.]+/).filter(Boolean) : [];
+    index.forEach(({ el, haystack, cardNo, cleanCardNo }) => {
+      const rowCleanCardNo = cleanCardNo !== void 0 ? cleanCardNo : cardNo ? cardNo.replace(/^#/, "").trim().toLowerCase() : extractCardNo(el)?.replace(/^#/, "").trim().toLowerCase() || "";
+      const match = conditions.length === 0 || conditions.some((cond) => {
+        const cleanCond = cond.replace(/^#/, "").trim().toLowerCase();
+        const isNumericCond = /^\d+$/.test(cleanCond);
+        if (isNumericCond) {
+          if (rowCleanCardNo) {
+            return rowCleanCardNo === cleanCond;
+          } else {
+            return haystack.includes(cond);
+          }
+        } else {
+          return haystack.includes(cond);
+        }
+      });
+      updates.push({ el, match });
+      if (match) visible++;
+    });
+    const updateVisibility = () => {
+      updates.forEach(({ el, match }) => {
+        el.classList.toggle(HIDDEN_CLASS, !match);
+      });
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(updateVisibility);
+    } else {
+      updateVisibility();
+    }
+    return visible;
+  }
+  function findFilterScope(root = document) {
+    for (const selector of FILTER_SCOPES) {
+      const el = root.querySelector(selector);
+      if (el && (el.querySelector("table") || el.querySelector("ul, ol"))) return el;
+    }
+    return null;
+  }
+  function findFilterTarget(mainContent) {
+    const moreDiv = mainContent.querySelector("div.more");
+    if (moreDiv && !moreDiv.closest(SIDEBAR_CHROME_SELECTOR)) return moreDiv;
+    const targets = mainContent.querySelectorAll("table, ul, ol");
+    for (const el of targets) {
+      if (el.closest(SIDEBAR_CHROME_SELECTOR)) continue;
+      return el;
+    }
+    return null;
+  }
+  function installFilter(mainContent) {
+    if (document.getElementById("tk-checklist-filter-wrap")) return true;
+    const targetElement = findFilterTarget(mainContent);
+    if (!targetElement) return false;
+    const index = buildRowIndex(mainContent);
+    Log(`Checklist filter indexed ${index.length} data item(s).`, "info");
+    recordContract("checklistEnhancer", `indexed ${index.length} data item(s)`, index.length > 0);
+    const hasCheckboxes = index.some(({ el }) => el.querySelector('input[type="checkbox"]') !== null);
+    Log(`Checklist filter: hasCheckboxes=${hasCheckboxes}`, "debug");
+    const placeholderText = getFilterPlaceholder();
+    const showCopyFriendly = Config.modules.cardNameFormatter?.enabled !== false && Config.global.cardFormatterShowCopy !== false;
+    const showCopyTSV = Config.modules.cardNameFormatter?.enabled !== false && Config.global.cardFormatterShowTSV !== false;
+    const filterWrap = document.createElement("div");
+    filterWrap.id = "tk-checklist-filter-wrap";
+    filterWrap.innerHTML = `
+    <strong>Filter Items:</strong>
+    <div id="tk-checklist-filter-container">
+      <input type="text" id="tk-checklist-filter" placeholder="${placeholderText}"
+             title="Type to filter active listing items in real time" aria-label="Filter items">
+      <button type="button" id="tk-checklist-filter-clear" title="Clear filter" aria-label="Clear filter" style="display: none;">
+        ${icon("x")}
+      </button>
+    </div>
+    <button type="button" id="tk-checklist-filter-select-all" class="sctk-btn" title="Select all visible matching items" aria-label="Select all visible items" style="display: none;">
+      Select All
+    </button>
+    <span id="tk-filter-count" aria-live="polite"></span>
+    <button type="button" id="tk-checklist-filter-copy-friendly" class="sctk-btn" title="Copy formatted text" aria-label="Copy formatted text" style="${showCopyFriendly ? "display: inline-flex;" : "display: none;"}">
+      ${icon("copy")}
+    </button>
+    <button type="button" id="tk-checklist-filter-copy-tsv" class="sctk-btn" title="Copy tab-separated values (TSV)" aria-label="Copy tab-separated values (TSV)" style="${showCopyTSV ? "display: inline-flex;" : "display: none;"}">
+      ${icon("tsv")}
+    </button>
+  `;
+    targetElement.before(filterWrap);
+    const countEl = filterWrap.querySelector("#tk-filter-count");
+    const input = filterWrap.querySelector("#tk-checklist-filter");
+    const clearBtn = filterWrap.querySelector("#tk-checklist-filter-clear");
+    const selectAllBtn = filterWrap.querySelector("#tk-checklist-filter-select-all");
+    const copyFriendlyBtn = filterWrap.querySelector("#tk-checklist-filter-copy-friendly");
+    const copyTsvBtn = filterWrap.querySelector("#tk-checklist-filter-copy-tsv");
+    const updateClearVisibility = () => {
+      if (clearBtn) {
+        clearBtn.style.display = input.value.trim() !== "" ? "inline-flex" : "none";
+      }
+    };
+    const run = debounce((term) => {
+      const visible = applyFilter(index, term);
+      countEl.textContent = term === "" ? "" : `${visible} of ${index.length}`;
+      if (selectAllBtn) {
+        const showBtn = hasCheckboxes && term !== "" && visible > 0;
+        selectAllBtn.style.display = showBtn ? "inline-flex" : "none";
+      }
+      Log(`Checklist filter: applied term "${term}" (${visible} of ${index.length} visible)`, "debug");
+    }, Config.global.checklistFilterDebounceMs);
+    const performFilter = () => {
+      const val = input.value.toLowerCase().trim();
+      updateClearVisibility();
+      run(val);
+    };
+    input.addEventListener("input", performFilter);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && input.value !== "") {
+        e.stopPropagation();
+        input.value = "";
+        performFilter();
+      }
+    });
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        input.value = "";
+        input.focus();
+        performFilter();
+      });
+    }
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => {
+        let count = 0;
+        index.forEach(({ el }) => {
+          if (!el.classList.contains(HIDDEN_CLASS)) {
+            const cb = el.querySelector('input[type="checkbox"]');
+            if (cb && !cb.checked) {
+              cb.click();
+              count++;
+            }
+          }
+        });
+        Log(`Checklist filter: "Select All" clicked, checked ${count} matching item checkbox(es).`, "debug");
+      });
+    }
+    if (copyFriendlyBtn) {
+      copyFriendlyBtn.addEventListener("click", () => {
+        const visibleRows = index.filter(({ el }) => !el.classList.contains(HIDDEN_CLASS));
+        if (visibleRows.length === 0) {
+          showToast({ message: "No matching items to copy.", variant: "warning" });
+          return;
+        }
+        const doc = mainContent.ownerDocument || document;
+        const win = doc.defaultView || window;
+        const template = Config.global.cardFormatterTemplate || "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
+        const lines = visibleRows.map(({ el }) => {
+          const tokens = CardMetadataExtractor.extractFromRow(el, doc);
+          if (tokens) {
+            return CardMetadataExtractor.compile(template, tokens);
+          }
+          return el.textContent.replace(/\s+/g, " ").trim();
+        }).filter(Boolean);
+        const fullText = lines.join("\n");
+        const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(fullText) : Promise.resolve();
+        writePromise.then(() => {
+          copyFriendlyBtn.innerHTML = icon("check");
+          showToast({
+            message: `Copied <b>${lines.length}</b> filtered record(s) to clipboard`,
+            variant: "success"
+          });
+          setTimeout(() => {
+            copyFriendlyBtn.innerHTML = icon("copy");
+          }, 1200);
+        }).catch((err) => {
+          Log(`Clipboard write failed: ${err.message}`, "error");
+        });
+      });
+    }
+    if (copyTsvBtn) {
+      copyTsvBtn.addEventListener("click", () => {
+        const visibleRows = index.filter(({ el }) => !el.classList.contains(HIDDEN_CLASS));
+        if (visibleRows.length === 0) {
+          showToast({ message: "No matching items to copy.", variant: "warning" });
+          return;
+        }
+        const doc = mainContent.ownerDocument || document;
+        const win = doc.defaultView || window;
+        const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+        const lines = visibleRows.map(({ el }) => {
+          const tokens = CardMetadataExtractor.extractFromRow(el, doc);
+          if (tokens) {
+            return CardMetadataExtractor.compile(tsvTemplate, tokens);
+          }
+          return el.textContent.replace(/\s+/g, " ").trim();
+        }).filter(Boolean);
+        const fullText = lines.join("\n");
+        const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(fullText) : Promise.resolve();
+        writePromise.then(() => {
+          copyTsvBtn.innerHTML = icon("check");
+          showToast({
+            message: `Copied TSV for <b>${lines.length}</b> filtered record(s) to clipboard`,
+            variant: "success"
+          });
+          setTimeout(() => {
+            copyTsvBtn.innerHTML = icon("tsv");
+          }, 1200);
+        }).catch((err) => {
+          Log(`Clipboard write failed: ${err.message}`, "error");
+        });
+      });
+    }
+    return true;
+  }
+  var ActiveObservers = /* @__PURE__ */ new Set();
+  function disconnectChecklistEnhancer() {
+    ActiveObservers.forEach((obs) => {
+      try {
+        obs.disconnect();
+      } catch {
+      }
+    });
+    ActiveObservers.clear();
+  }
+  function observeChecklistFilter(options = {}) {
+    disconnectChecklistEnhancer();
+    if (typeof MutationObserver !== "function" || typeof document === "undefined") return null;
+    const target = document.getElementById("main-content-area") || document.getElementById("content") || document.body;
+    if (!target) return null;
+    let debounceTimer = null;
+    const observer = new MutationObserver((mutations) => {
+      const isSelfMutation = mutations.every(
+        (m) => Array.from(m.addedNodes).every(
+          (node) => node.nodeType === 1 && (node.id === "tk-checklist-filter-wrap" || node.querySelector?.("#tk-checklist-filter-wrap") !== null)
+        )
+      );
+      if (isSelfMutation) return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        try {
+          if (!document.getElementById("tk-checklist-filter-wrap")) {
+            const scope = findFilterScope();
+            if (scope) {
+              const installed = installFilter(scope);
+              if (installed) {
+                Log("Checklist Enhancer: Installed filter bar via late DOM update / AJAX observer.", "info");
+              }
+            }
+          }
+        } catch (err) {
+          Log(`Checklist Enhancer observer error: ${err.message}`, "warn");
+        }
+      }, 150);
+    });
+    try {
+      observer.observe(target, { childList: true, subtree: true });
+      ActiveObservers.add(observer);
+      if (options.timeoutMs > 0) {
+        setTimeout(() => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          try {
+            observer.disconnect();
+          } finally {
+            ActiveObservers.delete(observer);
+          }
+        }, options.timeoutMs);
+      }
+    } catch (err) {
+      Log(`Checklist Enhancer: Failed to observe target element: ${err.message}`, "warn");
+      observer.disconnect();
+      return null;
+    }
+    return observer;
+  }
+  function initChecklistEnhancer() {
+    if (!Config.modules.checklistEnhancer.actions.realtimeFilter) return;
+    disconnectChecklistEnhancer();
+    if (document.getElementById("tk-checklist-filter-wrap")) {
+      observeChecklistFilter();
+      return;
+    }
+    const scope = findFilterScope();
+    if (!scope) {
+      Log("Checklist Enhancer: Waiting for listing container to render...", "info");
+      assertContract("checklistEnhancer", [
+        { selector: FILTER_SCOPES.join(", "), label: "a listing container holding a table or list", optional: true }
+      ]);
+    } else {
+      installFilter(scope);
+    }
+    observeChecklistFilter();
+  }
 
   // src/modules/setListEnhancer.js
   var CHUNK_SIZE = Config.global?.setListEnhancerChunkSize ?? 25;
@@ -5754,631 +6532,6 @@ button.tk-add-btn {
     });
   }
 
-  // src/modules/cardNameFormatter.js
-  function getToolbarTitle(doc = document) {
-    const rawTitle = doc ? doc.title : "";
-    let title = cleanDocTitle(rawTitle);
-    const genericLabels = [
-      "",
-      "collection",
-      "change log",
-      "forum",
-      "change log prices",
-      "recently added",
-      "inaccuracy reports",
-      "sctoolkit active",
-      "set view",
-      "browse"
-    ];
-    if (!title || genericLabels.includes(title.toLowerCase())) {
-      const setWrapperTitle = doc.querySelector?.(".set-title, #setHeader .set-title");
-      if (setWrapperTitle && setWrapperTitle.textContent.trim()) {
-        title = cleanDocTitle(setWrapperTitle.textContent.trim());
-      }
-    }
-    if (!title || genericLabels.includes(title.toLowerCase())) {
-      const setHeader = doc.querySelector?.("#setname-content h1") || doc.querySelector?.("#main-content-area h2") || doc.querySelector?.("#main-content-area h1") || doc.querySelector?.("h1.site");
-      const subHeader = doc.querySelector?.("#setname-content h3") || doc.querySelector?.("#main-content-area h3");
-      if (setHeader && !setHeader.textContent.toLowerCase().includes("set links") && !setHeader.textContent.toLowerCase().includes("change log")) {
-        title = setHeader.textContent.replace(/\s*-\s*Cards$/i, "").trim();
-      }
-      if (subHeader && title && !title.toLowerCase().includes(subHeader.textContent.trim().toLowerCase())) {
-        title += ` - ${subHeader.textContent.trim()}`;
-      }
-    }
-    return title;
-  }
-  function isActionLink(a) {
-    const href = a?.href || "";
-    return href.includes("CollectionAdd") || href.includes("CollectionEdit") || href.includes("CollectionWant") || href.includes("CollectionStatus") || href.includes("CollectionMove") || href.includes("CollectionRemove") || href.includes("SalesLinks") || href.includes("MODE=") || href.includes("Team.cfm") || href.includes("Person.cfm");
-  }
-  function getCleanCellText(cell) {
-    if (!cell) return "";
-    const doc = cell.ownerDocument || (typeof document !== "undefined" ? document : null);
-    const clone = cell.cloneNode(true);
-    clone.querySelectorAll(".tk-player-quick-links-inline, figcaption, .figure-caption").forEach((el) => el.remove());
-    if (doc) {
-      clone.querySelectorAll("br").forEach((br) => {
-        const space = doc.createTextNode(" ");
-        br.parentNode?.replaceChild(space, br);
-      });
-    }
-    return clone.textContent.replace(/\s+/g, " ").trim();
-  }
-  var CardMetadataExtractor = {
-    /**
-     * Extract token values for a given window Selection
-     * @param {Selection} selection
-     * @param {Document} [doc=document] - Document object (supports mock DOM in tests)
-     * @returns {Object|null} Token dictionary or null if invalid
-     */
-    extract: function(selection, doc = document) {
-      if (!selection || selection.isCollapsed) return null;
-      const anchorNode = selection.anchorNode;
-      if (!anchorNode) return null;
-      const containerEl = anchorNode.nodeType === 1 ? anchorNode : anchorNode.parentElement;
-      if (!containerEl) return null;
-      const row = containerEl.closest("tr, .yourcol-item, #main-content-area");
-      if (!row) return null;
-      const selectedText = selection.toString().trim();
-      if (!selectedText) return null;
-      const toolbarTitle = getToolbarTitle(doc);
-      let year = "";
-      let setName = "";
-      let insertSetName = "";
-      if (toolbarTitle) {
-        const yearMatch = toolbarTitle.match(/^(\d{4}(?:-\d{2,4})?)\s+(.+)/);
-        if (yearMatch) {
-          year = yearMatch[1];
-          const rest = yearMatch[2];
-          const dashIdx = rest.indexOf("-");
-          if (dashIdx !== -1) {
-            setName = rest.slice(0, dashIdx).trim();
-            insertSetName = rest.slice(dashIdx + 1).trim();
-          } else {
-            setName = rest.trim();
-          }
-        } else {
-          const dashIdx = toolbarTitle.indexOf("-");
-          if (dashIdx !== -1) {
-            setName = toolbarTitle.slice(0, dashIdx).trim();
-            insertSetName = toolbarTitle.slice(dashIdx + 1).trim();
-          } else {
-            setName = toolbarTitle.trim();
-          }
-        }
-      }
-      let cardNo = "";
-      let cardLink = null;
-      const cardLinks = Array.from(
-        row.querySelectorAll(
-          'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]'
-        )
-      ).filter(
-        (a) => !a.querySelector("img") && !a.querySelector("i") && a.textContent.trim().length > 0 && !isActionLink(a)
-      );
-      if (cardLinks.length > 0) {
-        cardNo = cardLinks[0].textContent.trim();
-        cardLink = cardLinks[0];
-      } else {
-        const firstTd = row.querySelector("td");
-        if (firstTd) {
-          const text = firstTd.textContent.trim();
-          if (/^#?[A-Z0-9-]{1,10}$/i.test(text) && !firstTd.querySelector("img")) {
-            cardNo = text;
-          }
-        }
-      }
-      let tags = "";
-      let printRun = "";
-      const personLink = row.querySelector('a[href*="Person.cfm"]');
-      const teamLink = row.querySelector('a[href*="Team.cfm"]');
-      const ignoredTagsRaw = Config.global.cardFormatterIgnoredTags ?? "ASR, LL, TC, CL";
-      const ignoredTagsSet = new Set(
-        String(ignoredTagsRaw).split(",").map((t) => t.trim().toUpperCase()).filter(Boolean)
-      );
-      const tagSeparatorRaw = Config.global.cardFormatterTagSeparator;
-      const tagSeparator = tagSeparatorRaw !== void 0 && tagSeparatorRaw !== null && String(tagSeparatorRaw) !== "" ? String(tagSeparatorRaw) : " ";
-      const tagReplacerRaw = Config.global.cardFormatterTagReplacer ?? "";
-      const tagReplacements = /* @__PURE__ */ new Map();
-      if (tagReplacerRaw) {
-        String(tagReplacerRaw).split(/,|\n/).forEach((pair) => {
-          const colonIdx = pair.indexOf(":");
-          if (colonIdx !== -1) {
-            const key = pair.slice(0, colonIdx).trim().toUpperCase();
-            const val = pair.slice(colonIdx + 1).trim();
-            if (key && val) {
-              tagReplacements.set(key, val);
-            }
-          }
-        });
-      }
-      const subjectTd = personLink ? personLink.closest("td") : cardLink ? cardLink.closest("td")?.nextElementSibling : null;
-      if (subjectTd) {
-        const rawSubject = getCleanCellText(subjectTd);
-        const tokens = rawSubject.split(" ");
-        const tagParts = [];
-        tokens.forEach((token) => {
-          const clean = token.replace(/,/g, "").trim();
-          if (/^(?:SN|PR)\d+$/i.test(clean)) {
-            printRun = clean.replace(/^(?:SN|PR)/i, "");
-          } else if (/^[A-Z0-9]{2,4}$/.test(clean) && !/^(Jr|Sr|II|III|IV|V)$/i.test(clean)) {
-            const upperClean = clean.toUpperCase();
-            let targetTag = clean;
-            if (tagReplacements.has(upperClean)) {
-              targetTag = tagReplacements.get(upperClean);
-            }
-            if (targetTag && !ignoredTagsSet.has(targetTag.toUpperCase())) {
-              tagParts.push(targetTag);
-            }
-          }
-        });
-        tags = tagParts.join(tagSeparator);
-      }
-      let playerName = "";
-      if (personLink) {
-        playerName = personLink.textContent.trim();
-      } else if (cardLinks.length >= 2) {
-        playerName = cardLinks[1].textContent.trim();
-      }
-      if (!playerName && subjectTd) {
-        let rawName = getCleanCellText(subjectTd);
-        if (printRun) {
-          rawName = rawName.replace(new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"), "");
-        }
-        if (tags) {
-          const tagList = tags.split(tagSeparator);
-          tagList.forEach((t) => {
-            const trimmedTag = String(t).trim();
-            if (!trimmedTag) return;
-            const escT = trimmedTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            rawName = rawName.replace(new RegExp(`\\b${escT}\\b`, "g"), "");
-          });
-        }
-        playerName = rawName.replace(/\s+/g, " ").trim();
-      }
-      if (!playerName) {
-        playerName = selectedText;
-        if (cardNo) {
-          const cleanCardNo = cardNo.replace(/^#/, "");
-          const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const prefixRegex = new RegExp(
-            `^(?:#?${escapeRegExp(cardNo)}|#?${escapeRegExp(cleanCardNo)})\\b\\s*`,
-            "i"
-          );
-          playerName = playerName.replace(prefixRegex, "").trim();
-        }
-        if (/^#?\d+[a-z]?\s+/i.test(playerName) && cardNo) {
-          playerName = playerName.replace(/^#?\d+[a-z]?\s+/i, "").trim();
-        }
-        if (!playerName) playerName = selectedText;
-      }
-      let playerTeam = "";
-      if (teamLink) {
-        playerTeam = teamLink.textContent.trim();
-      } else if (cardLinks.length >= 3 && !cardLinks[2].querySelector("img")) {
-        const thirdText = cardLinks[2].textContent.trim();
-        if (thirdText && thirdText !== cardNo) {
-          playerTeam = thirdText;
-        }
-      } else if (subjectTd && subjectTd.nextElementSibling) {
-        const nextTd = subjectTd.nextElementSibling;
-        const linkInNext = nextTd.querySelector("a");
-        if (linkInNext) {
-          playerTeam = linkInNext.textContent.trim();
-        } else {
-          playerTeam = getCleanCellText(nextTd);
-        }
-      }
-      return {
-        Year: year,
-        SetName: setName,
-        InsertSetName: insertSetName,
-        PlayerName: playerName,
-        PlayerTeam: playerTeam,
-        CardNo: cardNo,
-        Tags: tags,
-        PR: printRun ? String(printRun).replace(/^\//, "") : ""
-      };
-    },
-    /**
-     * Replace tokens in template string with extracted values
-     * @param {string} template - Tokenized template (e.g. "{PlayerName} - {Year}")
-     * @param {Object} tokens - Extracted token dictionary
-     * @returns {string} Formatted output string
-     */
-    compile: function(template, tokens) {
-      if (!tokens || !template) return "";
-      const isTSV = template.includes("	") || template.includes("\\t");
-      let result = template.replace(/\\t/g, "	");
-      if (!tokens.CardNo) {
-        result = result.replace(/#\{CardNo\}/g, "{CardNo}");
-      }
-      Object.keys(tokens).forEach((key) => {
-        const pattern = new RegExp(`\\{${key}\\}`, "g");
-        const val = (tokens[key] || "").trim();
-        result = result.replace(pattern, val);
-      });
-      if (isTSV) {
-        return result;
-      }
-      return result.replace(/\s+/g, " ").replace(/\s+#$/, "").replace(/\s+-\s+$/, "").replace(/^\s+-\s+/, "").replace(/\s+-\s+(?=-|\s|$)/g, " ").trim();
-    }
-  };
-  var FormattedCopyPopover = {
-    elementId: "tk-card-formatter-popover",
-    _dismissTimer: null,
-    /**
-     * Render popover near user selection coordinates
-     * @param {Selection} selection
-     * @param {string} formattedText
-     * @param {Object|Document} [tokensOrDoc=document] - Tokens dictionary or Document object
-     * @param {Document} [doc=document] - Document object
-     */
-    show: function(selection, formattedText, tokensOrDoc, doc) {
-      const defaultDoc = typeof document !== "undefined" ? document : null;
-      let tokens = null;
-      let targetDoc = doc || defaultDoc;
-      if (tokensOrDoc && (tokensOrDoc.nodeType === 9 || tokensOrDoc.defaultView)) {
-        targetDoc = tokensOrDoc;
-        tokens = null;
-      } else if (tokensOrDoc && typeof tokensOrDoc === "object") {
-        tokens = tokensOrDoc;
-        if (!doc) targetDoc = defaultDoc;
-      }
-      if (!targetDoc) return;
-      this.hide(targetDoc);
-      if (!selection || selection.rangeCount === 0) return;
-      let rect;
-      try {
-        const range = selection.getRangeAt(0);
-        rect = range.getBoundingClientRect();
-      } catch {
-        return;
-      }
-      const win = targetDoc.defaultView || window;
-      const top = (win.scrollY || 0) + rect.bottom + 6;
-      const left = Math.max(10, (win.scrollX || 0) + rect.left);
-      const popover = targetDoc.createElement("div");
-      popover.id = this.elementId;
-      popover.className = "tk-formatter-popover";
-      popover.style.top = `${top}px`;
-      popover.style.left = `${left}px`;
-      const label = targetDoc.createElement("span");
-      label.className = "tk-popover-label";
-      label.textContent = formattedText;
-      label.title = formattedText;
-      popover.appendChild(label);
-      if (Config.global.cardFormatterShowCopy !== false) {
-        const copyBtn = targetDoc.createElement("button");
-        copyBtn.type = "button";
-        copyBtn.className = "sctk-btn";
-        copyBtn.innerHTML = icon("copy");
-        copyBtn.title = "Copy formatted text";
-        copyBtn.setAttribute("aria-label", "Copy formatted text");
-        copyBtn.addEventListener("click", () => {
-          const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(formattedText) : Promise.resolve();
-          writePromise.then(() => {
-            copyBtn.innerHTML = icon("check");
-            showToast({
-              message: `Copied: <b>${Utils.escape.html(formattedText)}</b>`,
-              variant: "success"
-            });
-            setTimeout(() => this.hide(targetDoc), 1e3);
-          }).catch((err) => {
-            Log(`Clipboard write failed: ${err.message}`, "error");
-          });
-        });
-        popover.appendChild(copyBtn);
-      }
-      if (Config.global.cardFormatterShowTSV !== false) {
-        const tsvBtn = targetDoc.createElement("button");
-        tsvBtn.type = "button";
-        tsvBtn.className = "sctk-btn";
-        tsvBtn.innerHTML = icon("tsv");
-        tsvBtn.title = "Copy tab-separated values (TSV)";
-        tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
-        tsvBtn.addEventListener("click", () => {
-          const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
-          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
-          const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(tsvLine) : Promise.resolve();
-          writePromise.then(() => {
-            tsvBtn.innerHTML = icon("check");
-            showToast({
-              message: `Copied TSV: <b>${Utils.escape.html(tsvLine)}</b>`,
-              variant: "success"
-            });
-            setTimeout(() => this.hide(targetDoc), 1e3);
-          }).catch((err) => {
-            Log(`Clipboard write failed: ${err.message}`, "error");
-          });
-        });
-        popover.appendChild(tsvBtn);
-      }
-      const playerName = tokens?.PlayerName || "";
-      if (playerName) {
-        const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
-        if (Config.global.cardFormatterShowBRef !== false) {
-          const brefBtn = targetDoc.createElement("button");
-          brefBtn.type = "button";
-          brefBtn.className = "sctk-btn";
-          brefBtn.innerHTML = icon("bref");
-          brefBtn.title = "Search Baseball Reference";
-          brefBtn.setAttribute("aria-label", "Search Baseball Reference");
-          brefBtn.addEventListener("click", () => {
-            const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
-            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
-            Utils.openInTab(brefUrl, inBackground, win);
-          });
-          popover.appendChild(brefBtn);
-        }
-        if (Config.global.cardFormatterShowGoogle !== false) {
-          const googleBtn = targetDoc.createElement("button");
-          googleBtn.type = "button";
-          googleBtn.className = "sctk-btn";
-          googleBtn.innerHTML = icon("google");
-          googleBtn.title = "Search Google";
-          googleBtn.setAttribute("aria-label", "Search Google");
-          googleBtn.addEventListener("click", () => {
-            const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
-            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
-            Utils.openInTab(googleUrl, inBackground, win);
-          });
-          popover.appendChild(googleBtn);
-        }
-      }
-      targetDoc.body.appendChild(popover);
-      const duration = Config.global.cardFormatterPopoverDurationMs || 4e3;
-      this._dismissTimer = setTimeout(() => {
-        this.hide(targetDoc);
-      }, duration);
-    },
-    /**
-     * Remove popover element if present
-     * @param {Document} [doc=document]
-     */
-    hide: function(doc) {
-      const targetDoc = doc || (typeof document !== "undefined" ? document : null);
-      if (!targetDoc) return;
-      if (this._dismissTimer) {
-        clearTimeout(this._dismissTimer);
-        this._dismissTimer = null;
-      }
-      const existing = targetDoc.getElementById(this.elementId);
-      if (existing) existing.remove();
-    }
-  };
-  function renderInlineQuickLinks(doc = document) {
-    const targetDoc = doc || (typeof document !== "undefined" ? document : null);
-    if (!targetDoc) return;
-    const showCopy = Config.global.cardFormatterShowCopy !== false;
-    const showTSV = Config.global.cardFormatterShowTSV !== false;
-    const showBRef = Config.global.cardFormatterShowBRef !== false;
-    const showGoogle = Config.global.cardFormatterShowGoogle !== false;
-    if (!showCopy && !showTSV && !showBRef && !showGoogle) return;
-    const win = targetDoc.defaultView || (typeof window !== "undefined" ? window : null);
-    const rows = targetDoc.querySelectorAll("tr, .yourcol-item");
-    rows.forEach((row) => {
-      if (row.querySelector("th")) return;
-      if (row.closest?.(
-        ".col-md-3, .col-md-4, nav, #topnav, #sctk-toolbar, .menu-linksV, .dropdown-menu, .modal"
-      ))
-        return;
-      const personLink = row.querySelector('a[href*="Person.cfm"]');
-      const cardLinks = Array.from(
-        row.querySelectorAll(
-          'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]'
-        )
-      ).filter(
-        (a) => !a.querySelector("img") && !a.querySelector("i") && a.textContent.trim().length > 0 && !isActionLink(a)
-      );
-      let targetCell = null;
-      let targetNode = null;
-      if (personLink) {
-        targetNode = personLink;
-        targetCell = personLink.closest("td");
-      } else if (cardLinks.length >= 2) {
-        targetNode = cardLinks[1];
-        targetCell = cardLinks[1].closest("td");
-      } else if (cardLinks.length === 1) {
-        const cardNoTd = cardLinks[0].closest("td");
-        if (cardNoTd && cardNoTd.nextElementSibling && !cardNoTd.nextElementSibling.querySelector('a[href*="Team.cfm"]')) {
-          targetCell = cardNoTd.nextElementSibling;
-          targetNode = targetCell.querySelector("a") || cardLinks[0];
-        } else {
-          targetNode = cardLinks[0];
-          targetCell = cardNoTd;
-        }
-      }
-      if (!targetCell) return;
-      const existingContainers = row.querySelectorAll(
-        ".tk-player-quick-links-inline"
-      );
-      existingContainers.forEach((c) => {
-        if (c.parentElement !== targetCell) {
-          c.remove();
-        }
-      });
-      if (targetCell.querySelector(".tk-player-quick-links-inline")) return;
-      const evalNode = targetNode || targetCell;
-      const fakeSelection = {
-        isCollapsed: false,
-        anchorNode: evalNode.firstChild || evalNode,
-        toString: () => evalNode.textContent.trim()
-      };
-      const tokens = CardMetadataExtractor.extract(fakeSelection, targetDoc);
-      if (!tokens || !tokens.PlayerName) return;
-      const template = Config.global.cardFormatterTemplate || "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
-      const formatted = CardMetadataExtractor.compile(template, tokens);
-      const inlineContainer = targetDoc.createElement("div");
-      inlineContainer.className = "tk-player-quick-links-inline";
-      if (showCopy && formatted) {
-        const copyBtn = targetDoc.createElement("button");
-        copyBtn.type = "button";
-        copyBtn.className = "sctk-inline-btn";
-        copyBtn.innerHTML = icon("copy");
-        copyBtn.title = "Copy formatted text";
-        copyBtn.setAttribute("aria-label", "Copy formatted text");
-        copyBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const writePromise = win?.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(formatted) : Promise.resolve();
-          writePromise.then(() => {
-            copyBtn.innerHTML = icon("check");
-            showToast({
-              message: `Copied: <b>${Utils.escape.html(formatted)}</b>`,
-              variant: "success"
-            });
-            setTimeout(() => {
-              copyBtn.innerHTML = icon("copy");
-            }, 1200);
-          }).catch((err) => {
-            Log(`Clipboard write failed: ${err.message}`, "error");
-          });
-        });
-        inlineContainer.appendChild(copyBtn);
-      }
-      if (showTSV) {
-        const tsvBtn = targetDoc.createElement("button");
-        tsvBtn.type = "button";
-        tsvBtn.className = "sctk-inline-btn";
-        tsvBtn.innerHTML = icon("tsv");
-        tsvBtn.title = "Copy tab-separated values (TSV)";
-        tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
-        tsvBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
-          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens);
-          const writePromise = win?.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(tsvLine) : Promise.resolve();
-          writePromise.then(() => {
-            tsvBtn.innerHTML = icon("check");
-            showToast({
-              message: `Copied TSV: <b>${Utils.escape.html(tsvLine)}</b>`,
-              variant: "success"
-            });
-            setTimeout(() => {
-              tsvBtn.innerHTML = icon("tsv");
-            }, 1200);
-          }).catch((err) => {
-            Log(`Clipboard write failed: ${err.message}`, "error");
-          });
-        });
-        inlineContainer.appendChild(tsvBtn);
-      }
-      const playerName = tokens.PlayerName;
-      if (playerName) {
-        const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
-        if (showBRef) {
-          const brefBtn = targetDoc.createElement("button");
-          brefBtn.type = "button";
-          brefBtn.className = "sctk-inline-btn";
-          brefBtn.innerHTML = icon("bref");
-          brefBtn.title = "Search Baseball Reference";
-          brefBtn.setAttribute("aria-label", "Search Baseball Reference");
-          brefBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
-            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
-            Utils.openInTab(brefUrl, inBackground, win);
-          });
-          inlineContainer.appendChild(brefBtn);
-        }
-        if (showGoogle) {
-          const googleBtn = targetDoc.createElement("button");
-          googleBtn.type = "button";
-          googleBtn.className = "sctk-inline-btn";
-          googleBtn.innerHTML = icon("google");
-          googleBtn.title = "Search Google";
-          googleBtn.setAttribute("aria-label", "Search Google");
-          googleBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
-            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
-            Utils.openInTab(googleUrl, inBackground, win);
-          });
-          inlineContainer.appendChild(googleBtn);
-        }
-      }
-      if (inlineContainer.childElementCount > 0) {
-        targetCell.appendChild(inlineContainer);
-      }
-    });
-  }
-  var activeObserver = null;
-  function initCardNameFormatter() {
-    Log("Initializing Player Quick Links module", "info");
-    if (activeObserver) {
-      activeObserver.disconnect();
-      activeObserver = null;
-    }
-    if (Config.global.cardFormatterOutputMode === "inline") {
-      renderInlineQuickLinks(document);
-      const targetArea = document.querySelector("#main-content-area") || document.querySelector("#content") || document.body;
-      if (targetArea && typeof MutationObserver !== "undefined") {
-        const debouncedRender = debounce(() => {
-          renderInlineQuickLinks(document);
-        }, 150);
-        activeObserver = new MutationObserver(debouncedRender);
-        activeObserver.observe(targetArea, { childList: true, subtree: true });
-      }
-      return;
-    }
-    const handleSelection = debounce(() => {
-      if (Config.global.cardFormatterOutputMode === "inline") {
-        FormattedCopyPopover.hide();
-        return;
-      }
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed) {
-        FormattedCopyPopover.hide();
-        return;
-      }
-      const tokens = CardMetadataExtractor.extract(selection);
-      if (!tokens || !tokens.PlayerName) {
-        FormattedCopyPopover.hide();
-        return;
-      }
-      const template = Config.global.cardFormatterTemplate || "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}";
-      const formatted = CardMetadataExtractor.compile(template, tokens);
-      if (!formatted) {
-        FormattedCopyPopover.hide();
-        return;
-      }
-      const showCopy = Config.global.cardFormatterShowCopy !== false;
-      const showTSV = Config.global.cardFormatterShowTSV !== false;
-      const showBRef = Config.global.cardFormatterShowBRef !== false;
-      const showGoogle = Config.global.cardFormatterShowGoogle !== false;
-      const hasSearch = showBRef || showGoogle;
-      if (!showCopy && !showTSV && !hasSearch) {
-        FormattedCopyPopover.hide();
-        return;
-      }
-      if (!hasSearch && !showTSV && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
-        if (window.navigator?.clipboard?.writeText) {
-          window.navigator.clipboard.writeText(formatted).then(() => {
-            showToast({
-              message: `Copied: <b>${Utils.escape.html(formatted)}</b>`,
-              variant: "success"
-            });
-          });
-        }
-      } else {
-        FormattedCopyPopover.show(selection, formatted, tokens);
-      }
-    }, 250);
-    document.addEventListener("selectionchange", handleSelection);
-    document.addEventListener("mousedown", (e) => {
-      const popover = document.getElementById(FormattedCopyPopover.elementId);
-      if (popover && !popover.contains(e.target)) {
-        FormattedCopyPopover.hide();
-      }
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        FormattedCopyPopover.hide();
-      }
-    });
-  }
-
   // src/modules/collectionQuantityCounter.js
   var activeObserver2 = null;
   var boundListeners = [];
@@ -7164,6 +7317,214 @@ button.tk-add-btn {
     Log(`Quick Add Grid Enhancer: Injected quick-add controls into ${injectedCount} row(s).`, "debug");
   }
 
+  // src/modules/collectionAddCardNumberEnhancer.js
+  var BREADCRUMB_SELECTOR = "#content > div.col-md-6.nopadding > div > div.d-none.d-md-block > nav > ol > li:nth-child(3)";
+  var FALLBACK_BREADCRUMB_SELECTOR = 'nav[aria-label="breadcrumb"] ol.breadcrumb > li:nth-child(3)';
+  var ADD_TO_SELECT_SELECTOR = 'form[name="CFForm_1"] select[name="AddTo"], #CFForm_1 select[name="AddTo"]';
+  var TEXTAREA_SELECTOR = 'form[name="CFForm_1"] textarea[name="sText"], #CFForm_1 textarea[name="sText"]';
+  var FORM_SELECTOR = 'form[name="CFForm_1"], #CFForm_1';
+  function defaultAddToSelect(root = document) {
+    const select = root.querySelector(ADD_TO_SELECT_SELECTOR);
+    if (!select) return false;
+    const targetValue = "S";
+    if (select.value === targetValue) {
+      Log('Collection Add Card Number: "Add To" dropdown already on "S".', "debug");
+      return false;
+    }
+    const optionExists = Array.from(select.options).some((o) => o.value === targetValue);
+    if (!optionExists) {
+      Log('Collection Add Card Number: option "S" not found in "Add To" select.', "warn");
+      return false;
+    }
+    select.value = targetValue;
+    const EventCtor = select.ownerDocument?.defaultView?.Event || Event;
+    select.dispatchEvent(new EventCtor("change", { bubbles: true }));
+    Log('Collection Add Card Number: defaulted "Add To" dropdown to "S" (For Sale/Trade).', "info");
+    return true;
+  }
+  function checkCollectionMismatch(root = document, preferredId = getDefaultCollectionId()) {
+    const result = {
+      isMismatch: false,
+      pageCollectionId: null,
+      preferredCollectionId: preferredId ? String(preferredId) : null,
+      collectionName: ""
+    };
+    if (!preferredId) return result;
+    const breadcrumbLi = root.querySelector(BREADCRUMB_SELECTOR) || root.querySelector(FALLBACK_BREADCRUMB_SELECTOR);
+    if (!breadcrumbLi) {
+      Log("Collection Add Card Number: breadcrumb li:nth-child(3) element not found.", "debug");
+      return result;
+    }
+    const link = breadcrumbLi.querySelector("a");
+    const collectionName = (link ? link.textContent : breadcrumbLi.textContent).trim();
+    result.collectionName = collectionName;
+    const href = link ? link.getAttribute("href") || "" : "";
+    const match = href.match(/collection\/(\d+)|CollectionID=(\d+)/i);
+    if (match) {
+      result.pageCollectionId = match[1] || match[2];
+    }
+    if (result.pageCollectionId && result.pageCollectionId !== result.preferredCollectionId) {
+      result.isMismatch = true;
+      Log(
+        `Collection Add Card Number: Preferred collection mismatch. Current page collection ID: "${result.pageCollectionId}" ("${collectionName}"), Preferred ID: "${result.preferredCollectionId}".`,
+        "warn"
+      );
+      const form = root.querySelector(FORM_SELECTOR);
+      const existingWarning = root.querySelector("#sctk-collection-mismatch-warning");
+      if (!existingWarning && form) {
+        const warningDiv = document.createElement("div");
+        warningDiv.id = "sctk-collection-mismatch-warning";
+        warningDiv.className = "alert alert-warning d-flex align-items-center my-2";
+        warningDiv.setAttribute("role", "alert");
+        warningDiv.innerHTML = `
+        <i class="fa-solid fa-triangle-exclamation me-2 fs-5"></i>
+        <div>
+          <strong>Collection Mismatch Warning:</strong> Current collection (<strong>${escapeHtml3(collectionName)}</strong>) does not match your preferred collection (ID: <strong>${escapeHtml3(result.preferredCollectionId)}</strong>).
+        </div>
+      `;
+        form.parentNode.insertBefore(warningDiv, form);
+      }
+      showToast({
+        message: `<b>Collection Warning:</b> Current collection ("${escapeHtml3(collectionName)}") does not match your preferred collection.`,
+        variant: "warn",
+        location: "bottom-right"
+      });
+    }
+    return result;
+  }
+  function countTextareaCards(text = "") {
+    const rawLines = text.split(/\r?\n/);
+    const nonEmptyLines = [];
+    rawLines.forEach((line) => {
+      if (line.trim() !== "") {
+        nonEmptyLines.push(line);
+      }
+    });
+    const totalCount = nonEmptyLines.length;
+    const distinctSet = new Set(nonEmptyLines.map((l) => l.trim()));
+    const distinctCount = distinctSet.size;
+    return { distinctCount, totalCount, lines: nonEmptyLines };
+  }
+  function validateCardNumbers(text = "") {
+    const rawLines = text.split(/\r?\n/);
+    const errors = [];
+    rawLines.forEach((line, idx) => {
+      const lineNum = idx + 1;
+      if (line === "" && idx === rawLines.length - 1) return;
+      if (line !== "") {
+        if (line.trimStart() !== line || line.trimEnd() !== line) {
+          errors.push({
+            lineNum,
+            lineText: line,
+            message: `Line ${lineNum} has leading or trailing whitespace ("${line}")`
+          });
+        }
+        const trimmed = line.trim();
+        if (/[^\w\s\-\/\.\#\&]/i.test(trimmed)) {
+          errors.push({
+            lineNum,
+            lineText: line,
+            message: `Line ${lineNum} contains illegal characters ("${trimmed}")`
+          });
+        }
+      }
+    });
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+  function updateCardCounterWidget(counts, root = document) {
+    let widget = root.querySelector("#sctk-card-number-counter");
+    if (!widget) {
+      widget = document.createElement("div");
+      widget.id = "sctk-card-number-counter";
+      widget.className = "sctk-qty-counter ms-2 align-top";
+      widget.style.cssText = "margin-left: 10px; vertical-align: top; display: inline-flex;";
+      const textarea = root.querySelector(TEXTAREA_SELECTOR);
+      if (textarea && textarea.parentNode) {
+        if (textarea.nextSibling) {
+          textarea.parentNode.insertBefore(widget, textarea.nextSibling);
+        } else {
+          textarea.parentNode.appendChild(widget);
+        }
+      } else {
+        const form = root.querySelector(FORM_SELECTOR);
+        if (form) form.appendChild(widget);
+      }
+    }
+    widget.innerHTML = `
+    <span class="tk-qty-label">Distinct Cards:</span>
+    <strong class="tk-qty-val">${counts.distinctCount}</strong>
+    <span class="tk-qty-sep">/</span>
+    <span class="tk-qty-sub">Total Cards: <strong>${counts.totalCount}</strong></span>
+  `;
+    widget.title = `Distinct Cards: ${counts.distinctCount}, Total Lines: ${counts.totalCount}`;
+  }
+  function escapeHtml3(str) {
+    return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+  function initCollectionAddCardNumberEnhancer() {
+    Log("Initializing Collection Add Card Number Enhancer module", "debug");
+    const ok = assertContract("collectionAddCardNumberEnhancer", [
+      { selector: FORM_SELECTOR, label: "#CFForm_1 (Add Card Number Form)" },
+      { selector: TEXTAREA_SELECTOR, label: 'textarea[name="sText"] (Card Numbers Input)' }
+    ]);
+    if (!ok) return;
+    const form = document.querySelector(FORM_SELECTOR);
+    const textarea = document.querySelector(TEXTAREA_SELECTOR);
+    const modConfig = Config.modules.collectionAddCardNumberEnhancer;
+    const actions = modConfig?.actions || {};
+    if (actions.defaultAddToSale !== false) {
+      defaultAddToSelect(document);
+    }
+    if (actions.collectionWarning !== false) {
+      checkCollectionMismatch(document);
+    }
+    if (actions.liveCounter !== false && textarea) {
+      const updateCounter = () => {
+        const counts = countTextareaCards(textarea.value);
+        updateCardCounterWidget(counts, document);
+      };
+      updateCounter();
+      textarea.addEventListener("input", updateCounter);
+      textarea.addEventListener("change", updateCounter);
+      textarea.addEventListener("keyup", updateCounter);
+    }
+    if (actions.validateInput !== false && form && textarea) {
+      form.addEventListener("submit", (e) => {
+        const validation = validateCardNumbers(textarea.value);
+        const existingAlert = form.querySelector("#sctk-validation-error-alert");
+        if (existingAlert) existingAlert.remove();
+        if (!validation.isValid) {
+          e.preventDefault();
+          e.stopPropagation();
+          Log(`Collection Add Card Number: validation failed with ${validation.errors.length} error(s).`, "warn");
+          const alertDiv = document.createElement("div");
+          alertDiv.id = "sctk-validation-error-alert";
+          alertDiv.className = "alert alert-danger my-2";
+          alertDiv.setAttribute("role", "alert");
+          const errorItems = validation.errors.map((err) => `<li>${escapeHtml3(err.message)}</li>`).join("");
+          alertDiv.innerHTML = `
+          <i class="fa-solid fa-triangle-exclamation me-2"></i>
+          <strong>Validation Error:</strong> Card numbers cannot contain illegal characters or whitespace on either side.
+          <ul class="mb-0 mt-1 ps-3">
+            ${errorItems}
+          </ul>
+        `;
+          textarea.parentNode.insertBefore(alertDiv, textarea);
+          showToast({
+            message: `<b>Validation Error:</b> Please fix ${validation.errors.length} issue(s) before submitting.`,
+            variant: "error",
+            location: "bottom-right"
+          });
+          textarea.focus();
+          return false;
+        }
+      });
+    }
+  }
+
   // src/core/registry.js
   var ModuleRegistry = [
     {
@@ -7255,6 +7616,19 @@ button.tk-add-btn {
       description: "Injects styled inline quantity inputs and quick-add buttons across Collection, Wantlist, and For Sale/Trade views.",
       init: initQuickAddGridEnhancer,
       isAsync: false
+    },
+    {
+      id: "collectionAddCardNumberEnhancer",
+      name: "Collection Add Card Number Enhancer",
+      description: "Supports multi-card additions with default sale option, collection mismatch warnings, card counter, and input validation on CollectionAddCardNumber.cfm.",
+      init: initCollectionAddCardNumberEnhancer,
+      isAsync: false,
+      actionLabels: {
+        defaultAddToSale: "Default Add To Dropdown to For Sale/Trade",
+        collectionWarning: "Preferred Collection Mismatch Warning",
+        liveCounter: "Live Card Counter",
+        validateInput: "Input Validation on Submit"
+      }
     }
   ];
   function resolveModules(url = window.location.href) {

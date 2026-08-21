@@ -137,6 +137,18 @@ export const DEFAULT_CONFIG = {
       ],
       actions: {}
     },
+    collectionAddCardNumberEnhancer: {
+      enabled: true,
+      urlMatch: [
+        { pattern: "collectionaddcardnumber", exclude: false }
+      ],
+      actions: {
+        defaultAddToSale: true,
+        collectionWarning: true,
+        liveCounter: true,
+        validateInput: true
+      }
+    },
   },
   global: {
     exportBaseDelayMs: EXPORT_CONFIG.baseDelayMs,
