@@ -169,7 +169,7 @@ export function validateCardNumbers(text = '') {
       // Check 2: Illegal characters
       const trimmed = line.trim();
       // Allowed: alphanumeric, whitespace, hyphens, slashes, periods, hashes, ampersands
-      if (/[^\w\s\-\/\.\#\&]/i.test(trimmed)) {
+      if (/[^\w\s\-/.#&]/i.test(trimmed)) {
         errors.push({
           lineNum,
           lineText: line,

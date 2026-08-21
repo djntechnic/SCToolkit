@@ -7420,7 +7420,7 @@ button.tk-add-btn {
           });
         }
         const trimmed = line.trim();
-        if (/[^\w\s\-\/\.\#\&]/i.test(trimmed)) {
+        if (/[^\w\s\-/.#&]/i.test(trimmed)) {
           errors.push({
             lineNum,
             lineText: line,

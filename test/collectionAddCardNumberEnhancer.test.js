@@ -146,7 +146,6 @@ test('initCollectionAddCardNumberEnhancer: blocks form submit on invalid input',
   textarea.value = ' 10 ';
 
   const form = dom.window.document.querySelector('#CFForm_1');
-  let defaultPrevented = false;
 
   const event = new dom.window.Event('submit', { cancelable: true, bubbles: true });
   form.dispatchEvent(event);
