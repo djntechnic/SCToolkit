@@ -337,6 +337,23 @@ export const CardMetadataExtractor = {
   },
 
   /**
+   * Extract token values directly from a row element.
+   * @param {HTMLElement} row
+   * @param {Document} [doc=document]
+   * @returns {Object|null} Token dictionary or null if invalid
+   */
+  extractFromRow: function (row, doc = document) {
+    if (!row) return null;
+    const targetNode = row.querySelector("a") || row.firstChild || row;
+    const fakeSelection = {
+      isCollapsed: false,
+      anchorNode: targetNode,
+      toString: () => row.textContent.trim(),
+    };
+    return this.extract(fakeSelection, doc);
+  },
+
+  /**
    * Replace tokens in template string with extracted values
    * @param {string} template - Tokenized template (e.g. "{PlayerName} - {Year}")
    * @param {Object} tokens - Extracted token dictionary

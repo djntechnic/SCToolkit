@@ -205,6 +205,7 @@ export const TOOLBAR_CSS = `
 #tk-checklist-filter-clear { position: absolute; right: 4px; background: transparent; border: none; color: var(--tk-text-muted); padding: 2px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 2px; height: 16px; width: 16px; margin: 0; }
 #tk-checklist-filter-clear:hover { color: var(--tk-red); background: var(--tk-bg-hover); }
 #tk-checklist-filter-select-all { height: 22px; padding: 1px 8px 0 8px; font-size: 10.5px; flex-shrink: 0; }
+#tk-checklist-filter-copy-friendly, #tk-checklist-filter-copy-tsv { height: 22px; width: 22px; padding: 0; flex-shrink: 0; }
 #tk-filter-count { font-family: var(--tk-font-mono); font-size: 10px; color: var(--tk-text-muted); white-space: nowrap; flex-shrink: 0; }
 #tk-checklist-filter:focus-visible { outline: 2px solid var(--tk-accent); outline-offset: 1px; border-color: var(--tk-accent); }
 

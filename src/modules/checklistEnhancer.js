@@ -14,6 +14,8 @@ import { debounce } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { Routes } from '../core/routes.js';
 import { SELECTOR_REGISTRY } from '../core/selectors.js';
+import { CardMetadataExtractor } from './cardNameFormatter.js';
+import { showToast } from '../ui/toast.js';
 
 /**
  * Return context-specific placeholder message based on page type.
@@ -59,11 +61,66 @@ const HIDDEN_CLASS = 'tk-hidden';
 /** Selectors for navigation, dropdown pickers, or sidebar chrome that must never receive filter bars or indexed rows. */
 const SIDEBAR_CHROME_SELECTOR = SELECTOR_REGISTRY.checklist.chrome;
 
+function isActionLink(a) {
+  const href = a?.href || '';
+  return (
+    href.includes('CollectionAdd') ||
+    href.includes('CollectionEdit') ||
+    href.includes('CollectionWant') ||
+    href.includes('CollectionStatus') ||
+    href.includes('CollectionMove') ||
+    href.includes('CollectionRemove') ||
+    href.includes('SalesLinks') ||
+    href.includes('MODE=') ||
+    href.includes('Team.cfm') ||
+    href.includes('Person.cfm')
+  );
+}
+
+/**
+ * Extract raw card number text from a listing row element.
+ *
+ * @param {HTMLElement} el
+ * @returns {string}
+ */
+export function extractCardNo(el) {
+  if (!el) return '';
+  const cardLinks = Array.from(
+    el.querySelectorAll('a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]')
+  ).filter(
+    (a) =>
+      !a.querySelector('img') &&
+      !a.querySelector('i') &&
+      a.textContent.trim().length > 0 &&
+      !isActionLink(a)
+  );
+
+  if (cardLinks.length > 0) {
+    return cardLinks[0].textContent.trim();
+  }
+
+  const firstTd = el.querySelector('td');
+  if (firstTd) {
+    const text = firstTd.textContent.trim();
+    if (/^#?[A-Z0-9-]{1,10}$/i.test(text) && !firstTd.querySelector('img')) {
+      return text;
+    }
+  }
+
+  const textContent = el.textContent.replace(/\s+/g, ' ').trim();
+  const match = textContent.match(/\bcard\s*#?\s*([a-z0-9-]+)\b/i) || textContent.match(/#\s*([a-z0-9-]+)\b/i);
+  if (match) {
+    return match[1];
+  }
+
+  return '';
+}
+
 /**
  * Build the searchable index of data rows and list items, once.
  *
  * @param {HTMLElement} mainContent
- * @returns {Array<{el: HTMLElement, haystack: string}>}
+ * @returns {Array<{el: HTMLElement, haystack: string, cardNo: string, cleanCardNo: string}>}
  */
 export function buildRowIndex(mainContent) {
   const index = [];
@@ -74,7 +131,14 @@ export function buildRowIndex(mainContent) {
     if (el.parentElement && el.parentElement.closest(ITEM_ELEMENT_SELECTOR)) return;
     if (el.tagName === 'TR' && el.querySelector('th')) return;
     if (!el.querySelector(DATA_ROW_SELECTOR)) return;
-    index.push({ el, haystack: el.textContent.replace(/\s+/g, ' ').toLowerCase() });
+    const cardNo = extractCardNo(el);
+    const cleanCardNo = cardNo ? cardNo.replace(/^#/, '').trim().toLowerCase() : '';
+    index.push({
+      el,
+      haystack: el.textContent.replace(/\s+/g, ' ').toLowerCase(),
+      cardNo,
+      cleanCardNo
+    });
   });
 
   return index;
@@ -83,7 +147,7 @@ export function buildRowIndex(mainContent) {
 /**
  * Show rows matching `term`, hide the rest.
  *
- * @param {Array<{el: HTMLElement, haystack: string}>} index
+ * @param {Array<{el: HTMLElement, haystack: string, cardNo?: string, cleanCardNo?: string}>} index
  * @param {string} term already lowercased and trimmed
  * @returns {number} rows still visible
  */
@@ -93,10 +157,28 @@ export function applyFilter(index, term) {
   const rawTerm = (term || '').trim().toLowerCase();
   const conditions = rawTerm ? rawTerm.split(/[,;|\s.]+/).filter(Boolean) : [];
 
-  index.forEach(({ el, haystack }) => {
+  index.forEach(({ el, haystack, cardNo, cleanCardNo }) => {
+    const rowCleanCardNo = cleanCardNo !== undefined
+      ? cleanCardNo
+      : (cardNo ? cardNo.replace(/^#/, '').trim().toLowerCase() : (extractCardNo(el)?.replace(/^#/, '').trim().toLowerCase() || ''));
+
     const match =
       conditions.length === 0 ||
-      conditions.some((cond) => haystack.includes(cond));
+      conditions.some((cond) => {
+        const cleanCond = cond.replace(/^#/, '').trim().toLowerCase();
+        const isNumericCond = /^\d+$/.test(cleanCond);
+
+        if (isNumericCond) {
+          if (rowCleanCardNo) {
+            return rowCleanCardNo === cleanCond;
+          } else {
+            return haystack.includes(cond);
+          }
+        } else {
+          return haystack.includes(cond);
+        }
+      });
+
     updates.push({ el, match });
     if (match) visible++;
   });
@@ -173,6 +255,9 @@ function installFilter(mainContent) {
   Log(`Checklist filter: hasCheckboxes=${hasCheckboxes}`, 'debug');
   const placeholderText = getFilterPlaceholder();
 
+  const showCopyFriendly = Config.modules.cardNameFormatter?.enabled !== false && Config.global.cardFormatterShowCopy !== false;
+  const showCopyTSV = Config.modules.cardNameFormatter?.enabled !== false && Config.global.cardFormatterShowTSV !== false;
+
   const filterWrap = document.createElement('div');
   filterWrap.id = 'tk-checklist-filter-wrap';
   filterWrap.innerHTML = `
@@ -188,6 +273,12 @@ function installFilter(mainContent) {
       Select All
     </button>
     <span id="tk-filter-count" aria-live="polite"></span>
+    <button type="button" id="tk-checklist-filter-copy-friendly" class="sctk-btn" title="Copy formatted text" aria-label="Copy formatted text" style="${showCopyFriendly ? 'display: inline-flex;' : 'display: none;'}">
+      ${icon('copy')}
+    </button>
+    <button type="button" id="tk-checklist-filter-copy-tsv" class="sctk-btn" title="Copy tab-separated values (TSV)" aria-label="Copy tab-separated values (TSV)" style="${showCopyTSV ? 'display: inline-flex;' : 'display: none;'}">
+      ${icon('tsv')}
+    </button>
   `;
   targetElement.before(filterWrap);
 
@@ -195,6 +286,8 @@ function installFilter(mainContent) {
   const input = filterWrap.querySelector('#tk-checklist-filter');
   const clearBtn = filterWrap.querySelector('#tk-checklist-filter-clear');
   const selectAllBtn = filterWrap.querySelector('#tk-checklist-filter-select-all');
+  const copyFriendlyBtn = filterWrap.querySelector('#tk-checklist-filter-copy-friendly');
+  const copyTsvBtn = filterWrap.querySelector('#tk-checklist-filter-copy-tsv');
 
   const updateClearVisibility = () => {
     if (clearBtn) {
@@ -249,6 +342,94 @@ function installFilter(mainContent) {
         }
       });
       Log(`Checklist filter: "Select All" clicked, checked ${count} matching item checkbox(es).`, 'debug');
+    });
+  }
+
+  if (copyFriendlyBtn) {
+    copyFriendlyBtn.addEventListener('click', () => {
+      const visibleRows = index.filter(({ el }) => !el.classList.contains(HIDDEN_CLASS));
+      if (visibleRows.length === 0) {
+        showToast({ message: 'No matching items to copy.', variant: 'warning' });
+        return;
+      }
+
+      const doc = mainContent.ownerDocument || document;
+      const win = doc.defaultView || window;
+      const template =
+        Config.global.cardFormatterTemplate ||
+        '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}';
+
+      const lines = visibleRows.map(({ el }) => {
+        const tokens = CardMetadataExtractor.extractFromRow(el, doc);
+        if (tokens) {
+          return CardMetadataExtractor.compile(template, tokens);
+        }
+        return el.textContent.replace(/\s+/g, ' ').trim();
+      }).filter(Boolean);
+
+      const fullText = lines.join('\n');
+      const writePromise = win.navigator?.clipboard?.writeText
+        ? win.navigator.clipboard.writeText(fullText)
+        : Promise.resolve();
+
+      writePromise
+        .then(() => {
+          copyFriendlyBtn.innerHTML = icon('check');
+          showToast({
+            message: `Copied <b>${lines.length}</b> filtered record(s) to clipboard`,
+            variant: 'success'
+          });
+          setTimeout(() => {
+            copyFriendlyBtn.innerHTML = icon('copy');
+          }, 1200);
+        })
+        .catch((err) => {
+          Log(`Clipboard write failed: ${err.message}`, 'error');
+        });
+    });
+  }
+
+  if (copyTsvBtn) {
+    copyTsvBtn.addEventListener('click', () => {
+      const visibleRows = index.filter(({ el }) => !el.classList.contains(HIDDEN_CLASS));
+      if (visibleRows.length === 0) {
+        showToast({ message: 'No matching items to copy.', variant: 'warning' });
+        return;
+      }
+
+      const doc = mainContent.ownerDocument || document;
+      const win = doc.defaultView || window;
+      const tsvTemplate =
+        Config.global.cardFormatterTSVTemplate ||
+        '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}';
+
+      const lines = visibleRows.map(({ el }) => {
+        const tokens = CardMetadataExtractor.extractFromRow(el, doc);
+        if (tokens) {
+          return CardMetadataExtractor.compile(tsvTemplate, tokens);
+        }
+        return el.textContent.replace(/\s+/g, ' ').trim();
+      }).filter(Boolean);
+
+      const fullText = lines.join('\n');
+      const writePromise = win.navigator?.clipboard?.writeText
+        ? win.navigator.clipboard.writeText(fullText)
+        : Promise.resolve();
+
+      writePromise
+        .then(() => {
+          copyTsvBtn.innerHTML = icon('check');
+          showToast({
+            message: `Copied TSV for <b>${lines.length}</b> filtered record(s) to clipboard`,
+            variant: 'success'
+          });
+          setTimeout(() => {
+            copyTsvBtn.innerHTML = icon('tsv');
+          }, 1200);
+        })
+        .catch((err) => {
+          Log(`Clipboard write failed: ${err.message}`, 'error');
+        });
     });
   }
 
