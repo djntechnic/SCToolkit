@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import fs from 'node:fs';
-import path from 'node:path';
-
+import { fixtureHtml } from './helpers.js';
 import {
   defaultAddToSelect,
   checkCollectionMismatch,
@@ -16,8 +14,7 @@ import { Config } from '../src/core/config.js';
 import { resetContracts } from '../src/core/contracts.js';
 
 function loadFixtureDom() {
-  const fixturePath = path.resolve('test/fixtures/submitted/CollectionAddCardNumber.html');
-  const html = fs.readFileSync(fixturePath, 'utf8');
+  const html = fixtureHtml('submitted/CollectionAddCardNumber.html');
   return new JSDOM(html, { url: 'https://www.tcdb.com/CollectionAddCardNumber.cfm/sid/225294?ACTION=ADD' });
 }
 
