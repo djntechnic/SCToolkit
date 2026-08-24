@@ -9,7 +9,7 @@ Thumbs.db
 .vscode/
 coverage/
 *.tmp
-*_FileTree.md
+*_FileTree.*
 
 # dist/ is intentionally NOT ignored — the built userscript is the
 # auto-update artifact and must stay committed on main.
