@@ -55,6 +55,10 @@ Options governing text compilation, metadata tokenization, popovers, and quick-s
 | `cardFormatterPopoverDurationMs` | `number` | `4000` (4.0s) | Display duration (in ms) before floating popover automatically dismisses. |
 | `cardFormatterShowCopy` | `boolean` | `true` | Show formatted text copy button (`Copy`). |
 | `cardFormatterShowTSV` | `boolean` | `true` | Show tab-separated values copy button (`TSV`). |
+| `cardFormatterShowGoogleSheet` | `boolean` | `false` | Show Send to Google Sheet button (`Send To`). |
+| `cardFormatterGoogleSheetId` | `string` | `"1E-lfRToeTTXyj8ht6gQVN-0DcKQusN_28U-wNaaOwDI"` | Target Google Sheet ID or URL. |
+| `cardFormatterGoogleSheetWorksheet` | `string` | `"Singles & Lots"` | Target tab/worksheet name inside the Google Sheet. |
+| `cardFormatterGoogleSheetWebAppUrl` | `string` | `""` | Deployed Google Apps Script Web App endpoint URL. |
 | `cardFormatterShowBRef` | `boolean` | `true` | Show Baseball Reference quick-search button (`BRef`). |
 | `cardFormatterShowGoogle` | `boolean` | `true` | Show Google quick-search button (`G`). |
 
@@ -67,6 +71,7 @@ Options governing text compilation, metadata tokenization, popovers, and quick-s
 - `{PlayerTeam}`: Player team name (e.g. `Boston Red Sox`).
 - `{Tags}`: Card tags (e.g. `RC`, `SP`, `VAR`, `AU`, `MEM`).
 - `{PR}`: Serial number or print run limit (e.g. `/99`).
+- `{Quantity}` / `{Qty}`: Quantity amount (default: `1`).
 - `{Sport}`: Sport name (e.g. `Baseball`).
 
 ---

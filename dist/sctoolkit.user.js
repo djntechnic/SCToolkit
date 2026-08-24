@@ -599,6 +599,10 @@
       cardFormatterPopoverDurationMs: 4e3,
       cardFormatterShowCopy: true,
       cardFormatterShowTSV: true,
+      cardFormatterShowGoogleSheet: false,
+      cardFormatterGoogleSheetId: "1E-lfRToeTTXyj8ht6gQVN-0DcKQusN_28U-wNaaOwDI",
+      cardFormatterGoogleSheetWorksheet: "Singles & Lots",
+      cardFormatterGoogleSheetWebAppUrl: "https://script.google.com/macros/s/AKfycbzEDIqbquVj-1G_fmeCUtqNYyX9Z8qyfympeHupi8lbkZZaI2kLcBCnXOZ4pRbTGMUvOA/exec",
       cardFormatterShowBRef: true,
       cardFormatterShowGoogle: true,
       quantityCounterPosition: "bottom-right",
@@ -1123,6 +1127,11 @@
       strokeWidth: 2,
       body: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/>'
     },
+    sheets: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>'
+    },
     bref: {
       size: 12,
       strokeWidth: 2,
@@ -1280,6 +1289,99 @@
       'a[href*="/sid/" i]'
     ]
   };
+
+  // src/net/googleSheets.js
+  function sanitizeSheetId(inputStr) {
+    if (!inputStr || typeof inputStr !== "string") return "";
+    const trimmed = inputStr.trim().replace(/^['"]|['"]$/g, "");
+    if (!trimmed) return "";
+    const urlMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]{25,})/i);
+    if (urlMatch && urlMatch[1]) {
+      return urlMatch[1];
+    }
+    const cleanMatch = trimmed.match(/^(?:\/)?([a-zA-Z0-9_-]{25,})(?:\/|\?|#|$)/);
+    if (cleanMatch && cleanMatch[1]) {
+      return cleanMatch[1];
+    }
+    return trimmed.replace(/^\//, "");
+  }
+  async function sendToGoogleSheet({ sheetId, worksheet, tsvLine, webAppUrl }) {
+    const cleanSheetId = sanitizeSheetId(sheetId);
+    const targetWorksheet = (worksheet || "Singles & Lots").trim();
+    const endpoint = (webAppUrl || "").trim();
+    if (!cleanSheetId) {
+      const err = "Google Sheet ID is not configured or is invalid.";
+      Log(err, "error", "client");
+      return { success: false, message: err };
+    }
+    if (!endpoint) {
+      const err = "Google Apps Script Web App URL is not configured.";
+      Log(err, "error", "client");
+      return { success: false, message: err };
+    }
+    if (!tsvLine) {
+      const err = "No TSV data provided to send.";
+      Log(err, "error", "client");
+      return { success: false, message: err };
+    }
+    const values = tsvLine.split("	");
+    if (values.length === 8) {
+      values.push("1");
+    }
+    const payload = {
+      sheetId: cleanSheetId,
+      worksheet: targetWorksheet,
+      values,
+      rawTsv: tsvLine,
+      targetCol: 9
+      // Explicitly target column I (column 9)
+    };
+    Log(
+      `Sending row (${values.length} fields) to Google Sheet '${cleanSheetId}' worksheet '${targetWorksheet}' via Web App...`,
+      "info",
+      "network"
+    );
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        const err = `HTTP ${response.status} ${response.statusText} from Google Apps Script Web App.`;
+        Log(err, "error", "network");
+        return { success: false, message: err };
+      }
+      const resData = await response.json();
+      if (resData.status === "success") {
+        const row = resData.row;
+        const colLetter = resData.colLetter || "I";
+        const cellRef = resData.cellRef || `${colLetter}${row}`;
+        const fallbackUrl = `https://docs.google.com/spreadsheets/d/${cleanSheetId}/edit#range=${cellRef}`;
+        const sheetUrl = resData.sheetUrl || fallbackUrl;
+        const msg = `Successfully pasted row into '${targetWorksheet}' at cell ${cellRef}`;
+        Log(msg, "info", "network");
+        return {
+          success: true,
+          message: msg,
+          row,
+          colLetter,
+          cellRef,
+          sheetUrl
+        };
+      } else {
+        const err = resData.message || "Unknown error returned from Google Apps Script Web App.";
+        Log(`Google Apps Script error: ${err}`, "error", "network");
+        return { success: false, message: err };
+      }
+    } catch (error) {
+      const err = `Failed to send row to Google Sheet: ${error.message}`;
+      Log(err, "error", "network");
+      return { success: false, message: err };
+    }
+  }
 
   // src/ui/toast.js
   var TOAST_VARIANTS = {
@@ -4025,7 +4127,9 @@ button.tk-add-btn {
         PlayerTeam: playerTeam,
         CardNo: cardNo,
         Tags: tags,
-        PR: printRun ? String(printRun).replace(/^\//, "") : ""
+        PR: printRun ? String(printRun).replace(/^\//, "") : "",
+        Quantity: "1",
+        Qty: "1"
       };
     },
     /**
@@ -4158,6 +4262,47 @@ button.tk-add-btn {
         });
         popover.appendChild(tsvBtn);
       }
+      if (Config.global.cardFormatterShowGoogleSheet) {
+        const sheetsBtn = targetDoc.createElement("button");
+        sheetsBtn.type = "button";
+        sheetsBtn.className = "sctk-btn";
+        sheetsBtn.innerHTML = icon("sheets");
+        sheetsBtn.title = "Send to Google Sheet";
+        sheetsBtn.setAttribute("aria-label", "Send to Google Sheet");
+        sheetsBtn.addEventListener("click", async () => {
+          const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
+          sheetsBtn.disabled = true;
+          showToast({
+            message: "Sending row to Google Sheet...",
+            variant: "info"
+          });
+          const res = await sendToGoogleSheet({
+            sheetId: Config.global.cardFormatterGoogleSheetId,
+            worksheet: Config.global.cardFormatterGoogleSheetWorksheet,
+            tsvLine,
+            webAppUrl: Config.global.cardFormatterGoogleSheetWebAppUrl
+          });
+          sheetsBtn.disabled = false;
+          if (res.success) {
+            sheetsBtn.innerHTML = icon("check");
+            showToast({
+              message: `Pasted into <b>${Utils.escape.html(res.sheetName || Config.global.cardFormatterGoogleSheetWorksheet || "Google Sheet")}</b> at cell <b>${Utils.escape.html(res.cellRef || "")}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => {
+              sheetsBtn.innerHTML = icon("sheets");
+              this.hide(targetDoc);
+            }, 1200);
+          } else {
+            showToast({
+              message: `Google Sheet Error: <b>${Utils.escape.html(res.message)}</b>`,
+              variant: "error"
+            });
+          }
+        });
+        popover.appendChild(sheetsBtn);
+      }
       const playerName = tokens?.PlayerName || "";
       if (playerName) {
         const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
@@ -4216,9 +4361,10 @@ button.tk-add-btn {
     if (!targetDoc) return;
     const showCopy = Config.global.cardFormatterShowCopy !== false;
     const showTSV = Config.global.cardFormatterShowTSV !== false;
+    const showGoogleSheet = !!Config.global.cardFormatterShowGoogleSheet;
     const showBRef = Config.global.cardFormatterShowBRef !== false;
     const showGoogle = Config.global.cardFormatterShowGoogle !== false;
-    if (!showCopy && !showTSV && !showBRef && !showGoogle) return;
+    if (!showCopy && !showTSV && !showGoogleSheet && !showBRef && !showGoogle) return;
     const win = targetDoc.defaultView || (typeof window !== "undefined" ? window : null);
     const rows = targetDoc.querySelectorAll("tr, .yourcol-item");
     rows.forEach((row) => {
@@ -4326,6 +4472,47 @@ button.tk-add-btn {
           });
         });
         inlineContainer.appendChild(tsvBtn);
+      }
+      if (showGoogleSheet) {
+        const sheetsBtn = targetDoc.createElement("button");
+        sheetsBtn.type = "button";
+        sheetsBtn.className = "sctk-inline-btn";
+        sheetsBtn.innerHTML = icon("sheets");
+        sheetsBtn.title = "Send to Google Sheet";
+        sheetsBtn.setAttribute("aria-label", "Send to Google Sheet");
+        sheetsBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens);
+          sheetsBtn.disabled = true;
+          showToast({
+            message: "Sending row to Google Sheet...",
+            variant: "info"
+          });
+          const res = await sendToGoogleSheet({
+            sheetId: Config.global.cardFormatterGoogleSheetId,
+            worksheet: Config.global.cardFormatterGoogleSheetWorksheet,
+            tsvLine,
+            webAppUrl: Config.global.cardFormatterGoogleSheetWebAppUrl
+          });
+          sheetsBtn.disabled = false;
+          if (res.success) {
+            sheetsBtn.innerHTML = icon("check");
+            showToast({
+              message: `Pasted into <b>${Utils.escape.html(res.sheetName || Config.global.cardFormatterGoogleSheetWorksheet || "Google Sheet")}</b> at cell <b>${Utils.escape.html(res.cellRef || "")}</b>`,
+              variant: "success"
+            });
+            setTimeout(() => {
+              sheetsBtn.innerHTML = icon("sheets");
+            }, 1200);
+          } else {
+            showToast({
+              message: `Google Sheet Error: <b>${Utils.escape.html(res.message)}</b>`,
+              variant: "error"
+            });
+          }
+        });
+        inlineContainer.appendChild(sheetsBtn);
       }
       const playerName = tokens.PlayerName;
       if (playerName) {
@@ -8822,6 +9009,70 @@ button.tk-add-btn {
       const showTSVCheckbox = document.createElement("input");
       showTSVCheckbox.type = "checkbox";
       showTSVCheckbox.checked = Config.global.cardFormatterShowTSV !== false;
+      const showGoogleSheetField = document.createElement("div");
+      showGoogleSheetField.className = "tk-settings-field";
+      const showGoogleSheetLabel = document.createElement("label");
+      showGoogleSheetLabel.style.display = "flex";
+      showGoogleSheetLabel.style.alignItems = "center";
+      showGoogleSheetLabel.style.gap = "6px";
+      showGoogleSheetLabel.style.cursor = "pointer";
+      const showGoogleSheetCheckbox = document.createElement("input");
+      showGoogleSheetCheckbox.type = "checkbox";
+      showGoogleSheetCheckbox.checked = !!Config.global.cardFormatterShowGoogleSheet;
+      const googleSheetIdField = document.createElement("div");
+      googleSheetIdField.className = "tk-settings-field";
+      const googleSheetIdLabel = document.createElement("label");
+      googleSheetIdLabel.textContent = "Google Sheet ID";
+      const googleSheetIdInput = document.createElement("input");
+      googleSheetIdInput.type = "text";
+      googleSheetIdInput.value = Config.global.cardFormatterGoogleSheetId || "";
+      googleSheetIdInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      googleSheetIdInput.title = "Google Sheet ID or full spreadsheet URL";
+      googleSheetIdInput.addEventListener("change", () => {
+        Config.global.cardFormatterGoogleSheetId = googleSheetIdInput.value.trim();
+        Log(`Config change: global.cardFormatterGoogleSheetId = ${Config.global.cardFormatterGoogleSheetId}`, "info");
+        SettingsUI._persist();
+      });
+      const googleSheetIdHint = document.createElement("div");
+      googleSheetIdHint.className = "tk-settings-hint";
+      googleSheetIdHint.textContent = "Sheet ID or full Google Sheet URL (e.g. /1E-lfRToeTTXyj8ht6gQVN-0DcKQusN_28U-wNaaOwDI)";
+      googleSheetIdField.append(googleSheetIdLabel, googleSheetIdInput, googleSheetIdHint);
+      const googleSheetWorksheetField = document.createElement("div");
+      googleSheetWorksheetField.className = "tk-settings-field";
+      const googleSheetWorksheetLabel = document.createElement("label");
+      googleSheetWorksheetLabel.textContent = "Worksheet Name";
+      const googleSheetWorksheetInput = document.createElement("input");
+      googleSheetWorksheetInput.type = "text";
+      googleSheetWorksheetInput.value = Config.global.cardFormatterGoogleSheetWorksheet || "Singles & Lots";
+      googleSheetWorksheetInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      googleSheetWorksheetInput.title = "Target tab/worksheet name inside the spreadsheet";
+      googleSheetWorksheetInput.addEventListener("change", () => {
+        Config.global.cardFormatterGoogleSheetWorksheet = googleSheetWorksheetInput.value.trim();
+        Log(`Config change: global.cardFormatterGoogleSheetWorksheet = ${Config.global.cardFormatterGoogleSheetWorksheet}`, "info");
+        SettingsUI._persist();
+      });
+      const googleSheetWorksheetHint = document.createElement("div");
+      googleSheetWorksheetHint.className = "tk-settings-hint";
+      googleSheetWorksheetHint.textContent = "Name of the tab/worksheet to append rows to (e.g. Singles & Lots)";
+      googleSheetWorksheetField.append(googleSheetWorksheetLabel, googleSheetWorksheetInput, googleSheetWorksheetHint);
+      const googleSheetWebAppUrlField = document.createElement("div");
+      googleSheetWebAppUrlField.className = "tk-settings-field";
+      const googleSheetWebAppUrlLabel = document.createElement("label");
+      googleSheetWebAppUrlLabel.textContent = "Google Apps Script Web App URL";
+      const googleSheetWebAppUrlInput = document.createElement("input");
+      googleSheetWebAppUrlInput.type = "text";
+      googleSheetWebAppUrlInput.value = Config.global.cardFormatterGoogleSheetWebAppUrl || "";
+      googleSheetWebAppUrlInput.style.cssText = "width:100%; padding:4px 6px; background:var(--tk-bg-base); color:var(--tk-text); border:1px solid var(--tk-border-strong); border-radius:var(--tk-radius-sm); font-family:var(--tk-font-mono); font-size:11px;";
+      googleSheetWebAppUrlInput.title = "Deployed Google Apps Script Web App URL (starts with https://script.google.com/macros/s/...)";
+      googleSheetWebAppUrlInput.addEventListener("change", () => {
+        Config.global.cardFormatterGoogleSheetWebAppUrl = googleSheetWebAppUrlInput.value.trim();
+        Log(`Config change: global.cardFormatterGoogleSheetWebAppUrl = ${Config.global.cardFormatterGoogleSheetWebAppUrl}`, "info");
+        SettingsUI._persist();
+      });
+      const googleSheetWebAppUrlHint = document.createElement("div");
+      googleSheetWebAppUrlHint.className = "tk-settings-hint";
+      googleSheetWebAppUrlHint.textContent = "Endpoint URL from deployed Apps Script (e.g. https://script.google.com/macros/s/.../exec)";
+      googleSheetWebAppUrlField.append(googleSheetWebAppUrlLabel, googleSheetWebAppUrlInput, googleSheetWebAppUrlHint);
       const showBRefField = document.createElement("div");
       showBRefField.className = "tk-settings-field";
       const showBRefLabel = document.createElement("label");
@@ -8845,10 +9096,11 @@ button.tk-add-btn {
       const updateOutputModeState = () => {
         const showCopy = showCopyCheckbox.checked;
         const showTSV = showTSVCheckbox.checked;
+        const showGoogleSheet = showGoogleSheetCheckbox.checked;
         const showBRef = showBRefCheckbox.checked;
         const showGoogle = showGoogleCheckbox.checked;
         const hasSearch = showBRef || showGoogle;
-        if (hasSearch || showTSV) {
+        if (hasSearch || showTSV || showGoogleSheet) {
           outputModeSelect.disabled = false;
           outputModeSelect.title = "Choose Floating Popover or Inline Buttons mode for active actions.";
           if (Config.global.cardFormatterOutputMode === "clipboard") {
@@ -8884,6 +9136,14 @@ button.tk-add-btn {
       });
       showTSVLabel.append(showTSVCheckbox, document.createTextNode("Show TSV Copy Button"));
       showTSVField.appendChild(showTSVLabel);
+      showGoogleSheetCheckbox.addEventListener("change", () => {
+        Config.global.cardFormatterShowGoogleSheet = showGoogleSheetCheckbox.checked;
+        Log(`Config change: global.cardFormatterShowGoogleSheet = ${showGoogleSheetCheckbox.checked}`, "info");
+        updateOutputModeState();
+        SettingsUI._persist();
+      });
+      showGoogleSheetLabel.append(showGoogleSheetCheckbox, document.createTextNode("Show Send to Google Sheet Button"));
+      showGoogleSheetField.appendChild(showGoogleSheetLabel);
       showBRefCheckbox.addEventListener("change", () => {
         Config.global.cardFormatterShowBRef = showBRefCheckbox.checked;
         Log(`Config change: global.cardFormatterShowBRef = ${showBRefCheckbox.checked}`, "info");
@@ -8904,8 +9164,8 @@ button.tk-add-btn {
       pane.appendChild(
         SettingsUI._buildCollapsibleSection(
           "Player Quick Links Settings",
-          [templateField, tsvTemplateField, ignoredTagsField, tagSeparatorField, tagReplacerField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showBRefField, showGoogleField],
-          "Configure custom copy templates, output modes (popover, inline buttons, clipboard), link opening targets, and search actions.",
+          [templateField, tsvTemplateField, ignoredTagsField, tagSeparatorField, tagReplacerField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showGoogleSheetField, googleSheetIdField, googleSheetWorksheetField, googleSheetWebAppUrlField, showBRefField, showGoogleField],
+          "Configure custom copy templates, output modes (popover, inline buttons, clipboard), Google Sheets target, link opening targets, and search actions.",
           false
         )
       );

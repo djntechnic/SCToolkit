@@ -7,6 +7,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Card Name Formatter Google Sheets Integration**: Added a dedicated "Send To" action button in floating popovers and inline quick links to append TSV-formatted card data directly to user-specified Google Sheets and worksheet tabs via Google Apps Script Web Apps. Includes smart Google Sheet ID sanitation, full column type/alignment formatting (Columns A-I), and configurable Sheet ID, Worksheet Name, and Web App URL settings.
 - **Collection Quantity Counter Details Modal**: Added an interactive **Details** button (`#sctk-qty-details-btn`) to the overlay widget (`#sctk-qty-counter`) that opens a modal window displaying `Card No`, `Player`, `Tags`, `Team`, and `Qty` for all added items (`Qty >= 1`) along with distinct and total card counts.
 - **ViewAll / ViewAllC Filter Observer**: Added `MutationObserver` lifecycle monitoring (`observeChecklistFilter`) in `checklistEnhancer.js` to ensure the Filter Items box installs and indexes dynamically on late-loaded or ColdFusion AJAX updated `ViewAll.cfm` and `ViewAllC.cfm` listing pages without requiring a page refresh.
 - **Dot (`.`) OR Separator**: Extended `applyFilter` condition splitting regex in `checklistEnhancer.js` to support dot `.` as a valid OR condition separator alongside `,`, `;`, `|`, and spaces.
