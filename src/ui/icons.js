@@ -96,6 +96,11 @@ export const ICONS = {
     strokeWidth: 2,
     body: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/>',
   },
+  sheets: {
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+  },
   bref: {
     size: 12,
     strokeWidth: 2,

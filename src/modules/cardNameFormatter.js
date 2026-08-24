@@ -9,6 +9,7 @@
 import { Config } from "../core/config.js";
 import { Log } from "../core/log.js";
 import { Utils } from "../core/utils.js";
+import { sendToGoogleSheet } from "../net/googleSheets.js";
 import { debounce } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { showToast } from "../ui/toast.js";
@@ -333,6 +334,8 @@ export const CardMetadataExtractor = {
       CardNo: cardNo,
       Tags: tags,
       PR: printRun ? String(printRun).replace(/^\//, "") : "",
+      Quantity: "1",
+      Qty: "1",
     };
   },
 
@@ -503,6 +506,54 @@ export const FormattedCopyPopover = {
       popover.appendChild(tsvBtn);
     }
 
+    if (Config.global.cardFormatterShowGoogleSheet) {
+      const sheetsBtn = targetDoc.createElement("button");
+      sheetsBtn.type = "button";
+      sheetsBtn.className = "sctk-btn";
+      sheetsBtn.innerHTML = icon("sheets");
+      sheetsBtn.title = "Send to Google Sheet";
+      sheetsBtn.setAttribute("aria-label", "Send to Google Sheet");
+
+      sheetsBtn.addEventListener("click", async () => {
+        const tsvTemplate =
+          Config.global.cardFormatterTSVTemplate ||
+          "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+        const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
+
+        sheetsBtn.disabled = true;
+        showToast({
+          message: "Sending row to Google Sheet...",
+          variant: "info",
+        });
+
+        const res = await sendToGoogleSheet({
+          sheetId: Config.global.cardFormatterGoogleSheetId,
+          worksheet: Config.global.cardFormatterGoogleSheetWorksheet,
+          tsvLine: tsvLine,
+          webAppUrl: Config.global.cardFormatterGoogleSheetWebAppUrl,
+        });
+
+        sheetsBtn.disabled = false;
+        if (res.success) {
+          sheetsBtn.innerHTML = icon("check");
+          showToast({
+            message: `Pasted into <b>${Utils.escape.html(res.sheetName || Config.global.cardFormatterGoogleSheetWorksheet || "Google Sheet")}</b> at cell <b>${Utils.escape.html(res.cellRef || "")}</b>`,
+            variant: "success",
+          });
+          setTimeout(() => {
+            sheetsBtn.innerHTML = icon("sheets");
+            this.hide(targetDoc);
+          }, 1200);
+        } else {
+          showToast({
+            message: `Google Sheet Error: <b>${Utils.escape.html(res.message)}</b>`,
+            variant: "error",
+          });
+        }
+      });
+      popover.appendChild(sheetsBtn);
+    }
+
     const playerName = tokens?.PlayerName || "";
     if (playerName) {
       const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
@@ -574,10 +625,11 @@ export function renderInlineQuickLinks(doc = document) {
 
   const showCopy = Config.global.cardFormatterShowCopy !== false;
   const showTSV = Config.global.cardFormatterShowTSV !== false;
+  const showGoogleSheet = !!Config.global.cardFormatterShowGoogleSheet;
   const showBRef = Config.global.cardFormatterShowBRef !== false;
   const showGoogle = Config.global.cardFormatterShowGoogle !== false;
 
-  if (!showCopy && !showTSV && !showBRef && !showGoogle) return;
+  if (!showCopy && !showTSV && !showGoogleSheet && !showBRef && !showGoogle) return;
 
   const win = targetDoc.defaultView || (typeof window !== "undefined" ? window : null);
   const rows = targetDoc.querySelectorAll("tr, .yourcol-item");
@@ -728,6 +780,54 @@ export function renderInlineQuickLinks(doc = document) {
           });
       });
       inlineContainer.appendChild(tsvBtn);
+    }
+
+    if (showGoogleSheet) {
+      const sheetsBtn = targetDoc.createElement("button");
+      sheetsBtn.type = "button";
+      sheetsBtn.className = "sctk-inline-btn";
+      sheetsBtn.innerHTML = icon("sheets");
+      sheetsBtn.title = "Send to Google Sheet";
+      sheetsBtn.setAttribute("aria-label", "Send to Google Sheet");
+
+      sheetsBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const tsvTemplate =
+          Config.global.cardFormatterTSVTemplate ||
+          "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
+        const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens);
+
+        sheetsBtn.disabled = true;
+        showToast({
+          message: "Sending row to Google Sheet...",
+          variant: "info",
+        });
+
+        const res = await sendToGoogleSheet({
+          sheetId: Config.global.cardFormatterGoogleSheetId,
+          worksheet: Config.global.cardFormatterGoogleSheetWorksheet,
+          tsvLine: tsvLine,
+          webAppUrl: Config.global.cardFormatterGoogleSheetWebAppUrl,
+        });
+
+        sheetsBtn.disabled = false;
+        if (res.success) {
+          sheetsBtn.innerHTML = icon("check");
+          showToast({
+            message: `Pasted into <b>${Utils.escape.html(res.sheetName || Config.global.cardFormatterGoogleSheetWorksheet || "Google Sheet")}</b> at cell <b>${Utils.escape.html(res.cellRef || "")}</b>`,
+            variant: "success",
+          });
+          setTimeout(() => {
+            sheetsBtn.innerHTML = icon("sheets");
+          }, 1200);
+        } else {
+          showToast({
+            message: `Google Sheet Error: <b>${Utils.escape.html(res.message)}</b>`,
+            variant: "error",
+          });
+        }
+      });
+      inlineContainer.appendChild(sheetsBtn);
     }
 
     const playerName = tokens.PlayerName;
