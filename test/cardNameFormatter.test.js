@@ -18,6 +18,9 @@ test('Config: contains default Player Quick Links settings', () => {
   assert.equal(Config.global.cardFormatterPopoverDurationMs, 4000);
   assert.equal(Config.global.cardFormatterShowCopy, true);
   assert.equal(Config.global.cardFormatterShowTSV, true);
+  assert.equal(Config.global.cardFormatterShowGoogleSheet, false);
+  assert.equal(Config.global.cardFormatterGoogleSheetId, '1E-lfRToeTTXyj8ht6gQVN-0DcKQusN_28U-wNaaOwDI');
+  assert.equal(Config.global.cardFormatterGoogleSheetWorksheet, 'Singles & Lots');
   assert.equal(Config.global.cardFormatterShowBRef, true);
   assert.equal(Config.global.cardFormatterShowGoogle, true);
 });
@@ -119,7 +122,9 @@ test('CardMetadataExtractor.extract: DOM parsing from mock set document with Too
     PlayerTeam: 'New York Yankees',
     CardNo: '#279',
     Tags: 'RC',
-    PR: '100'
+    PR: '100',
+    Quantity: '1',
+    Qty: '1'
   });
 });
 
