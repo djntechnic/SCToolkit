@@ -106,6 +106,11 @@ export const ICONS = {
     strokeWidth: 2,
     body: '<circle cx="12" cy="12" r="9"/><path d="M8.5 3.5a10.5 10.5 0 0 0 0 17"/><path d="M15.5 3.5a10.5 10.5 0 0 1 0 17"/><path d="M7 7h3M6 10.5h3.5M6 13.5h3.5M7 17h3"/><path d="M14 7h3M14.5 10.5H18M14.5 13.5H18M14 17h3"/>',
   },
+  cardladder: {
+    size: 12,
+    strokeWidth: 2,
+    body: '<path d="M7 2v20M17 2v20M7 6h10M7 11h10M7 16h10"/>',
+  },
   google: {
     size: 12,
     strokeWidth: 2,

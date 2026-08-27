@@ -1,83 +1,163 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import { JSDOM } from 'jsdom';
+import { JSDOM } from "jsdom";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
 
-import { CardMetadataExtractor, FormattedCopyPopover, renderInlineQuickLinks } from '../src/modules/cardNameFormatter.js';
-import { Config } from '../src/core/config.js';
+import { Config } from "../src/core/config.js";
+import {
+  buildCardLadderUrl,
+  CardMetadataExtractor,
+  FormattedCopyPopover,
+  getCardLadderDate,
+  renderInlineQuickLinks,
+} from "../src/modules/cardNameFormatter.js";
 
-test('Config: contains default Player Quick Links settings', () => {
-  assert.equal(Config.global.cardFormatterTemplate, '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}');
-  assert.equal(Config.global.cardFormatterTSVTemplate, '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}');
-  assert.equal(Config.global.cardFormatterIgnoredTags, 'ASR, LL, TC, CL');
-  assert.equal(Config.global.cardFormatterTagSeparator, '');
-  assert.equal(Config.global.cardFormatterTagReplacer, '');
-  assert.equal(Config.global.cardFormatterOutputMode, 'popover');
-  assert.equal(Config.global.cardFormatterLinkTarget, 'background');
+test("Config: contains default Player Quick Links settings", () => {
+  assert.equal(
+    Config.global.cardFormatterTemplate,
+    "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}",
+  );
+  assert.equal(
+    Config.global.cardFormatterTSVTemplate,
+    "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}",
+  );
+  assert.equal(Config.global.cardFormatterIgnoredTags, "ASR, LL, TC, CL");
+  assert.equal(Config.global.cardFormatterTagSeparator, "");
+  assert.equal(Config.global.cardFormatterTagReplacer, "");
+  assert.equal(Config.global.cardFormatterOutputMode, "popover");
+  assert.equal(Config.global.cardFormatterLinkTarget, "background");
   assert.equal(Config.global.cardFormatterPopoverDurationMs, 4000);
   assert.equal(Config.global.cardFormatterShowCopy, true);
   assert.equal(Config.global.cardFormatterShowTSV, true);
   assert.equal(Config.global.cardFormatterShowGoogleSheet, false);
-  assert.equal(Config.global.cardFormatterGoogleSheetId, '1E-lfRToeTTXyj8ht6gQVN-0DcKQusN_28U-wNaaOwDI');
-  assert.equal(Config.global.cardFormatterGoogleSheetWorksheet, 'Singles & Lots');
+  assert.equal(
+    Config.global.cardFormatterGoogleSheetId,
+    "1E-lfRToeTTXyj8ht6gQVN-0DcKQusN_28U-wNaaOwDI",
+  );
+  assert.equal(
+    Config.global.cardFormatterGoogleSheetWorksheet,
+    "Singles & Lots",
+  );
   assert.equal(Config.global.cardFormatterShowBRef, true);
+  assert.equal(Config.global.cardFormatterShowCardLadder, true);
   assert.equal(Config.global.cardFormatterShowGoogle, true);
 });
 
-test('CardMetadataExtractor.compile: should replace all tokens correctly when all values exist', () => {
-  const template = '{PlayerName} - {Year} {SetName} {Tags} {PR} {CardNo}';
+test("getCardLadderDate: calculates YYYY-MM-01 for 2 months prior", () => {
+  // Test current date example (August 27, 2026 -> June 1, 2026)
+  const augDate = new Date(2026, 7, 27);
+  assert.equal(getCardLadderDate(augDate), "2026-06-01");
+
+  // Test year boundary rollback (January 15, 2026 -> November 1, 2025)
+  const janDate = new Date(2026, 0, 15);
+  assert.equal(getCardLadderDate(janDate), "2025-11-01");
+
+  // Test year boundary rollback (February 10, 2026 -> December 1, 2025)
+  const febDate = new Date(2026, 1, 10);
+  assert.equal(getCardLadderDate(febDate), "2025-12-01");
+
+  // Test March rollback (March 31, 2026 -> January 1, 2026)
+  const marDate = new Date(2026, 2, 31);
+  assert.equal(getCardLadderDate(marDate), "2026-01-01");
+});
+
+test("buildCardLadderUrl: formats {Year}%20{Set}%20{CardNo} and strips # from card number", () => {
+  const refDate = new Date(2026, 7, 27);
+
+  // Standard case with # in CardNo
+  const tokens1 = {
+    Year: "2020",
+    SetName: "Topps Update",
+    CardNo: "#40",
+    PlayerName: "Mike Trout",
+  };
+  const url1 = buildCardLadderUrl(tokens1, refDate);
+  assert.equal(
+    url1,
+    "https://app.cardladder.com/sales-history?sort=date&direction=desc&filters=date%3Agte%3D2026-06-01&q=2020%20Topps%20Update%2040",
+  );
+
+  // Set with InsertSetName and raw card number like JMR-12
+  const tokens2 = {
+    Year: "2023",
+    SetName: "Bowman",
+    InsertSetName: "Chrome",
+    CardNo: "JMR-12",
+    PlayerName: "Jackson Chourio",
+  };
+  const url2 = buildCardLadderUrl(tokens2, refDate);
+  assert.equal(
+    url2,
+    "https://app.cardladder.com/sales-history?sort=date&direction=desc&filters=date%3Agte%3D2026-06-01&q=2023%20Bowman%20Chrome%20JMR-12",
+  );
+
+  // Fallback to PlayerName when year/set/cardNo not present
+  const tokens3 = { PlayerName: "Shohei Ohtani" };
+  const url3 = buildCardLadderUrl(tokens3, refDate);
+  assert.equal(
+    url3,
+    "https://app.cardladder.com/sales-history?sort=date&direction=desc&filters=date%3Agte%3D2026-06-01&q=Shohei%20Ohtani",
+  );
+});
+
+test("CardMetadataExtractor.compile: should replace all tokens correctly when all values exist", () => {
+  const template = "{PlayerName} - {Year} {SetName} {Tags} {PR} {CardNo}";
   const tokens = {
-    PlayerName: 'Ryne Sandberg',
-    Year: '1983',
-    SetName: 'Topps',
-    Tags: 'RC',
-    PR: '/100',
-    CardNo: '#83'
+    PlayerName: "Ryne Sandberg",
+    Year: "1983",
+    SetName: "Topps",
+    Tags: "RC",
+    PR: "/100",
+    CardNo: "#83",
   };
 
   const result = CardMetadataExtractor.compile(template, tokens);
-  assert.equal(result, 'Ryne Sandberg - 1983 Topps RC /100 #83');
+  assert.equal(result, "Ryne Sandberg - 1983 Topps RC /100 #83");
 });
 
-test('CardMetadataExtractor.compile: should handle missing tokens gracefully without orphan delimiters', () => {
-  const template = '{PlayerName} - {Year} {SetName} {Tags} {PR} {CardNo}';
+test("CardMetadataExtractor.compile: should handle missing tokens gracefully without orphan delimiters", () => {
+  const template = "{PlayerName} - {Year} {SetName} {Tags} {PR} {CardNo}";
   const tokens = {
-    PlayerName: 'Ken Griffey Jr.',
-    Year: '1989',
-    SetName: 'Upper Deck',
-    Tags: '',
-    PR: '',
-    CardNo: '#1'
+    PlayerName: "Ken Griffey Jr.",
+    Year: "1989",
+    SetName: "Upper Deck",
+    Tags: "",
+    PR: "",
+    CardNo: "#1",
   };
 
   const result = CardMetadataExtractor.compile(template, tokens);
-  assert.equal(result, 'Ken Griffey Jr. - 1989 Upper Deck #1');
+  assert.equal(result, "Ken Griffey Jr. - 1989 Upper Deck #1");
 });
 
-test('CardMetadataExtractor.compile: should recognize \\t tokens and convert them to real tab characters', () => {
-  const template = '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}';
+test("CardMetadataExtractor.compile: should recognize \\t tokens and convert them to real tab characters", () => {
+  const template =
+    "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
   const tokens = {
-    Year: '2019',
-    SetName: 'Topps Holiday',
-    InsertSetName: 'Relics',
-    PlayerName: 'Albert Almora Jr.',
-    PlayerTeam: 'Chicago Cubs',
-    Tags: 'MEM',
-    PR: '250',
-    CardNo: 'WHR-AA'
+    Year: "2019",
+    SetName: "Topps Holiday",
+    InsertSetName: "Relics",
+    PlayerName: "Albert Almora Jr.",
+    PlayerTeam: "Chicago Cubs",
+    Tags: "MEM",
+    PR: "250",
+    CardNo: "WHR-AA",
   };
 
   const result = CardMetadataExtractor.compile(template, tokens);
-  assert.equal(result, '2019\tTopps Holiday\tRelics\tAlbert Almora Jr.\tChicago Cubs\tMEM\t250\tWHR-AA');
+  assert.equal(
+    result,
+    "2019\tTopps Holiday\tRelics\tAlbert Almora Jr.\tChicago Cubs\tMEM\t250\tWHR-AA",
+  );
 });
 
-test('CardMetadataExtractor.compile: should return empty string if tokens object is null or missing', () => {
-  assert.equal(CardMetadataExtractor.compile('{PlayerName}', null), '');
-  assert.equal(CardMetadataExtractor.compile('', { PlayerName: 'Test' }), '');
+test("CardMetadataExtractor.compile: should return empty string if tokens object is null or missing", () => {
+  assert.equal(CardMetadataExtractor.compile("{PlayerName}", null), "");
+  assert.equal(CardMetadataExtractor.compile("", { PlayerName: "Test" }), "");
 });
 
-test('CardMetadataExtractor.extract: DOM parsing from mock set document with Toolbar title logic', () => {
+test("CardMetadataExtractor.extract: DOM parsing from mock set document with Toolbar title logic", () => {
   const dom = new JSDOM(`
     <!DOCTYPE html>
     <html>
@@ -107,28 +187,35 @@ test('CardMetadataExtractor.extract: DOM parsing from mock set document with Too
     anchorNode: personLink.firstChild,
     rangeCount: 1,
     getRangeAt: () => ({
-      getBoundingClientRect: () => ({ top: 100, bottom: 120, left: 50, right: 150, width: 100, height: 20 })
+      getBoundingClientRect: () => ({
+        top: 100,
+        bottom: 120,
+        left: 50,
+        right: 150,
+        width: 100,
+        height: 20,
+      }),
     }),
-    toString: () => 'Derek Jeter'
+    toString: () => "Derek Jeter",
   };
 
   const tokens = CardMetadataExtractor.extract(selection, mockDoc);
 
   assert.deepEqual(tokens, {
-    Year: '1993',
-    SetName: 'SP',
-    InsertSetName: 'Foil',
-    PlayerName: 'Derek Jeter',
-    PlayerTeam: 'New York Yankees',
-    CardNo: '#279',
-    Tags: 'RC',
-    PR: '100',
-    Quantity: '1',
-    Qty: '1'
+    Year: "1993",
+    SetName: "SP",
+    InsertSetName: "Foil",
+    PlayerName: "Derek Jeter",
+    PlayerTeam: "New York Yankees",
+    CardNo: "#279",
+    Tags: "RC",
+    PR: "100",
+    Quantity: "1",
+    Qty: "1",
   });
 });
 
-test('CardMetadataExtractor.extract: ignores tags in cardFormatterIgnoredTags list', () => {
+test("CardMetadataExtractor.extract: ignores tags in cardFormatterIgnoredTags list", () => {
   const dom = new JSDOM(`
     <!DOCTYPE html>
     <html>
@@ -157,18 +244,29 @@ test('CardMetadataExtractor.extract: ignores tags in cardFormatterIgnoredTags li
     anchorNode: personLink.firstChild,
     rangeCount: 1,
     getRangeAt: () => ({
-      getBoundingClientRect: () => ({ top: 100, bottom: 120, left: 50, right: 150, width: 100, height: 20 })
+      getBoundingClientRect: () => ({
+        top: 100,
+        bottom: 120,
+        left: 50,
+        right: 150,
+        width: 100,
+        height: 20,
+      }),
     }),
-    toString: () => 'Adley Rutschman'
+    toString: () => "Adley Rutschman",
   };
 
-  Config.global.cardFormatterIgnoredTags = 'ASR, LL, TC, CL';
+  Config.global.cardFormatterIgnoredTags = "ASR, LL, TC, CL";
   const tokens = CardMetadataExtractor.extract(selection, mockDoc);
 
-  assert.equal(tokens.Tags, 'RC MEM', 'ASR, LL, TC, and CL tags should be omitted');
+  assert.equal(
+    tokens.Tags,
+    "RC MEM",
+    "ASR, LL, TC, and CL tags should be omitted",
+  );
 });
 
-test('CardMetadataExtractor.extract: recognizes print run specified with PR# prefix', () => {
+test("CardMetadataExtractor.extract: recognizes print run specified with PR# prefix", () => {
   const dom = new JSDOM(`
     <!DOCTYPE html>
     <html>
@@ -194,32 +292,42 @@ test('CardMetadataExtractor.extract: recognizes print run specified with PR# pre
     anchorNode: personLink.firstChild,
     rangeCount: 1,
     getRangeAt: () => ({
-      getBoundingClientRect: () => ({ top: 100, bottom: 120, left: 50, right: 150, width: 100, height: 20 })
+      getBoundingClientRect: () => ({
+        top: 100,
+        bottom: 120,
+        left: 50,
+        right: 150,
+        width: 100,
+        height: 20,
+      }),
     }),
-    toString: () => 'Matt Carpenter'
+    toString: () => "Matt Carpenter",
   };
 
   const tokens = CardMetadataExtractor.extract(selection, mockDoc);
-  assert.equal(tokens.PR, '2019');
-  assert.equal(tokens.PlayerName, 'Matt Carpenter');
+  assert.equal(tokens.PR, "2019");
+  assert.equal(tokens.PlayerName, "Matt Carpenter");
 });
 
-test('CardMetadataExtractor.extract: returns null if selection is collapsed or empty', () => {
-  const dom = new JSDOM('<html><body><p>Text</p></body></html>');
+test("CardMetadataExtractor.extract: returns null if selection is collapsed or empty", () => {
+  const dom = new JSDOM("<html><body><p>Text</p></body></html>");
   const mockDoc = dom.window.document;
 
   const collapsedSelection = { isCollapsed: true };
-  assert.equal(CardMetadataExtractor.extract(collapsedSelection, mockDoc), null);
+  assert.equal(
+    CardMetadataExtractor.extract(collapsedSelection, mockDoc),
+    null,
+  );
 
   const emptySelection = {
     isCollapsed: false,
     anchorNode: mockDoc.body.firstChild,
-    toString: () => '   '
+    toString: () => "   ",
   };
   assert.equal(CardMetadataExtractor.extract(emptySelection, mockDoc), null);
 });
 
-test('CardMetadataExtractor.extract: extracts full PlayerName and prefixes CardNo with # even on partial highlight', () => {
+test("CardMetadataExtractor.extract: extracts full PlayerName and prefixes CardNo with # even on partial highlight", () => {
   const dom = new JSDOM(`
     <!DOCTYPE html>
     <html>
@@ -248,25 +356,35 @@ test('CardMetadataExtractor.extract: extracts full PlayerName and prefixes CardN
     anchorNode: personLink.firstChild,
     rangeCount: 1,
     getRangeAt: () => ({
-      getBoundingClientRect: () => ({ top: 100, bottom: 120, left: 50, right: 150, width: 100, height: 20 })
+      getBoundingClientRect: () => ({
+        top: 100,
+        bottom: 120,
+        left: 50,
+        right: 150,
+        width: 100,
+        height: 20,
+      }),
     }),
-    toString: () => 'uz RC'
+    toString: () => "uz RC",
   };
 
   const tokens = CardMetadataExtractor.extract(selection, mockDoc);
 
-  assert.equal(tokens.Year, '2022');
-  assert.equal(tokens.SetName, 'Topps Chrome');
-  assert.equal(tokens.InsertSetName, '');
-  assert.equal(tokens.PlayerName, 'Oneil Cruz');
-  assert.equal(tokens.CardNo, '101');
-  assert.equal(tokens.Tags, 'RC');
+  assert.equal(tokens.Year, "2022");
+  assert.equal(tokens.SetName, "Topps Chrome");
+  assert.equal(tokens.InsertSetName, "");
+  assert.equal(tokens.PlayerName, "Oneil Cruz");
+  assert.equal(tokens.CardNo, "101");
+  assert.equal(tokens.Tags, "RC");
 
-  const compiled = CardMetadataExtractor.compile('{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}', tokens);
-  assert.equal(compiled, 'Oneil Cruz - 2022 Topps Chrome RC #101');
+  const compiled = CardMetadataExtractor.compile(
+    "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}",
+    tokens,
+  );
+  assert.equal(compiled, "Oneil Cruz - 2022 Topps Chrome RC #101");
 });
 
-test('CardMetadataExtractor.extract: ignores thumbnail img links and extracts text card number', () => {
+test("CardMetadataExtractor.extract: ignores thumbnail img links and extracts text card number", () => {
   const dom = new JSDOM(`
     <!DOCTYPE html>
     <html>
@@ -296,63 +414,89 @@ test('CardMetadataExtractor.extract: ignores thumbnail img links and extracts te
     anchorNode: personLink.firstChild,
     rangeCount: 1,
     getRangeAt: () => ({
-      getBoundingClientRect: () => ({ top: 100, bottom: 120, left: 50, right: 150, width: 100, height: 20 })
+      getBoundingClientRect: () => ({
+        top: 100,
+        bottom: 120,
+        left: 50,
+        right: 150,
+        width: 100,
+        height: 20,
+      }),
     }),
-    toString: () => 'ash RC'
+    toString: () => "ash RC",
   };
 
   const tokens = CardMetadataExtractor.extract(selection, mockDoc);
 
-  assert.equal(tokens.PlayerName, 'Matt Brash');
-  assert.equal(tokens.CardNo, '1');
-  assert.equal(tokens.Tags, 'RC');
+  assert.equal(tokens.PlayerName, "Matt Brash");
+  assert.equal(tokens.CardNo, "1");
+  assert.equal(tokens.Tags, "RC");
 
-  const compiled = CardMetadataExtractor.compile('{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}', tokens);
-  assert.equal(compiled, 'Matt Brash - 2022 Panini Select RC #1');
+  const compiled = CardMetadataExtractor.compile(
+    "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}",
+    tokens,
+  );
+  assert.equal(compiled, "Matt Brash - 2022 Panini Select RC #1");
 });
 
-test('FormattedCopyPopover.show and hide: renders and removes popover element', () => {
-  const dom = new JSDOM('<html><body></body></html>');
+test("FormattedCopyPopover.show and hide: renders and removes popover element", () => {
+  const dom = new JSDOM("<html><body></body></html>");
   const mockDoc = dom.window.document;
 
   const selection = {
     isCollapsed: false,
     rangeCount: 1,
     getRangeAt: () => ({
-      getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 100, right: 200, width: 100, height: 20 })
-    })
+      getBoundingClientRect: () => ({
+        top: 50,
+        bottom: 70,
+        left: 100,
+        right: 200,
+        width: 100,
+        height: 20,
+      }),
+    }),
   };
 
-  FormattedCopyPopover.show(selection, 'Derek Jeter - 1993 SP Foil RC /100 #279', mockDoc);
+  FormattedCopyPopover.show(
+    selection,
+    "Derek Jeter - 1993 SP Foil RC /100 #279",
+    mockDoc,
+  );
 
   const popover = mockDoc.getElementById(FormattedCopyPopover.elementId);
   assert.notEqual(popover, null);
-  assert.equal(popover.className, 'tk-formatter-popover');
+  assert.equal(popover.className, "tk-formatter-popover");
 
-  const label = popover.querySelector('.tk-popover-label');
-  assert.equal(label.textContent, 'Derek Jeter - 1993 SP Foil RC /100 #279');
+  const label = popover.querySelector(".tk-popover-label");
+  assert.equal(label.textContent, "Derek Jeter - 1993 SP Foil RC /100 #279");
 
-  const copyBtn = popover.querySelector('button.sctk-btn');
+  const copyBtn = popover.querySelector("button.sctk-btn");
   assert.notEqual(copyBtn, null);
-  assert.ok(copyBtn.querySelector('svg'), 'copy button should contain SVG icon');
+  assert.ok(
+    copyBtn.querySelector("svg"),
+    "copy button should contain SVG icon",
+  );
 
   FormattedCopyPopover.hide(mockDoc);
   assert.equal(mockDoc.getElementById(FormattedCopyPopover.elementId), null);
 });
 
-test('FormattedCopyPopover.show: renders TSV, BRef, and Google search buttons and handles clicks', () => {
-  const dom = new JSDOM('<html><body></body></html>', { url: 'https://example.com' });
+test("FormattedCopyPopover.show: renders TSV, BRef, and Google search buttons and handles clicks", () => {
+  const dom = new JSDOM("<html><body></body></html>", {
+    url: "https://example.com",
+  });
   const mockDoc = dom.window.document;
 
   let writtenText = null;
-  Object.defineProperty(dom.window.navigator, 'clipboard', {
+  Object.defineProperty(dom.window.navigator, "clipboard", {
     value: {
       writeText: async (txt) => {
         writtenText = txt;
-      }
+      },
     },
     configurable: true,
-    writable: true
+    writable: true,
   });
 
   let openedUrl = null;
@@ -367,135 +511,197 @@ test('FormattedCopyPopover.show: renders TSV, BRef, and Google search buttons an
     isCollapsed: false,
     rangeCount: 1,
     getRangeAt: () => ({
-      getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 100, right: 200, width: 100, height: 20 })
-    })
+      getBoundingClientRect: () => ({
+        top: 50,
+        bottom: 70,
+        left: 100,
+        right: 200,
+        width: 100,
+        height: 20,
+      }),
+    }),
   };
 
   const tokens = {
-    Year: '2019',
-    SetName: 'Topps Holiday',
-    InsertSetName: 'Relics',
-    PlayerName: 'Albert Almora Jr.',
-    PlayerTeam: 'Chicago Cubs',
-    Tags: 'MEM',
-    PR: '250',
-    CardNo: 'WHR-AA'
+    Year: "2019",
+    SetName: "Topps Holiday",
+    InsertSetName: "Relics",
+    PlayerName: "Albert Almora Jr.",
+    PlayerTeam: "Chicago Cubs",
+    Tags: "MEM",
+    PR: "250",
+    CardNo: "WHR-AA",
   };
 
-  FormattedCopyPopover.show(selection, 'Albert Almora Jr. - 2019 Topps Holiday Relics MEM 250 #WHR-AA', tokens, mockDoc);
+  FormattedCopyPopover.show(
+    selection,
+    "Albert Almora Jr. - 2019 Topps Holiday Relics MEM 250 #WHR-AA",
+    tokens,
+    mockDoc,
+  );
 
   const popover = mockDoc.getElementById(FormattedCopyPopover.elementId);
   assert.notEqual(popover, null);
 
-  const buttons = popover.querySelectorAll('button.sctk-btn');
-  assert.equal(buttons.length, 4, 'Should render copy, TSV, bref, and google buttons');
+  const buttons = popover.querySelectorAll("button.sctk-btn");
+  assert.equal(
+    buttons.length,
+    5,
+    "Should render copy, TSV, bref, cardladder, and google buttons",
+  );
 
   const copyBtn = buttons[0];
   const tsvBtn = buttons[1];
   const brefBtn = buttons[2];
-  const googleBtn = buttons[3];
+  const ladderBtn = buttons[3];
+  const googleBtn = buttons[4];
 
-  assert.equal(copyBtn.title, 'Copy formatted text');
-  assert.equal(tsvBtn.title, 'Copy tab-separated values (TSV)');
-  assert.equal(brefBtn.title, 'Search Baseball Reference');
-  assert.equal(googleBtn.title, 'Search Google');
+  assert.equal(copyBtn.title, "Copy formatted text");
+  assert.equal(tsvBtn.title, "Copy tab-separated values (TSV)");
+  assert.equal(brefBtn.title, "Search Baseball Reference");
+  assert.equal(ladderBtn.title, "Search Card Ladder");
+  assert.equal(googleBtn.title, "Search Google");
 
   // Click TSV button
   tsvBtn.click();
-  assert.equal(writtenText, '2019\tTopps Holiday\tRelics\tAlbert Almora Jr.\tChicago Cubs\tMEM\t250\tWHR-AA');
+  assert.equal(
+    writtenText,
+    "2019\tTopps Holiday\tRelics\tAlbert Almora Jr.\tChicago Cubs\tMEM\t250\tWHR-AA",
+  );
 
   // Click BRef button
   brefBtn.click();
-  assert.equal(openedUrl, 'https://www.baseball-reference.com/search/search.fcgi?search=Albert+Almora+Jr.');
-  assert.equal(openedTarget, '_blank');
+  assert.equal(
+    openedUrl,
+    "https://www.baseball-reference.com/search/search.fcgi?search=Albert+Almora+Jr.",
+  );
+  assert.equal(openedTarget, "_blank");
+
+  // Click CardLadder button
+  ladderBtn.click();
+  assert.ok(
+    openedUrl.startsWith(
+      "https://app.cardladder.com/sales-history?sort=date&direction=desc&filters=date%3Agte%3D",
+    ),
+  );
+  assert.ok(openedUrl.includes("&q=2019%20Topps%20Holiday%20Relics%20WHR-AA"));
+  assert.equal(openedTarget, "_blank");
 
   // Click Google button
   googleBtn.click();
-  assert.equal(openedUrl, 'https://www.google.com/search?q=Albert+Almora+Jr.');
-  assert.equal(openedTarget, '_blank');
+  assert.equal(openedUrl, "https://www.google.com/search?q=Albert+Almora+Jr.");
+  assert.equal(openedTarget, "_blank");
 
   FormattedCopyPopover.hide(mockDoc);
 });
 
-test('FormattedCopyPopover.show: respects config settings to hide individual action buttons', () => {
-  const dom = new JSDOM('<html><body></body></html>');
+test("FormattedCopyPopover.show: respects config settings to hide individual action buttons", () => {
+  const dom = new JSDOM("<html><body></body></html>");
   const mockDoc = dom.window.document;
 
   const selection = {
     isCollapsed: false,
     rangeCount: 1,
     getRangeAt: () => ({
-      getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 100, right: 200, width: 100, height: 20 })
-    })
+      getBoundingClientRect: () => ({
+        top: 50,
+        bottom: 70,
+        left: 100,
+        right: 200,
+        width: 100,
+        height: 20,
+      }),
+    }),
   };
 
-  const tokens = { PlayerName: 'Shohei Ohtani' };
+  const tokens = { PlayerName: "Shohei Ohtani" };
 
   Config.global.cardFormatterShowCopy = false;
   Config.global.cardFormatterShowTSV = false;
   Config.global.cardFormatterShowBRef = true;
+  Config.global.cardFormatterShowCardLadder = false;
   Config.global.cardFormatterShowGoogle = false;
 
-  FormattedCopyPopover.show(selection, 'Shohei Ohtani', tokens, mockDoc);
+  FormattedCopyPopover.show(selection, "Shohei Ohtani", tokens, mockDoc);
 
   const popover = mockDoc.getElementById(FormattedCopyPopover.elementId);
-  const buttons = popover.querySelectorAll('button.sctk-btn');
-  assert.equal(buttons.length, 1, 'Only BRef button should be shown');
-  assert.equal(buttons[0].title, 'Search Baseball Reference');
+  const buttons = popover.querySelectorAll("button.sctk-btn");
+  assert.equal(buttons.length, 1, "Only BRef button should be shown");
+  assert.equal(buttons[0].title, "Search Baseball Reference");
 
   // Restore defaults
   Config.global.cardFormatterShowCopy = true;
   Config.global.cardFormatterShowTSV = true;
   Config.global.cardFormatterShowBRef = true;
+  Config.global.cardFormatterShowCardLadder = true;
   Config.global.cardFormatterShowGoogle = true;
 
   FormattedCopyPopover.hide(mockDoc);
 });
 
-test('renderInlineQuickLinks: renders small in-line buttons across submitted fixtures without row height inflation', () => {
+test("renderInlineQuickLinks: renders small in-line buttons across submitted fixtures without row height inflation", () => {
   const fixtures = [
-    'ViewCollection.html',
-    'ViewCollectionForSaleTrade.html',
-    'ViewCollectionPWantlist.html',
-    'ViewCollectionWantlist.html',
-    'Collection.html',
-    'CollectionAddMultiplesText.html',
-    'CollectionAddMultiples.html',
-    'CollectionBrowse.html',
-    'ViewCollectionForSaleTrade-2019Bowman.html',
-    'ViewCollectionForSaleTrade-2019BowmanMulti.html'
+    "ViewCollection.html",
+    "ViewCollectionForSaleTrade.html",
+    "ViewCollectionPWantlist.html",
+    "ViewCollectionWantlist.html",
+    "Collection.html",
+    "CollectionAddMultiplesText.html",
+    "CollectionAddMultiples.html",
+    "CollectionBrowse.html",
+    "ViewCollectionForSaleTrade-2019Bowman.html",
+    "ViewCollectionForSaleTrade-2019BowmanMulti.html",
   ];
 
   fixtures.forEach((file) => {
-    const filePath = path.join(process.cwd(), 'test/fixtures/submitted', file);
+    const filePath = path.join(process.cwd(), "test/fixtures/submitted", file);
     if (!fs.existsSync(filePath)) return;
-    const html = fs.readFileSync(filePath, 'utf8');
-    const dom = new JSDOM(html, { url: 'https://www.tcdb.com/ViewCollection.cfm' });
+    const html = fs.readFileSync(filePath, "utf8");
+    const dom = new JSDOM(html, {
+      url: "https://www.tcdb.com/ViewCollection.cfm",
+    });
     const mockDoc = dom.window.document;
 
     renderInlineQuickLinks(mockDoc);
 
-    const inlineContainers = mockDoc.querySelectorAll('.tk-player-quick-links-inline');
-    if (file === 'Collection.html') {
-      assert.equal(inlineContainers.length, 0, 'Collection.html has no card rows');
+    const inlineContainers = mockDoc.querySelectorAll(
+      ".tk-player-quick-links-inline",
+    );
+    if (file === "Collection.html") {
+      assert.equal(
+        inlineContainers.length,
+        0,
+        "Collection.html has no card rows",
+      );
     } else {
-      assert.ok(inlineContainers.length > 0, `${file} should have inline quick link containers injected`);
+      assert.ok(
+        inlineContainers.length > 0,
+        `${file} should have inline quick link containers injected`,
+      );
       const container = inlineContainers[0];
-      const buttons = container.querySelectorAll('button.sctk-inline-btn');
-      assert.equal(buttons.length, 4, `${file} row container should include 4 action buttons (copy, tsv, bref, google)`);
+      const buttons = container.querySelectorAll("button.sctk-inline-btn");
+      assert.equal(
+        buttons.length,
+        5,
+        `${file} row container should include 5 action buttons (copy, tsv, bref, cardladder, google)`,
+      );
 
       // Verify inline buttons container is placed under Player/Subject cell, not Team or Card No
-      const parentCellText = container.parentElement.textContent.replace('Add to Collection', '').trim();
+      const parentCellText = container.parentElement.textContent
+        .replace("Add to Collection", "")
+        .trim();
       assert.ok(
-        !parentCellText.includes('Twins') && !parentCellText.includes('Red Sox'),
-        `${file}: inline container should not be placed in team cell`
+        !parentCellText.includes("Twins") &&
+          !parentCellText.includes("Red Sox"),
+        `${file}: inline container should not be placed in team cell`,
       );
     }
   });
 });
 
-test('renderInlineQuickLinks: button click triggers clipboard copy and handles link opening', () => {
-  const dom = new JSDOM(`
+test("renderInlineQuickLinks: button click triggers clipboard copy and handles link opening", () => {
+  const dom = new JSDOM(
+    `
     <!DOCTYPE html>
     <html>
     <head><title>2023 Bowman Baseball Checklist | Trading Card Database</title></head>
@@ -511,44 +717,57 @@ test('renderInlineQuickLinks: button click triggers clipboard copy and handles l
       </div>
     </body>
     </html>
-  `, { url: 'https://www.tcdb.com/Checklist.cfm' });
+  `,
+    { url: "https://www.tcdb.com/Checklist.cfm" },
+  );
   const mockDoc = dom.window.document;
 
   let writtenText = null;
-  Object.defineProperty(dom.window.navigator, 'clipboard', {
-    value: { writeText: async (txt) => { writtenText = txt; } },
+  Object.defineProperty(dom.window.navigator, "clipboard", {
+    value: {
+      writeText: async (txt) => {
+        writtenText = txt;
+      },
+    },
     configurable: true,
-    writable: true
+    writable: true,
   });
 
-  Config.global.cardFormatterLinkTarget = 'focus';
+  Config.global.cardFormatterLinkTarget = "focus";
   renderInlineQuickLinks(mockDoc);
 
-  const container = mockDoc.querySelector('.tk-player-quick-links-inline');
+  const container = mockDoc.querySelector(".tk-player-quick-links-inline");
   assert.notEqual(container, null);
 
   // Verify container is in td[1] (Player cell), not td[0] (Card No) or td[2] (Team)
-  const cellIndex = Array.from(container.parentElement.parentElement.children).indexOf(container.parentElement);
-  assert.equal(cellIndex, 1, 'Inline container must be injected into player/subject cell');
+  const cellIndex = Array.from(
+    container.parentElement.parentElement.children,
+  ).indexOf(container.parentElement);
+  assert.equal(
+    cellIndex,
+    1,
+    "Inline container must be injected into player/subject cell",
+  );
 
-  const buttons = container.querySelectorAll('button.sctk-inline-btn');
-  assert.equal(buttons.length, 4);
+  const buttons = container.querySelectorAll("button.sctk-inline-btn");
+  assert.equal(buttons.length, 5);
 
   const copyBtn = buttons[0];
   const tsvBtn = buttons[1];
 
   copyBtn.click();
-  assert.ok(writtenText.includes('Triston Casas'));
+  assert.ok(writtenText.includes("Triston Casas"));
 
   tsvBtn.click();
-  assert.ok(writtenText.includes('\tTriston Casas\t'));
+  assert.ok(writtenText.includes("\tTriston Casas\t"));
 
   // Reset link target to background
-  Config.global.cardFormatterLinkTarget = 'background';
+  Config.global.cardFormatterLinkTarget = "background";
 });
 
-test('renderInlineQuickLinks: places container in player cell even when row has dropdown action links with CardID=', () => {
-  const dom = new JSDOM(`
+test("renderInlineQuickLinks: places container in player cell even when row has dropdown action links with CardID=", () => {
+  const dom = new JSDOM(
+    `
     <!DOCTYPE html>
     <html>
     <body>
@@ -568,21 +787,29 @@ test('renderInlineQuickLinks: places container in player cell even when row has 
       </table>
     </body>
     </html>
-  `, { url: 'https://www.tcdb.com/ViewCollectionForSaleTrade.cfm/sid/204993' });
+  `,
+    { url: "https://www.tcdb.com/ViewCollectionForSaleTrade.cfm/sid/204993" },
+  );
   const mockDoc = dom.window.document;
 
   renderInlineQuickLinks(mockDoc);
 
-  const container = mockDoc.querySelector('.tk-player-quick-links-inline');
+  const container = mockDoc.querySelector(".tk-player-quick-links-inline");
   assert.notEqual(container, null);
 
   // Target cell should be td[5] (Alex Kirilloff), NOT td[3] (Action links dropdown)
-  const cellIndex = Array.from(container.parentElement.parentElement.children).indexOf(container.parentElement);
-  assert.equal(cellIndex, 5, 'Inline container must be injected into Player cell (td[5]), not dropdown cell (td[3])');
-  assert.ok(container.parentElement.textContent.includes('Alex Kirilloff'));
+  const cellIndex = Array.from(
+    container.parentElement.parentElement.children,
+  ).indexOf(container.parentElement);
+  assert.equal(
+    cellIndex,
+    5,
+    "Inline container must be injected into Player cell (td[5]), not dropdown cell (td[3])",
+  );
+  assert.ok(container.parentElement.textContent.includes("Alex Kirilloff"));
 });
 
-test('CardMetadataExtractor.extract: retains PlayerTeam when PlayerName matches TeamName (e.g. New York Yankees)', () => {
+test("CardMetadataExtractor.extract: retains PlayerTeam when PlayerName matches TeamName (e.g. New York Yankees)", () => {
   const dom = new JSDOM(`
     <!DOCTYPE html>
     <html>
@@ -611,23 +838,38 @@ test('CardMetadataExtractor.extract: retains PlayerTeam when PlayerName matches 
     anchorNode: subjectLink.firstChild,
     rangeCount: 1,
     getRangeAt: () => ({
-      getBoundingClientRect: () => ({ top: 100, bottom: 120, left: 50, right: 150, width: 100, height: 20 })
+      getBoundingClientRect: () => ({
+        top: 100,
+        bottom: 120,
+        left: 50,
+        right: 150,
+        width: 100,
+        height: 20,
+      }),
     }),
-    toString: () => 'New York Yankees'
+    toString: () => "New York Yankees",
   };
 
   const tokens = CardMetadataExtractor.extract(selection, mockDoc);
 
-  assert.equal(tokens.PlayerName, 'New York Yankees');
-  assert.equal(tokens.PlayerTeam, 'New York Yankees', 'PlayerTeam should not be omitted when it matches PlayerName');
-  assert.equal(tokens.CardNo, '83');
+  assert.equal(tokens.PlayerName, "New York Yankees");
+  assert.equal(
+    tokens.PlayerTeam,
+    "New York Yankees",
+    "PlayerTeam should not be omitted when it matches PlayerName",
+  );
+  assert.equal(tokens.CardNo, "83");
 
-  const tsvTemplate = '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}';
+  const tsvTemplate =
+    "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
   const compiled = CardMetadataExtractor.compile(tsvTemplate, tokens);
-  assert.equal(compiled, '2020\tTopps\t\tNew York Yankees\tNew York Yankees\t\t\t83');
+  assert.equal(
+    compiled,
+    "2020\tTopps\t\tNew York Yankees\tNew York Yankees\t\t\t83",
+  );
 });
 
-test('CardMetadataExtractor.extract: preserves VAR tag when card has SP, VAR or SSP, VAR and figcaption', () => {
+test("CardMetadataExtractor.extract: preserves VAR tag when card has SP, VAR or SSP, VAR and figcaption", () => {
   const dom = new JSDOM(`
     <!DOCTYPE html>
     <html>
@@ -666,53 +908,80 @@ test('CardMetadataExtractor.extract: preserves VAR tag when card has SP, VAR or 
   const selection1 = {
     isCollapsed: false,
     anchorNode: row1Link.firstChild,
-    toString: () => 'Bo Bichette'
+    toString: () => "Bo Bichette",
   };
   const tokens1 = CardMetadataExtractor.extract(selection1, mockDoc);
-  assert.equal(tokens1.PlayerName, 'Bo Bichette');
-  assert.equal(tokens1.Tags, 'SP VAR', 'VAR tag should be preserved alongside SP');
+  assert.equal(tokens1.PlayerName, "Bo Bichette");
+  assert.equal(
+    tokens1.Tags,
+    "SP VAR",
+    "VAR tag should be preserved alongside SP",
+  );
 
   const selection2 = {
     isCollapsed: false,
     anchorNode: row2Link.firstChild,
-    toString: () => 'Bo Bichette'
+    toString: () => "Bo Bichette",
   };
   const tokens2 = CardMetadataExtractor.extract(selection2, mockDoc);
-  assert.equal(tokens2.PlayerName, 'Bo Bichette');
-  assert.equal(tokens2.Tags, 'SSP VAR', 'VAR tag should be preserved alongside SSP');
+  assert.equal(tokens2.PlayerName, "Bo Bichette");
+  assert.equal(
+    tokens2.Tags,
+    "SSP VAR",
+    "VAR tag should be preserved alongside SSP",
+  );
 });
 
-test('CardMetadataExtractor.extract: parses CollectionAddMultiplesText-TeamCL.html fixture for Team cards and VAR cards', () => {
-  const filePath = path.join(process.cwd(), 'test/fixtures/submitted/CollectionAddMultiplesText-TeamCL.html');
+test("CardMetadataExtractor.extract: parses CollectionAddMultiplesText-TeamCL.html fixture for Team cards and VAR cards", () => {
+  const filePath = path.join(
+    process.cwd(),
+    "test/fixtures/submitted/CollectionAddMultiplesText-TeamCL.html",
+  );
   if (!fs.existsSync(filePath)) return;
-  const html = fs.readFileSync(filePath, 'utf8');
-  const dom = new JSDOM(html, { url: 'https://www.tcdb.com/CollectionAddMultiplesText.cfm' });
+  const html = fs.readFileSync(filePath, "utf8");
+  const dom = new JSDOM(html, {
+    url: "https://www.tcdb.com/CollectionAddMultiplesText.cfm",
+  });
   const mockDoc = dom.window.document;
 
   // Test Row 83: New York Yankees (Team card)
-  const yankeesRow = Array.from(mockDoc.querySelectorAll('tr')).find(r => r.textContent.includes('83') && r.textContent.includes('New York Yankees'));
-  assert.ok(yankeesRow, 'Should find row for New York Yankees card 83');
+  const yankeesRow = Array.from(mockDoc.querySelectorAll("tr")).find(
+    (r) =>
+      r.textContent.includes("83") &&
+      r.textContent.includes("New York Yankees"),
+  );
+  assert.ok(yankeesRow, "Should find row for New York Yankees card 83");
 
-  const yankeesLink = yankeesRow.querySelector('a');
-  const yankeesSel = { isCollapsed: false, anchorNode: yankeesLink.firstChild, toString: () => 'New York Yankees' };
+  const yankeesLink = yankeesRow.querySelector("a");
+  const yankeesSel = {
+    isCollapsed: false,
+    anchorNode: yankeesLink.firstChild,
+    toString: () => "New York Yankees",
+  };
   const yankeesTokens = CardMetadataExtractor.extract(yankeesSel, mockDoc);
-  assert.equal(yankeesTokens.PlayerName, 'New York Yankees');
-  assert.equal(yankeesTokens.PlayerTeam, 'New York Yankees');
-  assert.equal(yankeesTokens.CardNo, '83');
+  assert.equal(yankeesTokens.PlayerName, "New York Yankees");
+  assert.equal(yankeesTokens.PlayerTeam, "New York Yankees");
+  assert.equal(yankeesTokens.CardNo, "83");
 
   // Test Row 78: Bo Bichette SSP, VAR
-  const bichetteVarRow = Array.from(mockDoc.querySelectorAll('tr')).find(r => r.textContent.includes('78') && r.textContent.includes('SSP, VAR'));
-  assert.ok(bichetteVarRow, 'Should find row for Bo Bichette SSP, VAR card 78');
+  const bichetteVarRow = Array.from(mockDoc.querySelectorAll("tr")).find(
+    (r) => r.textContent.includes("78") && r.textContent.includes("SSP, VAR"),
+  );
+  assert.ok(bichetteVarRow, "Should find row for Bo Bichette SSP, VAR card 78");
 
-  const bichetteLink = bichetteVarRow.querySelector('a');
-  const bichetteSel = { isCollapsed: false, anchorNode: bichetteLink.firstChild, toString: () => 'Bo Bichette' };
+  const bichetteLink = bichetteVarRow.querySelector("a");
+  const bichetteSel = {
+    isCollapsed: false,
+    anchorNode: bichetteLink.firstChild,
+    toString: () => "Bo Bichette",
+  };
   const bichetteTokens = CardMetadataExtractor.extract(bichetteSel, mockDoc);
-  assert.equal(bichetteTokens.PlayerName, 'Bo Bichette');
-  assert.equal(bichetteTokens.PlayerTeam, 'Toronto Blue Jays');
-  assert.equal(bichetteTokens.Tags, 'SSP VAR');
+  assert.equal(bichetteTokens.PlayerName, "Bo Bichette");
+  assert.equal(bichetteTokens.PlayerTeam, "Toronto Blue Jays");
+  assert.equal(bichetteTokens.Tags, "SSP VAR");
 });
 
-test('CardMetadataExtractor.extract: cardFormatterTagSeparator formats multiple tags with custom delimiter', () => {
+test("CardMetadataExtractor.extract: cardFormatterTagSeparator formats multiple tags with custom delimiter", () => {
   const dom = new JSDOM(`
     <!DOCTYPE html>
     <html>
@@ -734,33 +1003,37 @@ test('CardMetadataExtractor.extract: cardFormatterTagSeparator formats multiple 
   `);
   const mockDoc = dom.window.document;
   const link = mockDoc.querySelector('a[href*="ViewCard.cfm"]');
-  const sel = { isCollapsed: false, anchorNode: link.firstChild, toString: () => 'Bo Bichette' };
+  const sel = {
+    isCollapsed: false,
+    anchorNode: link.firstChild,
+    toString: () => "Bo Bichette",
+  };
 
   // 1. Default (blank) resolves to single space " "
-  Config.global.cardFormatterTagSeparator = '';
+  Config.global.cardFormatterTagSeparator = "";
   const tokensDefault = CardMetadataExtractor.extract(sel, mockDoc);
-  assert.equal(tokensDefault.Tags, 'RC SP VAR');
+  assert.equal(tokensDefault.Tags, "RC SP VAR");
 
   // 2. Custom comma separator ", "
-  Config.global.cardFormatterTagSeparator = ', ';
+  Config.global.cardFormatterTagSeparator = ", ";
   const tokensComma = CardMetadataExtractor.extract(sel, mockDoc);
-  assert.equal(tokensComma.Tags, 'RC, SP, VAR');
+  assert.equal(tokensComma.Tags, "RC, SP, VAR");
 
   // 3. Custom semicolon separator "; "
-  Config.global.cardFormatterTagSeparator = '; ';
+  Config.global.cardFormatterTagSeparator = "; ";
   const tokensSemicolon = CardMetadataExtractor.extract(sel, mockDoc);
-  assert.equal(tokensSemicolon.Tags, 'RC; SP; VAR');
+  assert.equal(tokensSemicolon.Tags, "RC; SP; VAR");
 
   // 4. Custom hyphen separator "-"
-  Config.global.cardFormatterTagSeparator = '-';
+  Config.global.cardFormatterTagSeparator = "-";
   const tokensHyphen = CardMetadataExtractor.extract(sel, mockDoc);
-  assert.equal(tokensHyphen.Tags, 'RC-SP-VAR');
+  assert.equal(tokensHyphen.Tags, "RC-SP-VAR");
 
   // Reset
-  Config.global.cardFormatterTagSeparator = '';
+  Config.global.cardFormatterTagSeparator = "";
 });
 
-test('CardMetadataExtractor.extract: cardFormatterTagReplacer replaces matching tags based on left-side key', () => {
+test("CardMetadataExtractor.extract: cardFormatterTagReplacer replaces matching tags based on left-side key", () => {
   const dom = new JSDOM(`
     <!DOCTYPE html>
     <html>
@@ -782,33 +1055,32 @@ test('CardMetadataExtractor.extract: cardFormatterTagReplacer replaces matching 
   `);
   const mockDoc = dom.window.document;
   const link = mockDoc.querySelector('a[href*="ViewCard.cfm"]');
-  const sel = { isCollapsed: false, anchorNode: link.firstChild, toString: () => 'Shohei Ohtani' };
+  const sel = {
+    isCollapsed: false,
+    anchorNode: link.firstChild,
+    toString: () => "Shohei Ohtani",
+  };
 
   // 1. Tag replacer replaces AU with AUTO
-  Config.global.cardFormatterTagReplacer = 'AU: AUTO';
-  Config.global.cardFormatterTagSeparator = ' ';
+  Config.global.cardFormatterTagReplacer = "AU: AUTO";
+  Config.global.cardFormatterTagSeparator = " ";
   const tokens1 = CardMetadataExtractor.extract(sel, mockDoc);
-  assert.equal(tokens1.Tags, 'AUTO SP');
+  assert.equal(tokens1.Tags, "AUTO SP");
 
   // 2. Multiple tag replacements (case-insensitive left-side keys)
-  Config.global.cardFormatterTagReplacer = 'au: AUTOGRAPH, sp: SHORT PRINT';
-  Config.global.cardFormatterTagSeparator = ', ';
+  Config.global.cardFormatterTagReplacer = "au: AUTOGRAPH, sp: SHORT PRINT";
+  Config.global.cardFormatterTagSeparator = ", ";
   const tokens2 = CardMetadataExtractor.extract(sel, mockDoc);
-  assert.equal(tokens2.Tags, 'AUTOGRAPH, SHORT PRINT');
+  assert.equal(tokens2.Tags, "AUTOGRAPH, SHORT PRINT");
 
   // 3. Replacement tag in ignored tags list is excluded
-  Config.global.cardFormatterIgnoredTags = 'ASR, LL, TC, CL, EXCLUDED';
-  Config.global.cardFormatterTagReplacer = 'AU: EXCLUDED, SP: SHORT PRINT';
+  Config.global.cardFormatterIgnoredTags = "ASR, LL, TC, CL, EXCLUDED";
+  Config.global.cardFormatterTagReplacer = "AU: EXCLUDED, SP: SHORT PRINT";
   const tokens3 = CardMetadataExtractor.extract(sel, mockDoc);
-  assert.equal(tokens3.Tags, 'SHORT PRINT');
+  assert.equal(tokens3.Tags, "SHORT PRINT");
 
   // Reset
-  Config.global.cardFormatterIgnoredTags = 'ASR, LL, TC, CL';
-  Config.global.cardFormatterTagSeparator = '';
-  Config.global.cardFormatterTagReplacer = '';
+  Config.global.cardFormatterIgnoredTags = "ASR, LL, TC, CL";
+  Config.global.cardFormatterTagSeparator = "";
+  Config.global.cardFormatterTagReplacer = "";
 });
-
-
-
-
-

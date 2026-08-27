@@ -1,23 +1,47 @@
+# Dependencies
 node_modules/
+
+# Logs
 *.log
 npm-debug.log*
-.DS_Store
-Thumbs.db
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment & Credentials
 .env
 .env.*
+!.env.example
+
+# IDE & Editor Configurations
 .idea/
 .vscode/
+*.code-workspace
+.claude/
+.antigravity/
+
+# OS-generated Files
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Test Coverage & Temporary Files
 coverage/
 *.tmp
+*.temp
 *_FileTree.*
 
+# Build Artifacts
 # dist/ is intentionally NOT ignored — the built userscript is the
 # auto-update artifact and must stay committed on main.
 
+# Legacy Reference
 # Pre-port reference copy of the v2.42.0 single-file script. Kept on disk for
 # diffing during the port, deliberately not published.
 legacy/
 
+# Fixtures & Captures
 # Raw page captures. These are unsanitized: they contain the capturing
 # account's handle, third-party user handles, and the browser's saved asset
 # directories. Run them through scripts/sanitize-fixture.js and commit the

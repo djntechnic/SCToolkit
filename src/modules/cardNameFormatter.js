@@ -16,6 +16,58 @@ import { showToast } from "../ui/toast.js";
 import { cleanDocTitle } from "../ui/toolbar.js";
 
 /**
+ * Calculate CardLadder start date: first day of month 2 months prior in YYYY-MM-DD format.
+ * @param {Date} [refDate=new Date()]
+ * @returns {string}
+ */
+export function getCardLadderDate(refDate = new Date()) {
+  const d = new Date(refDate.getFullYear(), refDate.getMonth() - 2, 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Build CardLadder sales history search URL.
+ * SearchTerm format: {Year}%20{Set}%20{CardNo}
+ * @param {Object} tokens - Extracted tokens
+ * @param {Date} [refDate=new Date()]
+ * @param {string} [fallbackPlayerName=""]
+ * @returns {string}
+ */
+export function buildCardLadderUrl(
+  tokens,
+  refDate = new Date(),
+  fallbackPlayerName = "",
+) {
+  const year = (tokens?.Year || "").trim();
+  const setParts = [tokens?.SetName, tokens?.InsertSetName]
+    .filter(Boolean)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(" ");
+  const rawCardNo = (tokens?.CardNo || "").trim().replace(/^#/, "");
+
+  const terms = [
+    year,
+    setParts || (tokens?.Set || "").trim(),
+    rawCardNo,
+  ].filter(Boolean);
+  let searchTerm = "";
+  if (terms.length > 0) {
+    searchTerm = terms.map((t) => encodeURIComponent(t)).join("%20");
+  } else if (tokens?.PlayerName || fallbackPlayerName) {
+    searchTerm = encodeURIComponent(
+      (tokens?.PlayerName || fallbackPlayerName).trim(),
+    );
+  }
+
+  const dateStr = getCardLadderDate(refDate);
+  return `https://app.cardladder.com/sales-history?sort=date&direction=desc&filters=date%3Agte%3D${dateStr}&q=${searchTerm}`;
+}
+
+/**
  * Resolve full set title using Toolbar title logic.
  * @param {Document} [doc=document]
  * @returns {string}
@@ -38,7 +90,9 @@ export function getToolbarTitle(doc = document) {
   ];
 
   if (!title || genericLabels.includes(title.toLowerCase())) {
-    const setWrapperTitle = doc.querySelector?.(".set-title, #setHeader .set-title");
+    const setWrapperTitle = doc.querySelector?.(
+      ".set-title, #setHeader .set-title",
+    );
     if (setWrapperTitle && setWrapperTitle.textContent.trim()) {
       title = cleanDocTitle(setWrapperTitle.textContent.trim());
     }
@@ -92,9 +146,14 @@ function isActionLink(a) {
 
 function getCleanCellText(cell) {
   if (!cell) return "";
-  const doc = cell.ownerDocument || (typeof document !== "undefined" ? document : null);
+  const doc =
+    cell.ownerDocument || (typeof document !== "undefined" ? document : null);
   const clone = cell.cloneNode(true);
-  clone.querySelectorAll(".tk-player-quick-links-inline, figcaption, .figure-caption").forEach((el) => el.remove());
+  clone
+    .querySelectorAll(
+      ".tk-player-quick-links-inline, figcaption, .figure-caption",
+    )
+    .forEach((el) => el.remove());
   if (doc) {
     clone.querySelectorAll("br").forEach((br) => {
       const space = doc.createTextNode(" ");
@@ -198,12 +257,13 @@ export const CardMetadataExtractor = {
     const personLink = row.querySelector('a[href*="Person.cfm"]');
     const teamLink = row.querySelector('a[href*="Team.cfm"]');
 
-    const ignoredTagsRaw = Config.global.cardFormatterIgnoredTags ?? "ASR, LL, TC, CL";
+    const ignoredTagsRaw =
+      Config.global.cardFormatterIgnoredTags ?? "ASR, LL, TC, CL";
     const ignoredTagsSet = new Set(
       String(ignoredTagsRaw)
         .split(",")
         .map((t) => t.trim().toUpperCase())
-        .filter(Boolean)
+        .filter(Boolean),
     );
 
     const tagSeparatorRaw = Config.global.cardFormatterTagSeparator;
@@ -274,7 +334,10 @@ export const CardMetadataExtractor = {
     if (!playerName && subjectTd) {
       let rawName = getCleanCellText(subjectTd);
       if (printRun) {
-        rawName = rawName.replace(new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"), "");
+        rawName = rawName.replace(
+          new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"),
+          "",
+        );
       }
       if (tags) {
         const tagList = tags.split(tagSeparator);
@@ -407,7 +470,10 @@ export const FormattedCopyPopover = {
     let tokens = null;
     let targetDoc = doc || defaultDoc;
 
-    if (tokensOrDoc && (tokensOrDoc.nodeType === 9 || tokensOrDoc.defaultView)) {
+    if (
+      tokensOrDoc &&
+      (tokensOrDoc.nodeType === 9 || tokensOrDoc.defaultView)
+    ) {
       targetDoc = tokensOrDoc;
       tokens = null;
     } else if (tokensOrDoc && typeof tokensOrDoc === "object") {
@@ -484,7 +550,10 @@ export const FormattedCopyPopover = {
         const tsvTemplate =
           Config.global.cardFormatterTSVTemplate ||
           "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
-        const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
+        const tsvLine = CardMetadataExtractor.compile(
+          tsvTemplate,
+          tokens || {},
+        );
 
         const writePromise = win.navigator?.clipboard?.writeText
           ? win.navigator.clipboard.writeText(tsvLine)
@@ -518,7 +587,10 @@ export const FormattedCopyPopover = {
         const tsvTemplate =
           Config.global.cardFormatterTSVTemplate ||
           "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
-        const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
+        const tsvLine = CardMetadataExtractor.compile(
+          tsvTemplate,
+          tokens || {},
+        );
 
         sheetsBtn.disabled = true;
         showToast({
@@ -556,7 +628,10 @@ export const FormattedCopyPopover = {
 
     const playerName = tokens?.PlayerName || "";
     if (playerName) {
-      const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+      const searchQuery = encodeURIComponent(playerName.trim()).replace(
+        /%20/g,
+        "+",
+      );
 
       if (Config.global.cardFormatterShowBRef !== false) {
         const brefBtn = targetDoc.createElement("button");
@@ -568,10 +643,28 @@ export const FormattedCopyPopover = {
 
         brefBtn.addEventListener("click", () => {
           const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
-          const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+          const inBackground =
+            Config.global.cardFormatterLinkTarget !== "focus";
           Utils.openInTab(brefUrl, inBackground, win);
         });
         popover.appendChild(brefBtn);
+      }
+
+      if (Config.global.cardFormatterShowCardLadder !== false) {
+        const ladderBtn = targetDoc.createElement("button");
+        ladderBtn.type = "button";
+        ladderBtn.className = "sctk-btn";
+        ladderBtn.innerHTML = icon("cardladder");
+        ladderBtn.title = "Search Card Ladder";
+        ladderBtn.setAttribute("aria-label", "Search Card Ladder");
+
+        ladderBtn.addEventListener("click", () => {
+          const ladderUrl = buildCardLadderUrl(tokens, new Date(), playerName);
+          const inBackground =
+            Config.global.cardFormatterLinkTarget !== "focus";
+          Utils.openInTab(ladderUrl, inBackground, win);
+        });
+        popover.appendChild(ladderBtn);
       }
 
       if (Config.global.cardFormatterShowGoogle !== false) {
@@ -584,7 +677,8 @@ export const FormattedCopyPopover = {
 
         googleBtn.addEventListener("click", () => {
           const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
-          const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+          const inBackground =
+            Config.global.cardFormatterLinkTarget !== "focus";
           Utils.openInTab(googleUrl, inBackground, win);
         });
         popover.appendChild(googleBtn);
@@ -604,7 +698,8 @@ export const FormattedCopyPopover = {
    * @param {Document} [doc=document]
    */
   hide: function (doc) {
-    const targetDoc = doc || (typeof document !== "undefined" ? document : null);
+    const targetDoc =
+      doc || (typeof document !== "undefined" ? document : null);
     if (!targetDoc) return;
     if (this._dismissTimer) {
       clearTimeout(this._dismissTimer);
@@ -627,11 +722,21 @@ export function renderInlineQuickLinks(doc = document) {
   const showTSV = Config.global.cardFormatterShowTSV !== false;
   const showGoogleSheet = !!Config.global.cardFormatterShowGoogleSheet;
   const showBRef = Config.global.cardFormatterShowBRef !== false;
+  const showCardLadder = Config.global.cardFormatterShowCardLadder !== false;
   const showGoogle = Config.global.cardFormatterShowGoogle !== false;
 
-  if (!showCopy && !showTSV && !showGoogleSheet && !showBRef && !showGoogle) return;
+  if (
+    !showCopy &&
+    !showTSV &&
+    !showGoogleSheet &&
+    !showBRef &&
+    !showCardLadder &&
+    !showGoogle
+  )
+    return;
 
-  const win = targetDoc.defaultView || (typeof window !== "undefined" ? window : null);
+  const win =
+    targetDoc.defaultView || (typeof window !== "undefined" ? window : null);
   const rows = targetDoc.querySelectorAll("tr, .yourcol-item");
 
   rows.forEach((row) => {
@@ -639,7 +744,7 @@ export function renderInlineQuickLinks(doc = document) {
 
     if (
       row.closest?.(
-        ".col-md-3, .col-md-4, nav, #topnav, #sctk-toolbar, .menu-linksV, .dropdown-menu, .modal"
+        ".col-md-3, .col-md-4, nav, #topnav, #sctk-toolbar, .menu-linksV, .dropdown-menu, .modal",
       )
     )
       return;
@@ -647,14 +752,14 @@ export function renderInlineQuickLinks(doc = document) {
     const personLink = row.querySelector('a[href*="Person.cfm"]');
     const cardLinks = Array.from(
       row.querySelectorAll(
-        'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]'
-      )
+        'a[href*="ViewCard.cfm"], a[href*="/cid/"], a[href*="CollectionCard.cfm"]',
+      ),
     ).filter(
       (a) =>
         !a.querySelector("img") &&
         !a.querySelector("i") &&
         a.textContent.trim().length > 0 &&
-        !isActionLink(a)
+        !isActionLink(a),
     );
 
     let targetCell = null;
@@ -683,17 +788,11 @@ export function renderInlineQuickLinks(doc = document) {
 
     if (!targetCell) return;
 
-    // Purge any misaligned or duplicate containers in this row outside targetCell
+    // Purge any misaligned, duplicate, or stale containers in this row
     const existingContainers = row.querySelectorAll(
-      ".tk-player-quick-links-inline"
+      ".tk-player-quick-links-inline",
     );
-    existingContainers.forEach((c) => {
-      if (c.parentElement !== targetCell) {
-        c.remove();
-      }
-    });
-
-    if (targetCell.querySelector(".tk-player-quick-links-inline")) return;
+    existingContainers.forEach((c) => c.remove());
 
     const evalNode = targetNode || targetCell;
     const fakeSelection = {
@@ -832,7 +931,10 @@ export function renderInlineQuickLinks(doc = document) {
 
     const playerName = tokens.PlayerName;
     if (playerName) {
-      const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+      const searchQuery = encodeURIComponent(playerName.trim()).replace(
+        /%20/g,
+        "+",
+      );
 
       if (showBRef) {
         const brefBtn = targetDoc.createElement("button");
@@ -845,10 +947,29 @@ export function renderInlineQuickLinks(doc = document) {
         brefBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           const brefUrl = `https://www.baseball-reference.com/search/search.fcgi?search=${searchQuery}`;
-          const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+          const inBackground =
+            Config.global.cardFormatterLinkTarget !== "focus";
           Utils.openInTab(brefUrl, inBackground, win);
         });
         inlineContainer.appendChild(brefBtn);
+      }
+
+      if (showCardLadder) {
+        const ladderBtn = targetDoc.createElement("button");
+        ladderBtn.type = "button";
+        ladderBtn.className = "sctk-inline-btn";
+        ladderBtn.innerHTML = icon("cardladder");
+        ladderBtn.title = "Search Card Ladder";
+        ladderBtn.setAttribute("aria-label", "Search Card Ladder");
+
+        ladderBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const ladderUrl = buildCardLadderUrl(tokens, new Date(), playerName);
+          const inBackground =
+            Config.global.cardFormatterLinkTarget !== "focus";
+          Utils.openInTab(ladderUrl, inBackground, win);
+        });
+        inlineContainer.appendChild(ladderBtn);
       }
 
       if (showGoogle) {
@@ -862,7 +983,8 @@ export function renderInlineQuickLinks(doc = document) {
         googleBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           const googleUrl = `https://www.google.com/search?q=${searchQuery}`;
-          const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+          const inBackground =
+            Config.global.cardFormatterLinkTarget !== "focus";
           Utils.openInTab(googleUrl, inBackground, win);
         });
         inlineContainer.appendChild(googleBtn);
@@ -937,15 +1059,21 @@ export function initCardNameFormatter() {
     const showCopy = Config.global.cardFormatterShowCopy !== false;
     const showTSV = Config.global.cardFormatterShowTSV !== false;
     const showBRef = Config.global.cardFormatterShowBRef !== false;
+    const showCardLadder = Config.global.cardFormatterShowCardLadder !== false;
     const showGoogle = Config.global.cardFormatterShowGoogle !== false;
-    const hasSearch = showBRef || showGoogle;
+    const hasSearch = showBRef || showCardLadder || showGoogle;
 
     if (!showCopy && !showTSV && !hasSearch) {
       FormattedCopyPopover.hide();
       return;
     }
 
-    if (!hasSearch && !showTSV && showCopy && Config.global.cardFormatterOutputMode === "clipboard") {
+    if (
+      !hasSearch &&
+      !showTSV &&
+      showCopy &&
+      Config.global.cardFormatterOutputMode === "clipboard"
+    ) {
       if (window.navigator?.clipboard?.writeText) {
         window.navigator.clipboard.writeText(formatted).then(() => {
           showToast({
@@ -974,5 +1102,3 @@ export function initCardNameFormatter() {
     }
   });
 }
-
-

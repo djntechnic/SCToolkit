@@ -1,2 +1,5 @@
 dist/
 dist/*.user.js
+node_modules/
+legacy/
+SCToolkit_FileTree.txt

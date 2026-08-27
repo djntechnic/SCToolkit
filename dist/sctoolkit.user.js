@@ -548,9 +548,7 @@
       },
       collectionAddCardNumberEnhancer: {
         enabled: true,
-        urlMatch: [
-          { pattern: "collectionaddcardnumber", exclude: false }
-        ],
+        urlMatch: [{ pattern: "collectionaddcardnumber", exclude: false }],
         actions: {
           defaultAddToSale: true,
           collectionWarning: true,
@@ -604,6 +602,7 @@
       cardFormatterGoogleSheetWorksheet: "Singles & Lots",
       cardFormatterGoogleSheetWebAppUrl: "https://script.google.com/macros/s/AKfycbzEDIqbquVj-1G_fmeCUtqNYyX9Z8qyfympeHupi8lbkZZaI2kLcBCnXOZ4pRbTGMUvOA/exec",
       cardFormatterShowBRef: true,
+      cardFormatterShowCardLadder: true,
       cardFormatterShowGoogle: true,
       quantityCounterPosition: "bottom-right",
       theme: "auto",
@@ -774,7 +773,9 @@
           const defaultList = DEFAULT_CONFIG.global[badgeListKey] || [];
           const storedList = global[badgeListKey];
           const storedKeys = new Set(
-            storedList.map((item) => typeof item === "string" ? item : item.key)
+            storedList.map(
+              (item) => typeof item === "string" ? item : item.key
+            )
           );
           const missingDefaults = defaultList.filter((defaultItem) => {
             const key = typeof defaultItem === "string" ? defaultItem : defaultItem.key;
@@ -1136,6 +1137,11 @@
       size: 12,
       strokeWidth: 2,
       body: '<circle cx="12" cy="12" r="9"/><path d="M8.5 3.5a10.5 10.5 0 0 0 0 17"/><path d="M15.5 3.5a10.5 10.5 0 0 1 0 17"/><path d="M7 7h3M6 10.5h3.5M6 13.5h3.5M7 17h3"/><path d="M14 7h3M14.5 10.5H18M14.5 13.5H18M14 17h3"/>'
+    },
+    cardladder: {
+      size: 12,
+      strokeWidth: 2,
+      body: '<path d="M7 2v20M17 2v20M7 6h10M7 11h10M7 16h10"/>'
     },
     google: {
       size: 12,
@@ -3904,6 +3910,33 @@ button.tk-add-btn {
   };
 
   // src/modules/cardNameFormatter.js
+  function getCardLadderDate(refDate = /* @__PURE__ */ new Date()) {
+    const d = new Date(refDate.getFullYear(), refDate.getMonth() - 2, 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+  function buildCardLadderUrl(tokens, refDate = /* @__PURE__ */ new Date(), fallbackPlayerName = "") {
+    const year = (tokens?.Year || "").trim();
+    const setParts = [tokens?.SetName, tokens?.InsertSetName].filter(Boolean).map((s) => s.trim()).filter(Boolean).join(" ");
+    const rawCardNo = (tokens?.CardNo || "").trim().replace(/^#/, "");
+    const terms = [
+      year,
+      setParts || (tokens?.Set || "").trim(),
+      rawCardNo
+    ].filter(Boolean);
+    let searchTerm = "";
+    if (terms.length > 0) {
+      searchTerm = terms.map((t) => encodeURIComponent(t)).join("%20");
+    } else if (tokens?.PlayerName || fallbackPlayerName) {
+      searchTerm = encodeURIComponent(
+        (tokens?.PlayerName || fallbackPlayerName).trim()
+      );
+    }
+    const dateStr = getCardLadderDate(refDate);
+    return `https://app.cardladder.com/sales-history?sort=date&direction=desc&filters=date%3Agte%3D${dateStr}&q=${searchTerm}`;
+  }
   function getToolbarTitle(doc = document) {
     const rawTitle = doc ? doc.title : "";
     let title = cleanDocTitle(rawTitle);
@@ -3920,7 +3953,9 @@ button.tk-add-btn {
       "browse"
     ];
     if (!title || genericLabels.includes(title.toLowerCase())) {
-      const setWrapperTitle = doc.querySelector?.(".set-title, #setHeader .set-title");
+      const setWrapperTitle = doc.querySelector?.(
+        ".set-title, #setHeader .set-title"
+      );
       if (setWrapperTitle && setWrapperTitle.textContent.trim()) {
         title = cleanDocTitle(setWrapperTitle.textContent.trim());
       }
@@ -3945,7 +3980,9 @@ button.tk-add-btn {
     if (!cell) return "";
     const doc = cell.ownerDocument || (typeof document !== "undefined" ? document : null);
     const clone = cell.cloneNode(true);
-    clone.querySelectorAll(".tk-player-quick-links-inline, figcaption, .figure-caption").forEach((el) => el.remove());
+    clone.querySelectorAll(
+      ".tk-player-quick-links-inline, figcaption, .figure-caption"
+    ).forEach((el) => el.remove());
     if (doc) {
       clone.querySelectorAll("br").forEach((br) => {
         const space = doc.createTextNode(" ");
@@ -4073,7 +4110,10 @@ button.tk-add-btn {
       if (!playerName && subjectTd) {
         let rawName = getCleanCellText(subjectTd);
         if (printRun) {
-          rawName = rawName.replace(new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"), "");
+          rawName = rawName.replace(
+            new RegExp(`\\b(?:SN|PR)${printRun}\\b`, "i"),
+            ""
+          );
         }
         if (tags) {
           const tagList = tags.split(tagSeparator);
@@ -4247,7 +4287,10 @@ button.tk-add-btn {
         tsvBtn.setAttribute("aria-label", "Copy tab-separated values (TSV)");
         tsvBtn.addEventListener("click", () => {
           const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
-          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
+          const tsvLine = CardMetadataExtractor.compile(
+            tsvTemplate,
+            tokens || {}
+          );
           const writePromise = win.navigator?.clipboard?.writeText ? win.navigator.clipboard.writeText(tsvLine) : Promise.resolve();
           writePromise.then(() => {
             tsvBtn.innerHTML = icon("check");
@@ -4271,7 +4314,10 @@ button.tk-add-btn {
         sheetsBtn.setAttribute("aria-label", "Send to Google Sheet");
         sheetsBtn.addEventListener("click", async () => {
           const tsvTemplate = Config.global.cardFormatterTSVTemplate || "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}";
-          const tsvLine = CardMetadataExtractor.compile(tsvTemplate, tokens || {});
+          const tsvLine = CardMetadataExtractor.compile(
+            tsvTemplate,
+            tokens || {}
+          );
           sheetsBtn.disabled = true;
           showToast({
             message: "Sending row to Google Sheet...",
@@ -4305,7 +4351,10 @@ button.tk-add-btn {
       }
       const playerName = tokens?.PlayerName || "";
       if (playerName) {
-        const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+        const searchQuery = encodeURIComponent(playerName.trim()).replace(
+          /%20/g,
+          "+"
+        );
         if (Config.global.cardFormatterShowBRef !== false) {
           const brefBtn = targetDoc.createElement("button");
           brefBtn.type = "button";
@@ -4319,6 +4368,20 @@ button.tk-add-btn {
             Utils.openInTab(brefUrl, inBackground, win);
           });
           popover.appendChild(brefBtn);
+        }
+        if (Config.global.cardFormatterShowCardLadder !== false) {
+          const ladderBtn = targetDoc.createElement("button");
+          ladderBtn.type = "button";
+          ladderBtn.className = "sctk-btn";
+          ladderBtn.innerHTML = icon("cardladder");
+          ladderBtn.title = "Search Card Ladder";
+          ladderBtn.setAttribute("aria-label", "Search Card Ladder");
+          ladderBtn.addEventListener("click", () => {
+            const ladderUrl = buildCardLadderUrl(tokens, /* @__PURE__ */ new Date(), playerName);
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(ladderUrl, inBackground, win);
+          });
+          popover.appendChild(ladderBtn);
         }
         if (Config.global.cardFormatterShowGoogle !== false) {
           const googleBtn = targetDoc.createElement("button");
@@ -4363,8 +4426,10 @@ button.tk-add-btn {
     const showTSV = Config.global.cardFormatterShowTSV !== false;
     const showGoogleSheet = !!Config.global.cardFormatterShowGoogleSheet;
     const showBRef = Config.global.cardFormatterShowBRef !== false;
+    const showCardLadder = Config.global.cardFormatterShowCardLadder !== false;
     const showGoogle = Config.global.cardFormatterShowGoogle !== false;
-    if (!showCopy && !showTSV && !showGoogleSheet && !showBRef && !showGoogle) return;
+    if (!showCopy && !showTSV && !showGoogleSheet && !showBRef && !showCardLadder && !showGoogle)
+      return;
     const win = targetDoc.defaultView || (typeof window !== "undefined" ? window : null);
     const rows = targetDoc.querySelectorAll("tr, .yourcol-item");
     rows.forEach((row) => {
@@ -4403,12 +4468,7 @@ button.tk-add-btn {
       const existingContainers = row.querySelectorAll(
         ".tk-player-quick-links-inline"
       );
-      existingContainers.forEach((c) => {
-        if (c.parentElement !== targetCell) {
-          c.remove();
-        }
-      });
-      if (targetCell.querySelector(".tk-player-quick-links-inline")) return;
+      existingContainers.forEach((c) => c.remove());
       const evalNode = targetNode || targetCell;
       const fakeSelection = {
         isCollapsed: false,
@@ -4516,7 +4576,10 @@ button.tk-add-btn {
       }
       const playerName = tokens.PlayerName;
       if (playerName) {
-        const searchQuery = encodeURIComponent(playerName.trim()).replace(/%20/g, "+");
+        const searchQuery = encodeURIComponent(playerName.trim()).replace(
+          /%20/g,
+          "+"
+        );
         if (showBRef) {
           const brefBtn = targetDoc.createElement("button");
           brefBtn.type = "button";
@@ -4531,6 +4594,21 @@ button.tk-add-btn {
             Utils.openInTab(brefUrl, inBackground, win);
           });
           inlineContainer.appendChild(brefBtn);
+        }
+        if (showCardLadder) {
+          const ladderBtn = targetDoc.createElement("button");
+          ladderBtn.type = "button";
+          ladderBtn.className = "sctk-inline-btn";
+          ladderBtn.innerHTML = icon("cardladder");
+          ladderBtn.title = "Search Card Ladder";
+          ladderBtn.setAttribute("aria-label", "Search Card Ladder");
+          ladderBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const ladderUrl = buildCardLadderUrl(tokens, /* @__PURE__ */ new Date(), playerName);
+            const inBackground = Config.global.cardFormatterLinkTarget !== "focus";
+            Utils.openInTab(ladderUrl, inBackground, win);
+          });
+          inlineContainer.appendChild(ladderBtn);
         }
         if (showGoogle) {
           const googleBtn = targetDoc.createElement("button");
@@ -4596,8 +4674,9 @@ button.tk-add-btn {
       const showCopy = Config.global.cardFormatterShowCopy !== false;
       const showTSV = Config.global.cardFormatterShowTSV !== false;
       const showBRef = Config.global.cardFormatterShowBRef !== false;
+      const showCardLadder = Config.global.cardFormatterShowCardLadder !== false;
       const showGoogle = Config.global.cardFormatterShowGoogle !== false;
-      const hasSearch = showBRef || showGoogle;
+      const hasSearch = showBRef || showCardLadder || showGoogle;
       if (!showCopy && !showTSV && !hasSearch) {
         FormattedCopyPopover.hide();
         return;
@@ -7831,30 +7910,6 @@ button.tk-add-btn {
     });
   }
 
-  // src/ui/theme.js
-  var THEME_ATTR = "data-sctk-theme";
-  var THEMES = ["auto", "light", "dark"];
-  function resolveTheme(preference, prefersDark) {
-    if (preference === "light" || preference === "dark") return preference;
-    return prefersDark ? "dark" : "light";
-  }
-  function osPrefersDark() {
-    return typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
-  }
-  function applyTheme() {
-    const resolved = resolveTheme(Config.global.theme, osPrefersDark());
-    document.documentElement.setAttribute(THEME_ATTR, resolved);
-    return resolved;
-  }
-  function initTheme() {
-    const resolved = applyTheme();
-    Log(`Theme resolved to '${resolved}' from preference '${Config.global.theme}'.`, "debug");
-    if (typeof matchMedia !== "function") return;
-    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-      if (Config.global.theme === "auto") applyTheme();
-    });
-  }
-
   // src/core/version.js
   var APP_VERSION = "0.1-beta";
   function getAppVersion() {
@@ -7943,6 +7998,30 @@ button.tk-add-btn {
     }
   };
 
+  // src/ui/theme.js
+  var THEME_ATTR = "data-sctk-theme";
+  var THEMES = ["auto", "light", "dark"];
+  function resolveTheme(preference, prefersDark) {
+    if (preference === "light" || preference === "dark") return preference;
+    return prefersDark ? "dark" : "light";
+  }
+  function osPrefersDark() {
+    return typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function applyTheme() {
+    const resolved = resolveTheme(Config.global.theme, osPrefersDark());
+    document.documentElement.setAttribute(THEME_ATTR, resolved);
+    return resolved;
+  }
+  function initTheme() {
+    const resolved = applyTheme();
+    Log(`Theme resolved to '${resolved}' from preference '${Config.global.theme}'.`, "debug");
+    if (typeof matchMedia !== "function") return;
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      if (Config.global.theme === "auto") applyTheme();
+    });
+  }
+
   // src/ui/settings.js
   var SettingsUI = {
     overlayId: "tk-settings-overlay",
@@ -8023,7 +8102,9 @@ button.tk-add-btn {
         if (e.key !== "Tab") return;
         const isVisible = (el) => typeof el.checkVisibility === "function" ? el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) : el.offsetWidth > 0 || el.offsetHeight > 0 || el.style.display !== "none";
         const focusable = Array.from(
-          panel.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')
+          panel.querySelectorAll(
+            'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'
+          )
         ).filter((el) => !el.disabled && isVisible(el));
         if (focusable.length === 0) return;
         const first = focusable[0];
@@ -8088,7 +8169,14 @@ button.tk-add-btn {
       badgesTab.type = "button";
       badgesTab.className = "tk-settings-tab";
       badgesTab.textContent = "Badges & Hotlinks";
-      tabBar.append(globalTab, badgesTab, routesTab, regexTab, routeTesterTab, diagTab);
+      tabBar.append(
+        globalTab,
+        badgesTab,
+        routesTab,
+        regexTab,
+        routeTesterTab,
+        diagTab
+      );
       const content = document.createElement("div");
       content.id = "tk-settings-tab-content";
       const panes = {
@@ -8109,13 +8197,17 @@ button.tk-add-btn {
       };
       Object.values(panes).forEach((pane) => content.appendChild(pane));
       const activate = (name) => {
-        Object.entries(tabs).forEach(([key, tab]) => tab.classList.toggle("active", key === name));
+        Object.entries(tabs).forEach(
+          ([key, tab]) => tab.classList.toggle("active", key === name)
+        );
         Object.entries(panes).forEach(([key, pane]) => {
           pane.style.display = key === name ? "" : "none";
         });
         content.scrollTop = 0;
       };
-      Object.entries(tabs).forEach(([name, tab]) => tab.addEventListener("click", () => activate(name)));
+      Object.entries(tabs).forEach(
+        ([name, tab]) => tab.addEventListener("click", () => activate(name))
+      );
       activate("global");
       body.appendChild(tabBar);
       body.appendChild(content);
@@ -8234,9 +8326,10 @@ button.tk-add-btn {
               if (idx === 0) return;
               const arr = getEntries();
               [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
-              if (isHotlinkSection) arr.forEach((item, i) => {
-                item.placement = i + 1;
-              });
+              if (isHotlinkSection)
+                arr.forEach((item, i) => {
+                  item.placement = i + 1;
+                });
               Config.global[configKey] = arr;
               flush();
               rebuild();
@@ -8252,9 +8345,10 @@ button.tk-add-btn {
               if (idx === currentEntries.length - 1) return;
               const arr = getEntries();
               [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
-              if (isHotlinkSection) arr.forEach((item, i) => {
-                item.placement = i + 1;
-              });
+              if (isHotlinkSection)
+                arr.forEach((item, i) => {
+                  item.placement = i + 1;
+                });
               Config.global[configKey] = arr;
               flush();
               rebuild();
@@ -8306,9 +8400,10 @@ button.tk-add-btn {
               const arr = getEntries();
               const [moved] = arr.splice(srcIdx, 1);
               arr.splice(idx, 0, moved);
-              if (isHotlinkSection) arr.forEach((item, i) => {
-                item.placement = i + 1;
-              });
+              if (isHotlinkSection)
+                arr.forEach((item, i) => {
+                  item.placement = i + 1;
+                });
               Config.global[configKey] = arr;
               flush();
               rebuild();
@@ -8372,7 +8467,8 @@ button.tk-add-btn {
             const optInline = document.createElement("option");
             optInline.value = "inline";
             optInline.textContent = "Directly In-Line";
-            if ((entry.target || "inline") === "inline") optInline.selected = true;
+            if ((entry.target || "inline") === "inline")
+              optInline.selected = true;
             const optBg = document.createElement("option");
             optBg.value = "background";
             optBg.textContent = "New Background Tab";
@@ -8421,22 +8517,28 @@ button.tk-add-btn {
         section.appendChild(body);
         return section;
       };
-      pane.appendChild(buildCollapsibleSection(
-        "Toolbar Badges",
-        "toolbarBadges",
-        () => Toolbar.renderCenterContext()
-      ));
-      pane.appendChild(buildCollapsibleSection(
-        "Set Link Badges",
-        "setLinkBadges",
-        () => reinjectSetActions()
-      ));
-      pane.appendChild(buildCollapsibleSection(
-        "Toolbar Hotlinks",
-        "hotlinks",
-        () => Toolbar.renderCenterContext(),
-        true
-      ));
+      pane.appendChild(
+        buildCollapsibleSection(
+          "Toolbar Badges",
+          "toolbarBadges",
+          () => Toolbar.renderCenterContext()
+        )
+      );
+      pane.appendChild(
+        buildCollapsibleSection(
+          "Set Link Badges",
+          "setLinkBadges",
+          () => reinjectSetActions()
+        )
+      );
+      pane.appendChild(
+        buildCollapsibleSection(
+          "Toolbar Hotlinks",
+          "hotlinks",
+          () => Toolbar.renderCenterContext(),
+          true
+        )
+      );
       return pane;
     },
     _buildModulesPane: () => {
@@ -8446,7 +8548,9 @@ button.tk-add-btn {
       sectionTitle.className = "tk-settings-section-title";
       sectionTitle.textContent = "Modules & Routes";
       pane.appendChild(sectionTitle);
-      const sortedModules = [...ModuleRegistry].sort((a, b) => a.name.localeCompare(b.name));
+      const sortedModules = [...ModuleRegistry].sort(
+        (a, b) => a.name.localeCompare(b.name)
+      );
       sortedModules.forEach((mod) => {
         const cfg = Config.modules[mod.id];
         if (!cfg) return;
@@ -8467,7 +8571,10 @@ button.tk-add-btn {
         });
         checkbox.addEventListener("change", () => {
           cfg.enabled = checkbox.checked;
-          Log(`Config change: module '${mod.id}' enabled = ${cfg.enabled}`, "info");
+          Log(
+            `Config change: module '${mod.id}' enabled = ${cfg.enabled}`,
+            "info"
+          );
           SettingsUI._persist();
         });
         const nameSpan = document.createElement("span");
@@ -8504,7 +8611,10 @@ button.tk-add-btn {
             actionCheckbox.title = "Toggle this sub-feature independently of the module itself.";
             actionCheckbox.addEventListener("change", () => {
               cfg.actions[actionKey] = actionCheckbox.checked;
-              Log(`Config change: module '${mod.id}' action '${actionKey}' = ${actionCheckbox.checked}`, "info");
+              Log(
+                `Config change: module '${mod.id}' action '${actionKey}' = ${actionCheckbox.checked}`,
+                "info"
+              );
               SettingsUI._persist();
             });
             const actionText = document.createElement("span");
@@ -8566,7 +8676,10 @@ button.tk-add-btn {
         }
         errorEl.textContent = "";
         cfg.urlMatch = rules;
-        Log(`Config change: module '${mod.id}' urlMatch updated (${rules.length} rule(s))`, "info");
+        Log(
+          `Config change: module '${mod.id}' urlMatch updated (${rules.length} rule(s))`,
+          "info"
+        );
         SettingsUI._persist();
       }, 500);
       const addRow = (pattern, exclude) => {
@@ -8579,7 +8692,10 @@ button.tk-add-btn {
         input.addEventListener("input", commit);
         const select = document.createElement("select");
         select.title = "Include: page must match this pattern. Exclude: page must NOT match this pattern.";
-        [["include", "Include"], ["exclude", "Exclude"]].forEach(([value, text]) => {
+        [
+          ["include", "Include"],
+          ["exclude", "Exclude"]
+        ].forEach(([value, text]) => {
           const opt = document.createElement("option");
           opt.value = value;
           opt.textContent = text;
@@ -8692,7 +8808,9 @@ button.tk-add-btn {
       const filterGlobalSettings = (query) => {
         const q = query.trim().toLowerCase();
         clearSearchBtn.style.display = q ? "inline-flex" : "none";
-        const globalSections = pane.querySelectorAll(".tk-settings-collapsible-section");
+        const globalSections = pane.querySelectorAll(
+          ".tk-settings-collapsible-section"
+        );
         globalSections.forEach((section) => {
           if (!q) {
             section.style.display = "";
@@ -8724,16 +8842,26 @@ button.tk-add-btn {
           }
         });
       };
-      searchInput.addEventListener("input", () => filterGlobalSettings(searchInput.value));
+      searchInput.addEventListener(
+        "input",
+        () => filterGlobalSettings(searchInput.value)
+      );
       clearSearchBtn.addEventListener("click", () => {
         searchInput.value = "";
         filterGlobalSettings("");
         searchInput.focus();
       });
       GLOBAL_SECTIONS.forEach((section) => {
-        const fields = section.fields.map((field) => SettingsUI._buildRangeField(field));
+        const fields = section.fields.map(
+          (field) => SettingsUI._buildRangeField(field)
+        );
         pane.appendChild(
-          SettingsUI._buildCollapsibleSection(section.title, fields, section.description, false)
+          SettingsUI._buildCollapsibleSection(
+            section.title,
+            fields,
+            section.description,
+            false
+          )
         );
       });
       const themeField = document.createElement("div");
@@ -8788,7 +8916,10 @@ button.tk-add-btn {
         { value: "America/Chicago", label: "US Central (America/Chicago)" },
         { value: "America/New_York", label: "US Eastern (America/New_York)" },
         { value: "America/Denver", label: "US Mountain (America/Denver)" },
-        { value: "America/Los_Angeles", label: "US Pacific (America/Los_Angeles)" },
+        {
+          value: "America/Los_Angeles",
+          label: "US Pacific (America/Los_Angeles)"
+        },
         { value: "UTC", label: "UTC" }
       ].forEach(({ value, label }) => {
         const opt = document.createElement("option");
@@ -8843,7 +8974,10 @@ button.tk-add-btn {
       templateInput.title = "Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}";
       templateInput.addEventListener("change", () => {
         Config.global.cardFormatterTemplate = templateInput.value.trim();
-        Log(`Config change: global.cardFormatterTemplate = ${Config.global.cardFormatterTemplate}`, "info");
+        Log(
+          `Config change: global.cardFormatterTemplate = ${Config.global.cardFormatterTemplate}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       const templateHint = document.createElement("div");
@@ -8861,13 +8995,20 @@ button.tk-add-btn {
       tsvTemplateInput.title = "Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}";
       tsvTemplateInput.addEventListener("change", () => {
         Config.global.cardFormatterTSVTemplate = tsvTemplateInput.value;
-        Log(`Config change: global.cardFormatterTSVTemplate = ${Config.global.cardFormatterTSVTemplate}`, "info");
+        Log(
+          `Config change: global.cardFormatterTSVTemplate = ${Config.global.cardFormatterTSVTemplate}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       const tsvTemplateHint = document.createElement("div");
       tsvTemplateHint.className = "tk-settings-hint";
       tsvTemplateHint.textContent = "Tokens: {Year}, {SetName}, {InsertSetName}, {PlayerName}, {PlayerTeam}, {Tags}, {PR}, {CardNo}";
-      tsvTemplateField.append(tsvTemplateLabel, tsvTemplateInput, tsvTemplateHint);
+      tsvTemplateField.append(
+        tsvTemplateLabel,
+        tsvTemplateInput,
+        tsvTemplateHint
+      );
       const ignoredTagsField = document.createElement("div");
       ignoredTagsField.className = "tk-settings-field";
       const ignoredTagsLabel = document.createElement("label");
@@ -8879,13 +9020,20 @@ button.tk-add-btn {
       ignoredTagsInput.title = "Comma-separated list of card tags to ignore when extracting card metadata.";
       ignoredTagsInput.addEventListener("change", () => {
         Config.global.cardFormatterIgnoredTags = ignoredTagsInput.value.trim();
-        Log(`Config change: global.cardFormatterIgnoredTags = ${Config.global.cardFormatterIgnoredTags}`, "info");
+        Log(
+          `Config change: global.cardFormatterIgnoredTags = ${Config.global.cardFormatterIgnoredTags}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       const ignoredTagsHint = document.createElement("div");
       ignoredTagsHint.className = "tk-settings-hint";
       ignoredTagsHint.textContent = "Comma-separated tags to ignore when extracting card metadata (e.g. ASR, LL, TC, CL)";
-      ignoredTagsField.append(ignoredTagsLabel, ignoredTagsInput, ignoredTagsHint);
+      ignoredTagsField.append(
+        ignoredTagsLabel,
+        ignoredTagsInput,
+        ignoredTagsHint
+      );
       const tagSeparatorField = document.createElement("div");
       tagSeparatorField.className = "tk-settings-field";
       const tagSeparatorLabel = document.createElement("label");
@@ -8897,13 +9045,20 @@ button.tk-add-btn {
       tagSeparatorInput.title = "Separator character(s) between tags (e.g. space, comma, semicolon). Blank (default) resolves to space.";
       tagSeparatorInput.addEventListener("change", () => {
         Config.global.cardFormatterTagSeparator = tagSeparatorInput.value;
-        Log(`Config change: global.cardFormatterTagSeparator = ${Config.global.cardFormatterTagSeparator}`, "info");
+        Log(
+          `Config change: global.cardFormatterTagSeparator = ${Config.global.cardFormatterTagSeparator}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       const tagSeparatorHint = document.createElement("div");
       tagSeparatorHint.className = "tk-settings-hint";
       tagSeparatorHint.textContent = "Delimiter used between tags when formatted (e.g. space, comma, semicolon). Blank defaults to single space.";
-      tagSeparatorField.append(tagSeparatorLabel, tagSeparatorInput, tagSeparatorHint);
+      tagSeparatorField.append(
+        tagSeparatorLabel,
+        tagSeparatorInput,
+        tagSeparatorHint
+      );
       const tagReplacerField = document.createElement("div");
       tagReplacerField.className = "tk-settings-field";
       const tagReplacerLabel = document.createElement("label");
@@ -8915,13 +9070,20 @@ button.tk-add-btn {
       tagReplacerInput.title = "Key-value mapping pairs for tag replacements (e.g. AU: AUTO, TC: CL).";
       tagReplacerInput.addEventListener("change", () => {
         Config.global.cardFormatterTagReplacer = tagReplacerInput.value.trim();
-        Log(`Config change: global.cardFormatterTagReplacer = ${Config.global.cardFormatterTagReplacer}`, "info");
+        Log(
+          `Config change: global.cardFormatterTagReplacer = ${Config.global.cardFormatterTagReplacer}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       const tagReplacerHint = document.createElement("div");
       tagReplacerHint.className = "tk-settings-hint";
       tagReplacerHint.textContent = "Comma-separated pairs (e.g. AU: AUTO, TC: CL). Replaces left-side tag with right-side tag value.";
-      tagReplacerField.append(tagReplacerLabel, tagReplacerInput, tagReplacerHint);
+      tagReplacerField.append(
+        tagReplacerLabel,
+        tagReplacerInput,
+        tagReplacerHint
+      );
       const outputModeField = document.createElement("div");
       outputModeField.className = "tk-settings-field";
       const outputModeLabel = document.createElement("label");
@@ -8941,7 +9103,10 @@ button.tk-add-btn {
       });
       outputModeSelect.addEventListener("change", () => {
         Config.global.cardFormatterOutputMode = outputModeSelect.value;
-        Log(`Config change: global.cardFormatterOutputMode = ${outputModeSelect.value}`, "info");
+        Log(
+          `Config change: global.cardFormatterOutputMode = ${outputModeSelect.value}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       outputModeField.append(outputModeLabel, outputModeSelect);
@@ -8958,12 +9123,16 @@ button.tk-add-btn {
         const opt = document.createElement("option");
         opt.value = value;
         opt.textContent = label;
-        if ((Config.global.cardFormatterLinkTarget || "background") === value) opt.selected = true;
+        if ((Config.global.cardFormatterLinkTarget || "background") === value)
+          opt.selected = true;
         linkTargetSelect.appendChild(opt);
       });
       linkTargetSelect.addEventListener("change", () => {
         Config.global.cardFormatterLinkTarget = linkTargetSelect.value;
-        Log(`Config change: global.cardFormatterLinkTarget = ${linkTargetSelect.value}`, "info");
+        Log(
+          `Config change: global.cardFormatterLinkTarget = ${linkTargetSelect.value}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       linkTargetField.append(linkTargetLabel, linkTargetSelect);
@@ -8982,13 +9151,20 @@ button.tk-add-btn {
       popoverDurationInput.addEventListener("change", () => {
         const val = parseInt(popoverDurationInput.value, 10);
         Config.global.cardFormatterPopoverDurationMs = isNaN(val) ? 4e3 : val;
-        Log(`Config change: global.cardFormatterPopoverDurationMs = ${Config.global.cardFormatterPopoverDurationMs}`, "info");
+        Log(
+          `Config change: global.cardFormatterPopoverDurationMs = ${Config.global.cardFormatterPopoverDurationMs}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       const popoverDurationHint = document.createElement("div");
       popoverDurationHint.className = "tk-settings-hint";
       popoverDurationHint.textContent = "How long the floating copy popover stays visible before auto-dismissing (in milliseconds).";
-      popoverDurationField.append(popoverDurationLabel, popoverDurationInput, popoverDurationHint);
+      popoverDurationField.append(
+        popoverDurationLabel,
+        popoverDurationInput,
+        popoverDurationHint
+      );
       const showCopyField = document.createElement("div");
       showCopyField.className = "tk-settings-field";
       const showCopyLabel = document.createElement("label");
@@ -9030,13 +9206,20 @@ button.tk-add-btn {
       googleSheetIdInput.title = "Google Sheet ID or full spreadsheet URL";
       googleSheetIdInput.addEventListener("change", () => {
         Config.global.cardFormatterGoogleSheetId = googleSheetIdInput.value.trim();
-        Log(`Config change: global.cardFormatterGoogleSheetId = ${Config.global.cardFormatterGoogleSheetId}`, "info");
+        Log(
+          `Config change: global.cardFormatterGoogleSheetId = ${Config.global.cardFormatterGoogleSheetId}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       const googleSheetIdHint = document.createElement("div");
       googleSheetIdHint.className = "tk-settings-hint";
       googleSheetIdHint.textContent = "Sheet ID or full Google Sheet URL (e.g. /1E-lfRToeTTXyj8ht6gQVN-0DcKQusN_28U-wNaaOwDI)";
-      googleSheetIdField.append(googleSheetIdLabel, googleSheetIdInput, googleSheetIdHint);
+      googleSheetIdField.append(
+        googleSheetIdLabel,
+        googleSheetIdInput,
+        googleSheetIdHint
+      );
       const googleSheetWorksheetField = document.createElement("div");
       googleSheetWorksheetField.className = "tk-settings-field";
       const googleSheetWorksheetLabel = document.createElement("label");
@@ -9048,13 +9231,20 @@ button.tk-add-btn {
       googleSheetWorksheetInput.title = "Target tab/worksheet name inside the spreadsheet";
       googleSheetWorksheetInput.addEventListener("change", () => {
         Config.global.cardFormatterGoogleSheetWorksheet = googleSheetWorksheetInput.value.trim();
-        Log(`Config change: global.cardFormatterGoogleSheetWorksheet = ${Config.global.cardFormatterGoogleSheetWorksheet}`, "info");
+        Log(
+          `Config change: global.cardFormatterGoogleSheetWorksheet = ${Config.global.cardFormatterGoogleSheetWorksheet}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       const googleSheetWorksheetHint = document.createElement("div");
       googleSheetWorksheetHint.className = "tk-settings-hint";
       googleSheetWorksheetHint.textContent = "Name of the tab/worksheet to append rows to (e.g. Singles & Lots)";
-      googleSheetWorksheetField.append(googleSheetWorksheetLabel, googleSheetWorksheetInput, googleSheetWorksheetHint);
+      googleSheetWorksheetField.append(
+        googleSheetWorksheetLabel,
+        googleSheetWorksheetInput,
+        googleSheetWorksheetHint
+      );
       const googleSheetWebAppUrlField = document.createElement("div");
       googleSheetWebAppUrlField.className = "tk-settings-field";
       const googleSheetWebAppUrlLabel = document.createElement("label");
@@ -9066,13 +9256,20 @@ button.tk-add-btn {
       googleSheetWebAppUrlInput.title = "Deployed Google Apps Script Web App URL (starts with https://script.google.com/macros/s/...)";
       googleSheetWebAppUrlInput.addEventListener("change", () => {
         Config.global.cardFormatterGoogleSheetWebAppUrl = googleSheetWebAppUrlInput.value.trim();
-        Log(`Config change: global.cardFormatterGoogleSheetWebAppUrl = ${Config.global.cardFormatterGoogleSheetWebAppUrl}`, "info");
+        Log(
+          `Config change: global.cardFormatterGoogleSheetWebAppUrl = ${Config.global.cardFormatterGoogleSheetWebAppUrl}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       const googleSheetWebAppUrlHint = document.createElement("div");
       googleSheetWebAppUrlHint.className = "tk-settings-hint";
       googleSheetWebAppUrlHint.textContent = "Endpoint URL from deployed Apps Script (e.g. https://script.google.com/macros/s/.../exec)";
-      googleSheetWebAppUrlField.append(googleSheetWebAppUrlLabel, googleSheetWebAppUrlInput, googleSheetWebAppUrlHint);
+      googleSheetWebAppUrlField.append(
+        googleSheetWebAppUrlLabel,
+        googleSheetWebAppUrlInput,
+        googleSheetWebAppUrlHint
+      );
       const showBRefField = document.createElement("div");
       showBRefField.className = "tk-settings-field";
       const showBRefLabel = document.createElement("label");
@@ -9083,6 +9280,16 @@ button.tk-add-btn {
       const showBRefCheckbox = document.createElement("input");
       showBRefCheckbox.type = "checkbox";
       showBRefCheckbox.checked = Config.global.cardFormatterShowBRef !== false;
+      const showCardLadderField = document.createElement("div");
+      showCardLadderField.className = "tk-settings-field";
+      const showCardLadderLabel = document.createElement("label");
+      showCardLadderLabel.style.display = "flex";
+      showCardLadderLabel.style.alignItems = "center";
+      showCardLadderLabel.style.gap = "6px";
+      showCardLadderLabel.style.cursor = "pointer";
+      const showCardLadderCheckbox = document.createElement("input");
+      showCardLadderCheckbox.type = "checkbox";
+      showCardLadderCheckbox.checked = Config.global.cardFormatterShowCardLadder !== false;
       const showGoogleField = document.createElement("div");
       showGoogleField.className = "tk-settings-field";
       const showGoogleLabel = document.createElement("label");
@@ -9098,15 +9305,19 @@ button.tk-add-btn {
         const showTSV = showTSVCheckbox.checked;
         const showGoogleSheet = showGoogleSheetCheckbox.checked;
         const showBRef = showBRefCheckbox.checked;
+        const showCardLadder = showCardLadderCheckbox.checked;
         const showGoogle = showGoogleCheckbox.checked;
-        const hasSearch = showBRef || showGoogle;
+        const hasSearch = showBRef || showCardLadder || showGoogle;
         if (hasSearch || showTSV || showGoogleSheet) {
           outputModeSelect.disabled = false;
           outputModeSelect.title = "Choose Floating Popover or Inline Buttons mode for active actions.";
           if (Config.global.cardFormatterOutputMode === "clipboard") {
             Config.global.cardFormatterOutputMode = "popover";
             outputModeSelect.value = "popover";
-            Log("Config change: global.cardFormatterOutputMode = popover (clipboard invalid for active actions)", "info");
+            Log(
+              "Config change: global.cardFormatterOutputMode = popover (clipboard invalid for active actions)",
+              "info"
+            );
           }
         } else if (showCopy) {
           outputModeSelect.disabled = false;
@@ -9122,49 +9333,111 @@ button.tk-add-btn {
       };
       showCopyCheckbox.addEventListener("change", () => {
         Config.global.cardFormatterShowCopy = showCopyCheckbox.checked;
-        Log(`Config change: global.cardFormatterShowCopy = ${showCopyCheckbox.checked}`, "info");
+        Log(
+          `Config change: global.cardFormatterShowCopy = ${showCopyCheckbox.checked}`,
+          "info"
+        );
         updateOutputModeState();
         SettingsUI._persist();
       });
-      showCopyLabel.append(showCopyCheckbox, document.createTextNode("Show Friendly Copy Button"));
+      showCopyLabel.append(
+        showCopyCheckbox,
+        document.createTextNode("Show Friendly Copy Button")
+      );
       showCopyField.appendChild(showCopyLabel);
       showTSVCheckbox.addEventListener("change", () => {
         Config.global.cardFormatterShowTSV = showTSVCheckbox.checked;
-        Log(`Config change: global.cardFormatterShowTSV = ${showTSVCheckbox.checked}`, "info");
+        Log(
+          `Config change: global.cardFormatterShowTSV = ${showTSVCheckbox.checked}`,
+          "info"
+        );
         updateOutputModeState();
         SettingsUI._persist();
       });
-      showTSVLabel.append(showTSVCheckbox, document.createTextNode("Show TSV Copy Button"));
+      showTSVLabel.append(
+        showTSVCheckbox,
+        document.createTextNode("Show TSV Copy Button")
+      );
       showTSVField.appendChild(showTSVLabel);
       showGoogleSheetCheckbox.addEventListener("change", () => {
         Config.global.cardFormatterShowGoogleSheet = showGoogleSheetCheckbox.checked;
-        Log(`Config change: global.cardFormatterShowGoogleSheet = ${showGoogleSheetCheckbox.checked}`, "info");
+        Log(
+          `Config change: global.cardFormatterShowGoogleSheet = ${showGoogleSheetCheckbox.checked}`,
+          "info"
+        );
         updateOutputModeState();
         SettingsUI._persist();
       });
-      showGoogleSheetLabel.append(showGoogleSheetCheckbox, document.createTextNode("Show Send to Google Sheet Button"));
+      showGoogleSheetLabel.append(
+        showGoogleSheetCheckbox,
+        document.createTextNode("Show Send to Google Sheet Button")
+      );
       showGoogleSheetField.appendChild(showGoogleSheetLabel);
       showBRefCheckbox.addEventListener("change", () => {
         Config.global.cardFormatterShowBRef = showBRefCheckbox.checked;
-        Log(`Config change: global.cardFormatterShowBRef = ${showBRefCheckbox.checked}`, "info");
+        Log(
+          `Config change: global.cardFormatterShowBRef = ${showBRefCheckbox.checked}`,
+          "info"
+        );
         updateOutputModeState();
         SettingsUI._persist();
       });
-      showBRefLabel.append(showBRefCheckbox, document.createTextNode("Show Baseball Reference Search"));
+      showBRefLabel.append(
+        showBRefCheckbox,
+        document.createTextNode("Show Baseball Reference Search")
+      );
       showBRefField.appendChild(showBRefLabel);
+      showCardLadderCheckbox.addEventListener("change", () => {
+        Config.global.cardFormatterShowCardLadder = showCardLadderCheckbox.checked;
+        Log(
+          `Config change: global.cardFormatterShowCardLadder = ${showCardLadderCheckbox.checked}`,
+          "info"
+        );
+        updateOutputModeState();
+        SettingsUI._persist();
+      });
+      showCardLadderLabel.append(
+        showCardLadderCheckbox,
+        document.createTextNode("Show Card Ladder Search")
+      );
+      showCardLadderField.appendChild(showCardLadderLabel);
       showGoogleCheckbox.addEventListener("change", () => {
         Config.global.cardFormatterShowGoogle = showGoogleCheckbox.checked;
-        Log(`Config change: global.cardFormatterShowGoogle = ${showGoogleCheckbox.checked}`, "info");
+        Log(
+          `Config change: global.cardFormatterShowGoogle = ${showGoogleCheckbox.checked}`,
+          "info"
+        );
         updateOutputModeState();
         SettingsUI._persist();
       });
-      showGoogleLabel.append(showGoogleCheckbox, document.createTextNode("Show Google Search"));
+      showGoogleLabel.append(
+        showGoogleCheckbox,
+        document.createTextNode("Show Google Search")
+      );
       showGoogleField.appendChild(showGoogleLabel);
       updateOutputModeState();
       pane.appendChild(
         SettingsUI._buildCollapsibleSection(
           "Player Quick Links Settings",
-          [templateField, tsvTemplateField, ignoredTagsField, tagSeparatorField, tagReplacerField, outputModeField, linkTargetField, popoverDurationField, showCopyField, showTSVField, showGoogleSheetField, googleSheetIdField, googleSheetWorksheetField, googleSheetWebAppUrlField, showBRefField, showGoogleField],
+          [
+            templateField,
+            tsvTemplateField,
+            ignoredTagsField,
+            tagSeparatorField,
+            tagReplacerField,
+            outputModeField,
+            linkTargetField,
+            popoverDurationField,
+            showCopyField,
+            showTSVField,
+            showGoogleSheetField,
+            googleSheetIdField,
+            googleSheetWorksheetField,
+            googleSheetWebAppUrlField,
+            showBRefField,
+            showCardLadderField,
+            showGoogleField
+          ],
           "Configure custom copy templates, output modes (popover, inline buttons, clipboard), Google Sheets target, link opening targets, and search actions.",
           false
         )
@@ -9194,30 +9467,32 @@ button.tk-add-btn {
           onUpdate: () => reinjectSetActions()
         }
       ];
-      const displayNodes = displayFieldsConfig.map(({ key, label: fieldLabelText, title: fieldTitleText, onUpdate }) => {
-        const field = document.createElement("div");
-        field.className = "tk-settings-field";
-        const fieldLabel = document.createElement("label");
-        fieldLabel.textContent = fieldLabelText;
-        const select = document.createElement("select");
-        select.title = fieldTitleText;
-        DISPLAY_MODES.forEach(({ value, label: optLabel }) => {
-          const opt = document.createElement("option");
-          opt.value = value;
-          opt.textContent = optLabel;
-          if ((Config.global[key] || "both") === value) opt.selected = true;
-          select.appendChild(opt);
-        });
-        select.addEventListener("change", () => {
-          Config.global[key] = select.value;
-          Log(`Config change: global.${key} = ${select.value}`, "info");
-          if (onUpdate) onUpdate();
-          SettingsUI._persist();
-        });
-        field.appendChild(fieldLabel);
-        field.appendChild(select);
-        return field;
-      });
+      const displayNodes = displayFieldsConfig.map(
+        ({ key, label: fieldLabelText, title: fieldTitleText, onUpdate }) => {
+          const field = document.createElement("div");
+          field.className = "tk-settings-field";
+          const fieldLabel = document.createElement("label");
+          fieldLabel.textContent = fieldLabelText;
+          const select = document.createElement("select");
+          select.title = fieldTitleText;
+          DISPLAY_MODES.forEach(({ value, label: optLabel }) => {
+            const opt = document.createElement("option");
+            opt.value = value;
+            opt.textContent = optLabel;
+            if ((Config.global[key] || "both") === value) opt.selected = true;
+            select.appendChild(opt);
+          });
+          select.addEventListener("change", () => {
+            Config.global[key] = select.value;
+            Log(`Config change: global.${key} = ${select.value}`, "info");
+            if (onUpdate) onUpdate();
+            SettingsUI._persist();
+          });
+          field.appendChild(fieldLabel);
+          field.appendChild(select);
+          return field;
+        }
+      );
       const posField = document.createElement("div");
       posField.className = "tk-settings-field";
       const posLabel = document.createElement("label");
@@ -9232,12 +9507,16 @@ button.tk-add-btn {
         const opt = document.createElement("option");
         opt.value = value;
         opt.textContent = label;
-        if ((Config.global.quantityCounterPosition || "bottom-right") === value) opt.selected = true;
+        if ((Config.global.quantityCounterPosition || "bottom-right") === value)
+          opt.selected = true;
         posSelect.appendChild(opt);
       });
       posSelect.addEventListener("change", () => {
         Config.global.quantityCounterPosition = posSelect.value;
-        Log(`Config change: global.quantityCounterPosition = ${posSelect.value}`, "info");
+        Log(
+          `Config change: global.quantityCounterPosition = ${posSelect.value}`,
+          "info"
+        );
         SettingsUI._persist();
       });
       posField.append(posLabel, posSelect);
@@ -9274,7 +9553,10 @@ button.tk-add-btn {
           URL.revokeObjectURL(url);
           showToast({ variant: "success", message: "Settings exported to XML." });
         } catch (err) {
-          showToast({ variant: "error", message: `XML export failed: ${err.message}` });
+          showToast({
+            variant: "error",
+            message: `XML export failed: ${err.message}`
+          });
         }
       });
       const fileInput = document.createElement("input");
@@ -9294,10 +9576,16 @@ button.tk-add-btn {
           applyTheme();
           SettingsStore.save(Config);
           Log("Settings successfully imported from XML file.", "info");
-          showToast({ message: "Settings imported from XML! Reloading page...", variant: "success" });
+          showToast({
+            message: "Settings imported from XML! Reloading page...",
+            variant: "success"
+          });
           setTimeout(() => window.location.reload(), 1e3);
         } catch (err) {
-          showToast({ message: `Import failed: ${err.message}`, variant: "error" });
+          showToast({
+            message: `Import failed: ${err.message}`,
+            variant: "error"
+          });
         }
         fileInput.value = "";
       });
@@ -9346,9 +9634,18 @@ button.tk-add-btn {
         ["Version", SettingsUI._version()],
         ["URL", window.location.pathname + window.location.search],
         ["Matched Routes", routes.length ? routes.join(", ") : "none"],
-        ["Active Modules", active.length ? `${active.length}: ${active.join(", ")}` : "none on this page"],
-        ["Last Block Detected", lastBlock ? new Date(lastBlock).toLocaleString() : "never"],
-        ["Theme", `${themeFormatted}${resolvedFormatted ? ` (Resolved: ${resolvedFormatted})` : ""}`]
+        [
+          "Active Modules",
+          active.length ? `${active.length}: ${active.join(", ")}` : "none on this page"
+        ],
+        [
+          "Last Block Detected",
+          lastBlock ? new Date(lastBlock).toLocaleString() : "never"
+        ],
+        [
+          "Theme",
+          `${themeFormatted}${resolvedFormatted ? ` (Resolved: ${resolvedFormatted})` : ""}`
+        ]
       ];
       const table = document.createElement("dl");
       table.className = "tk-diag-list";
@@ -9547,7 +9844,10 @@ button.tk-add-btn {
       const presets = [
         { name: "Checklist", pattern: "/checklist\\.cfm" },
         { name: "View Collection", pattern: "/viewcollectionmode\\.cfm" },
-        { name: "For Sale / Trade", pattern: "/viewcollectionforsaletrade\\.cfm" },
+        {
+          name: "For Sale / Trade",
+          pattern: "/viewcollectionforsaletrade\\.cfm"
+        },
         { name: "Wantlist", pattern: "/viewcollectionwantlist\\.cfm" },
         { name: "Add Multiples", pattern: "/collectionaddmultiples" },
         { name: "Inserts", pattern: "/inserts\\.cfm" },
@@ -9732,10 +10032,22 @@ button.tk-add-btn {
       const samplesWrap = document.createElement("div");
       samplesWrap.className = "tk-preset-chips";
       const samples = [
-        { name: "Checklist", url: "https://www.tcdb.com/Checklist.cfm/sid/11172" },
-        { name: "View Collection", url: "https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards&CollectionID=6" },
-        { name: "For Sale / Trade", url: "https://www.tcdb.com/ViewCollectionForSaleTrade.cfm?Member=djncards" },
-        { name: "Add Multiples", url: "https://www.tcdb.com/CollectionAddMultiplesText.cfm?SetID=11172" },
+        {
+          name: "Checklist",
+          url: "https://www.tcdb.com/Checklist.cfm/sid/11172"
+        },
+        {
+          name: "View Collection",
+          url: "https://www.tcdb.com/ViewCollectionMode.cfm?Member=djncards&CollectionID=6"
+        },
+        {
+          name: "For Sale / Trade",
+          url: "https://www.tcdb.com/ViewCollectionForSaleTrade.cfm?Member=djncards"
+        },
+        {
+          name: "Add Multiples",
+          url: "https://www.tcdb.com/CollectionAddMultiplesText.cfm?SetID=11172"
+        },
         { name: "Inserts", url: "https://www.tcdb.com/Inserts.cfm/sid/11172" }
       ];
       samples.forEach((s) => {
