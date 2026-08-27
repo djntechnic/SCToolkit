@@ -76,7 +76,7 @@ export const DEFAULT_CONFIG = {
       enabled: true,
       urlMatch: [
         { pattern: "/collectionaddmultiples", exclude: false },
-        { pattern: "/collectionaddm", exclude: false }
+        { pattern: "/collectionaddm", exclude: false },
       ],
       actions: {},
     },
@@ -119,14 +119,14 @@ export const DEFAULT_CONFIG = {
       enabled: true,
       urlMatch: [
         { pattern: "/viewall\\.cfm", exclude: false },
-        { pattern: "/viewallc\\.cfm", exclude: false }
+        { pattern: "/viewallc\\.cfm", exclude: false },
       ],
-      actions: {}
+      actions: {},
     },
     collectionDefaulter: {
       enabled: true,
       urlMatch: [{ pattern: "/viewcollection\\.cfm", exclude: false }],
-      actions: {}
+      actions: {},
     },
     quickAddGridEnhancer: {
       enabled: true,
@@ -135,19 +135,17 @@ export const DEFAULT_CONFIG = {
         { pattern: "/viewcollectionwantlist\\.cfm", exclude: false },
         { pattern: "/viewcollectionforsaletrade\\.cfm", exclude: false },
       ],
-      actions: {}
+      actions: {},
     },
     collectionAddCardNumberEnhancer: {
       enabled: true,
-      urlMatch: [
-        { pattern: "collectionaddcardnumber", exclude: false }
-      ],
+      urlMatch: [{ pattern: "collectionaddcardnumber", exclude: false }],
       actions: {
         defaultAddToSale: true,
         collectionWarning: true,
         liveCounter: true,
-        validateInput: true
-      }
+        validateInput: true,
+      },
     },
   },
   global: {
@@ -181,12 +179,12 @@ export const DEFAULT_CONFIG = {
     setListEnhancerChunkSize: 25,
     settingsSaveDebounceMs: 400,
     cardFormatterTemplate:
-      '{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}',
+      "{PlayerName} - {Year} {SetName} {Tags} {PR} #{CardNo}",
     cardFormatterTSVTemplate:
-      '{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}',
-    cardFormatterIgnoredTags: 'ASR, LL, TC, CL',
-    cardFormatterTagSeparator: '',
-    cardFormatterTagReplacer: '',
+      "{Year}\\t{SetName}\\t{InsertSetName}\\t{PlayerName}\\t{PlayerTeam}\\t{Tags}\\t{PR}\\t{CardNo}",
+    cardFormatterIgnoredTags: "ASR, LL, TC, CL",
+    cardFormatterTagSeparator: "",
+    cardFormatterTagReplacer: "",
     cardFormatterOutputMode: "popover",
     cardFormatterLinkTarget: "background",
     cardFormatterPopoverDurationMs: 4000,
@@ -195,8 +193,10 @@ export const DEFAULT_CONFIG = {
     cardFormatterShowGoogleSheet: false,
     cardFormatterGoogleSheetId: "1E-lfRToeTTXyj8ht6gQVN-0DcKQusN_28U-wNaaOwDI",
     cardFormatterGoogleSheetWorksheet: "Singles & Lots",
-    cardFormatterGoogleSheetWebAppUrl: "https://script.google.com/macros/s/AKfycbzEDIqbquVj-1G_fmeCUtqNYyX9Z8qyfympeHupi8lbkZZaI2kLcBCnXOZ4pRbTGMUvOA/exec",
+    cardFormatterGoogleSheetWebAppUrl:
+      "https://script.google.com/macros/s/AKfycbzEDIqbquVj-1G_fmeCUtqNYyX9Z8qyfympeHupi8lbkZZaI2kLcBCnXOZ4pRbTGMUvOA/exec",
     cardFormatterShowBRef: true,
+    cardFormatterShowCardLadder: true,
     cardFormatterShowGoogle: true,
     quantityCounterPosition: "bottom-right",
     theme: "auto",
@@ -208,73 +208,73 @@ export const DEFAULT_CONFIG = {
     setButtonDisplay: "both",
     defaultCollectionId: 6,
     toolbarBadges: [
-      { key: 'CHECKLIST', enabled: true },
-      { key: 'PIN', enabled: true },
-      { key: 'YEAR', enabled: true },
-      { key: 'INSERTS', enabled: true },
-      { key: 'PARALLELS', enabled: true },
-      { key: 'FOR_SALE', enabled: true },
-      { key: 'MULTI', enabled: true },
-      { key: 'WANTLIST', enabled: true },
-      { key: 'CSV', enabled: true },
-      { key: 'HIERARCHY', enabled: true }
+      { key: "CHECKLIST", enabled: true },
+      { key: "PIN", enabled: true },
+      { key: "YEAR", enabled: true },
+      { key: "INSERTS", enabled: true },
+      { key: "PARALLELS", enabled: true },
+      { key: "FOR_SALE", enabled: true },
+      { key: "MULTI", enabled: true },
+      { key: "WANTLIST", enabled: true },
+      { key: "CSV", enabled: true },
+      { key: "HIERARCHY", enabled: true },
     ],
     setLinkBadges: [
-      { key: 'CHECKLIST', enabled: true },
-      { key: 'PIN', enabled: true },
-      { key: 'CSV', enabled: true },
-      { key: 'HIERARCHY', enabled: true },
-      { key: 'YEAR', enabled: true },
-      { key: 'INSERTS', enabled: true },
-      { key: 'PARALLELS', enabled: true },
-      { key: 'FOR_SALE', enabled: true },
-      { key: 'MULTI', enabled: true },
-      { key: 'WANTLIST', enabled: true }
+      { key: "CHECKLIST", enabled: true },
+      { key: "PIN", enabled: true },
+      { key: "CSV", enabled: true },
+      { key: "HIERARCHY", enabled: true },
+      { key: "YEAR", enabled: true },
+      { key: "INSERTS", enabled: true },
+      { key: "PARALLELS", enabled: true },
+      { key: "FOR_SALE", enabled: true },
+      { key: "MULTI", enabled: true },
+      { key: "WANTLIST", enabled: true },
     ],
     hotlinks: [
       {
-        id: 'top',
-        url: '#top',
-        text: 'Top',
-        tooltip: 'Scroll to top of page',
+        id: "top",
+        url: "#top",
+        text: "Top",
+        tooltip: "Scroll to top of page",
         placement: 1,
         enabled: true,
-        icon: 'chevronUp',
-        action: 'scrollToTop',
-        target: 'inline'
+        icon: "chevronUp",
+        action: "scrollToTop",
+        target: "inline",
       },
       {
-        id: 'bottom',
-        url: '#bottom',
-        text: 'Bottom',
-        tooltip: 'Scroll to bottom of page',
+        id: "bottom",
+        url: "#bottom",
+        text: "Bottom",
+        tooltip: "Scroll to bottom of page",
         placement: 2,
         enabled: true,
-        icon: 'chevronDown',
-        action: 'scrollToBottom',
-        target: 'inline'
+        icon: "chevronDown",
+        action: "scrollToBottom",
+        target: "inline",
       },
       {
-        id: 'search',
-        url: 'https://www.tcdb.com/AdvancedSearch.cfm',
-        text: 'Search',
-        tooltip: 'Perform Advanced Search',
+        id: "search",
+        url: "https://www.tcdb.com/AdvancedSearch.cfm",
+        text: "Search",
+        tooltip: "Perform Advanced Search",
         placement: 3,
         enabled: true,
-        icon: 'search',
-        target: 'inline'
+        icon: "search",
+        target: "inline",
       },
       {
-        id: 'year',
-        url: '/ViewAllC.cfm',
-        text: 'Year',
-        tooltip: 'View All Sets for Year in Collection',
+        id: "year",
+        url: "/ViewAllC.cfm",
+        text: "Year",
+        tooltip: "View All Sets for Year in Collection",
         placement: 4,
         enabled: true,
-        icon: 'calendar',
-        action: 'viewAllC',
-        target: 'inline'
-      }
+        icon: "calendar",
+        action: "viewAllC",
+        target: "inline",
+      },
     ],
   },
 };
@@ -376,16 +376,19 @@ export const SettingsStore = {
       }
     });
 
-    ['toolbarBadges', 'setLinkBadges'].forEach((badgeListKey) => {
+    ["toolbarBadges", "setLinkBadges"].forEach((badgeListKey) => {
       if (Array.isArray(global[badgeListKey])) {
         const defaultList = DEFAULT_CONFIG.global[badgeListKey] || [];
         const storedList = global[badgeListKey];
         const storedKeys = new Set(
-          storedList.map((item) => (typeof item === 'string' ? item : item.key))
+          storedList.map((item) =>
+            typeof item === "string" ? item : item.key,
+          ),
         );
 
         const missingDefaults = defaultList.filter((defaultItem) => {
-          const key = typeof defaultItem === 'string' ? defaultItem : defaultItem.key;
+          const key =
+            typeof defaultItem === "string" ? defaultItem : defaultItem.key;
           return !storedKeys.has(key);
         });
 
@@ -421,9 +424,12 @@ export function syncExportConfig() {
   EXPORT_CONFIG.backoffBaseMs = Config.global.exportBackoffBaseMs ?? 1000;
   EXPORT_CONFIG.backoffCapMs = Config.global.exportBackoffCapMs ?? 15000;
   EXPORT_CONFIG.maxPages = Config.global.exportMaxPages ?? 200;
-  EXPORT_CONFIG.requestTimeoutMs = Config.global.exportRequestTimeoutMs ?? 30000;
-  EXPORT_CONFIG.hierarchyMinDelayMs = Config.global.exportHierarchyMinDelayMs ?? 10000;
-  EXPORT_CONFIG.hierarchyMaxDelayMs = Config.global.exportHierarchyMaxDelayMs ?? 15000;
+  EXPORT_CONFIG.requestTimeoutMs =
+    Config.global.exportRequestTimeoutMs ?? 30000;
+  EXPORT_CONFIG.hierarchyMinDelayMs =
+    Config.global.exportHierarchyMinDelayMs ?? 10000;
+  EXPORT_CONFIG.hierarchyMaxDelayMs =
+    Config.global.exportHierarchyMaxDelayMs ?? 15000;
 }
 
 /**
@@ -437,7 +443,8 @@ export function initConfig() {
   Config.global = loaded.global;
   RuntimeSettings.logLevel = Config.global.logLevel || "info";
   RuntimeSettings.timezone = Config.global.timezone || "auto";
-  RuntimeSettings.timestampFormat = Config.global.timestampFormat || "HH:mm:ss.SSS TZ";
+  RuntimeSettings.timestampFormat =
+    Config.global.timestampFormat || "HH:mm:ss.SSS TZ";
   syncExportConfig();
 }
 

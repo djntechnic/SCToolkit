@@ -10,6 +10,18 @@
 
 - **Build**: `npm run build`
 - **Watch/Dev**: `npm run dev`
+- **Gate**: `npm run check` — lint, build, test, and `verify-dist.js` in one shot.
+
+## Verification Invariant (MANDATORY)
+
+Never end a turn with "I made the changes, please test." Run `npm run check`
+before opening a PR and report the result as counts, not output. It is the only
+command that proves `dist/` matches `src/`.
+
+## PR Workflow
+
+Feature branch, never commit to `main`. **This repo uses `main`**.
+Open the PR as a draft against `main`. Use the `finalize` skill as the framework for PR draft, merge, and closeout.
 
 ## Codebase Architecture
 
