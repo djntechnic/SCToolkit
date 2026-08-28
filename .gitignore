@@ -1,47 +1,78 @@
-# Dependencies
-node_modules/
+# ==============================================================================
+# 1. OS & FILE SYSTEM OVERHEAD
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
 
-# Logs
+# ==============================================================================
+# 2. EDITORS, IDES & WORKSPACES
+# ==============================================================================
+.vscode/
+.idea/
+*.code-workspace
+
+# Generated project structure / tree dumps
+*_FileTree.*
+
+# ==============================================================================
+# 3. SECRETS, CREDENTIALS & ENVIRONMENT
+# ==============================================================================
+# Never commit real env or credential files. Keep templates tracked via .env.example
+.env
+.env.*
+.env.local
+!.env.example
+*.pem
+*.key
+
+# ==============================================================================
+# 4. AI AGENTS & AUTOMATION RUNTIMES
+# ==============================================================================
+.antigravity/
+.playwright-mcp/
+
+# Agent hook runtime state (must remain untracked to avoid false dirty-tree triggers)
+.claude/state/
+.claude/worktrees/
+
+# ==============================================================================
+# 5. JAVASCRIPT / NODE & RUNTIME LOGS
+# ==============================================================================
+node_modules/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Environment & Credentials
-.env
-.env.*
-!.env.example
-
-# IDE & Editor Configurations
-.idea/
-.vscode/
-*.code-workspace
-.claude/
-.antigravity/
-
-# OS-generated Files
-.DS_Store
-Thumbs.db
-desktop.ini
-ehthumbs.db
-
-# Test Coverage & Temporary Files
+# ==============================================================================
+# 6. TEST COVERAGE, TEMPORARY FILES & SCRATCH
+# ==============================================================================
 coverage/
 *.tmp
 *.temp
-*_FileTree.*
+scratch/
 
-# Build Artifacts
-# dist/ is intentionally NOT ignored — the built userscript is the
-# auto-update artifact and must stay committed on main.
+# ==============================================================================
+# 7. REPOSITORY-SPECIFIC: BUILD ARTIFACTS
+# ==============================================================================
+# dist/ is intentionally NOT ignored — the built userscript (dist/sctoolkit.user.js)
+# is the live auto-update artifact distributed via GitHub raw and must stay
+# committed on main.
 
-# Legacy Reference
+# ==============================================================================
+# 8. REPOSITORY-SPECIFIC: LEGACY REFERENCE & FIXTURES
+# ==============================================================================
 # Pre-port reference copy of the v2.42.0 single-file script. Kept on disk for
 # diffing during the port, deliberately not published.
 legacy/
 
-# Fixtures & Captures
 # Raw page captures. These are unsanitized: they contain the capturing
 # account's handle, third-party user handles, and the browser's saved asset
 # directories. Run them through scripts/sanitize-fixture.js and commit the
