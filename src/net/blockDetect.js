@@ -6,7 +6,7 @@
  * evade a challenge; the markers exist only so the script can recognise that it
  * has been handed one instead of content, and quit.
  *
- * See `docs/POLITE-USE.md`.
+ * See `docs/polite-use.md`.
  */
 
 /**

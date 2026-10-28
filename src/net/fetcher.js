@@ -3,7 +3,7 @@
  *
  * The pacing here is not a performance tuning knob — it is the mechanism by
  * which this script stays a well-behaved client. The floors are documented in
- * `docs/POLITE-USE.md`.
+ * `docs/polite-use.md`.
  *
  * Every request passes through, in order: the cross-tab slot gate, the
  * per-request timeout, block-status detection, throttle handling, and the

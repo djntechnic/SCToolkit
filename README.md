@@ -36,55 +36,55 @@ A userscript toolkit for sports card database browsing: instant table & set list
 
 SCToolkit features 12 modular engines. Each module can be toggled ON/OFF or re-routed via regex rules in the **Settings Modal**.
 
-> 📖 **For exhaustive configuration schemas, token templates, anti-scraping pacing thresholds, and storage migration details, see [`docs/CONFIG.md`](docs/CONFIG.md).**
+> 📖 **For exhaustive configuration schemas, token templates, anti-scraping pacing thresholds, and storage migration details, see [`docs/config.md`](docs/config.md).**
 
 ### 1. CSV Export Engine (`csvExportEngine`)
 Multi-page checklist, collection, and print view CSV exporter with anti-scraping delay jitter and 24-hour dataset memory caching.
-*Details: [`docs/CONFIG.md#21-complete-module-index`](docs/CONFIG.md#21-complete-module-index)*
+*Details: [`docs/config.md#21-complete-module-index`](docs/config.md#21-complete-module-index)*
 
 ### 2. Checklist Enhancer (`checklistEnhancer`)
 Injects a real-time search filter bar above card tables to filter by player, card number, tags, or variations with instant match counting and parent set resolution.
-*Details: [`docs/CONFIG.md#21-complete-module-index`](docs/CONFIG.md#21-complete-module-index)*
+*Details: [`docs/config.md#21-complete-module-index`](docs/config.md#21-complete-module-index)*
 
 ### 3. Collection Quantity Counter (`collectionQuantityCounter`)
 Floating overlay widget tracking distinct card items collected versus total item quantity, with a detailed summary modal.
-*Details: [`docs/CONFIG.md#13-ui-theme--display-customization`](docs/CONFIG.md#13-ui-theme--display-customization)*
+*Details: [`docs/config.md#13-ui-theme--display-customization`](docs/config.md#13-ui-theme--display-customization)*
 
 ### 4. Card Name Formatter Engine (`cardNameFormatter`)
 Compiles structured metadata into customizable tokenized text strings for e-commerce listings or cataloging with quick-search buttons (`Copy`, `TSV`, `BRef`, `Google`).
-*Details: [`docs/CONFIG.md#12-card-name-formatter-settings`](docs/CONFIG.md#12-card-name-formatter-settings)*
+*Details: [`docs/config.md#12-card-name-formatter-settings`](docs/config.md#12-card-name-formatter-settings)*
 
 ### 5. Set List Enhancer (`setListEnhancer`)
 Injects inline shortcut badges (Checklist, Inserts, Parallels, For Sale, Wantlist, Add Multiples, Pin, CSV, Hierarchy) next to set links.
-*Details: [`docs/CONFIG.md#31-badge-system-toolbarbadges--setlinkbadges`](docs/CONFIG.md#31-badge-system-toolbarbadges--setlinkbadges)*
+*Details: [`docs/config.md#31-badge-system-toolbarbadges--setlinkbadges`](docs/config.md#31-badge-system-toolbarbadges--setlinkbadges)*
 
 ### 6. Quick Add Grid Enhancer (`quickAddGridEnhancer`)
 Injects inline quantity increment/decrement controls directly into card listing rows for fast collection management.
-*Details: [`docs/CONFIG.md#21-complete-module-index`](docs/CONFIG.md#21-complete-module-index)*
+*Details: [`docs/config.md#21-complete-module-index`](docs/config.md#21-complete-module-index)*
 
 ### 7. Add Multiples Enhancer (`addMultiplesEnhancer`)
 Optimizes bulk collection entry pages by setting default sale types, auto-focusing empty quantity inputs, and handling batch submissions.
-*Details: [`docs/CONFIG.md#14-navigation-filters--data-entry`](docs/CONFIG.md#14-navigation-filters--data-entry)*
+*Details: [`docs/config.md#14-navigation-filters--data-entry`](docs/config.md#14-navigation-filters--data-entry)*
 
 ### 8. Input Optimization (`inputOptimization`)
 Converts `Enter` to `Tab` navigation across forms and auto-scrolls active inputs into the middle 80% viewport zone.
-*Details: [`docs/CONFIG.md#14-navigation-filters--data-entry`](docs/CONFIG.md#14-navigation-filters--data-entry)*
+*Details: [`docs/config.md#14-navigation-filters--data-entry`](docs/config.md#14-navigation-filters--data-entry)*
 
 ### 9. Pagination Loader (`paginationLoader`)
 Infinite scroll pagination engine that appends next-page rows automatically when scrolling near the bottom of listing views.
-*Details: [`docs/CONFIG.md#14-navigation-filters--data-entry`](docs/CONFIG.md#14-navigation-filters--data-entry)*
+*Details: [`docs/config.md#14-navigation-filters--data-entry`](docs/config.md#14-navigation-filters--data-entry)*
 
 ### 10. Set Dropdown Search Enhancer (`setDropdownSearchEnhancer`)
 Overrides native set dropdown search with substring (`includes`) and OR condition matching across multiple delimiters (`,` `;` `|`).
-*Details: [`docs/CONFIG.md#21-complete-module-index`](docs/CONFIG.md#21-complete-module-index)*
+*Details: [`docs/config.md#21-complete-module-index`](docs/config.md#21-complete-module-index)*
 
 ### 11. Set Hierarchy Exporter (`setHierarchyExport`)
 Recursively discovers child sub-sets and parallel checklists to export structured set hierarchy trees to CSV.
-*Details: [`docs/CONFIG.md#11-export-pacing--anti-scraping-thresholds`](docs/CONFIG.md#11-export-pacing--anti-scraping-thresholds)*
+*Details: [`docs/config.md#11-export-pacing--anti-scraping-thresholds`](docs/config.md#11-export-pacing--anti-scraping-thresholds)*
 
 ### 12. Collection Defaulter (`collectionDefaulter`)
 Automatically selects a preferred default Collection ID on collection selection forms.
-*Details: [`docs/CONFIG.md#14-navigation-filters--data-entry`](docs/CONFIG.md#14-navigation-filters--data-entry)*
+*Details: [`docs/config.md#14-navigation-filters--data-entry`](docs/config.md#14-navigation-filters--data-entry)*
 
 ---
 
@@ -128,7 +128,7 @@ For local iteration, point Tampermonkey at the local file on disk:
 
 ## Responsible Use & Rate Limiting
 
-Export features issue real HTTP requests to third-party servers. Adaptive pacing, request jitter, block detection cooldowns, and page safety limits are built-in defaults documented in [`docs/POLITE-USE.md`](docs/POLITE-USE.md).
+Export features issue real HTTP requests to third-party servers. Adaptive pacing, request jitter, block detection cooldowns, and page safety limits are built-in defaults documented in [`docs/polite-use.md`](docs/polite-use.md).
 
 ---
 

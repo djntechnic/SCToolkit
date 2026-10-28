@@ -4,7 +4,7 @@
  * The export queue serializes requests *within* a tab. Two tabs exporting at
  * once were two independent queues, so opening a second tab doubled the request
  * rate against the site — the single largest gap between what
- * `docs/POLITE-USE.md` promised and what the code did.
+ * `docs/polite-use.md` promised and what the code did.
  *
  * Userscript storage is shared across every tab of the same script, so a single
  * "when did anyone last make a request" timestamp is enough to interleave them.

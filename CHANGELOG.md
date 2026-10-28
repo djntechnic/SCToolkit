@@ -55,8 +55,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bytes and a smoke test that boots the built bundle in jsdom — the check that
   catches import cycles and load-order faults.
 - Test fixtures under `test/fixtures/`, with a documented sanitization
-  procedure. They are synthetic for now; see `docs/TESTPLAN.md`.
-- `docs/ARCHITECTURE.md` now documents the registry contract, the export data
+  procedure. They are synthetic for now; see `docs/testplan.md`.
+- `docs/architecture.md` now documents the registry contract, the export data
   flow, how to add a module, and the two structural import-cycle hazards.
 
 ### Changed
@@ -94,7 +94,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `@grant GM_addStyle` — declared but never used by the script.
 - `Routes.isSetList()`, three write-only `State` fields, and
   `EXPORT_CONFIG.blockCooldownMs`. Each is recorded verbatim in
-  [docs/REMOVED.md](docs/REMOVED.md) with revival notes.
+  [docs/removed.md](docs/removed.md) with revival notes.
 
 ### Phase 2 — dead code, deduplication, correctness
 
@@ -125,7 +125,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   inert for the one module most worth moving.
 
 **Removed** — each recorded verbatim with revival notes in
-[docs/REMOVED.md](docs/REMOVED.md):
+[docs/removed.md](docs/removed.md):
 - `cardNameFormatter`, a registered and enabled module whose only selector never
   matched anything in any shipped release.
 - The `inlineActionCells` sub-feature: four selectors that do not exist, a CSS
@@ -178,7 +178,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Cross-tab throttle** (`net/throttle.js`). Every request is gated on a
   timestamp shared across all tabs, so two tabs exporting at once interleave
   rather than doubling the request rate. This was the largest gap between what
-  `docs/POLITE-USE.md` promised and what the code did.
+  `docs/polite-use.md` promised and what the code did.
 - **Export cache** (`net/cache.js`). Parsed results are stored with a TTL
   (default 24 h, 0 to disable); re-exporting a set within the window makes zero
   requests. Capped at 20 sets and 20,000 rows per set, with occupancy and a
@@ -208,7 +208,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 **Notes**
 - No schema bump: the new settings are additive, and `mergeWithDefaults` fills
   new keys from defaults.
-- `docs/POLITE-USE.md` has no outstanding items left. Every commitment in it is
+- `docs/polite-use.md` has no outstanding items left. Every commitment in it is
   now implemented and tested.
 
 ### Real-page fixtures
