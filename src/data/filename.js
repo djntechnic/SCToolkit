@@ -3,7 +3,7 @@
  *
  * v2.42.0 sanitized name segments three different ways in three places. All
  * three are preserved here verbatim, as separate named functions, so the
- * inconsistency is visible rather than buried — see `docs/REMOVED.md` for the
+ * inconsistency is visible rather than buried — see `docs/removed.md` for the
  * note on unifying them.
  */
 

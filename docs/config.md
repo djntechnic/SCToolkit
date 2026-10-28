@@ -1,4 +1,4 @@
-# SCToolkit Configuration Reference (`docs/CONFIG.md`)
+# SCToolkit Configuration Reference (`docs/config.md`)
 
 This document provides a comprehensive reference for all configuration options, module rules, global settings, schema migrations, and customization features in **SCToolkit**.
 

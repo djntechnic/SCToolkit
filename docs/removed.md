@@ -86,7 +86,7 @@ rows.forEach((row, index) => {
 real row selector, real CSS, and — the part that was never written — actual
 implementations of the seven actions, each of which is a state-changing request
 to the site. That last point makes it a much larger piece of work than the
-stub suggests, and it would need its own entry in `docs/POLITE-USE.md`.
+stub suggests, and it would need its own entry in `docs/polite-use.md`.
 
 **Storage note:** a stored `inlineActionCells: true` from an earlier install is
 dropped by `mergeWithDefaults`, which now keeps only action keys the current
