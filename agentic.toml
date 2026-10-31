@@ -1,0 +1,47 @@
+[repo]
+name = "SCToolkit"
+profile = "vanilla"
+
+skills = [
+  "anti-ui-slop",
+  "brainstorming",
+  "deliver-task",
+  "finalize-pr",
+  "impeccable",
+  "implement-issue",
+  "issue-triage",
+  "modern-web-guidance",
+  "react-best-practices",
+  "receiving-code-review",
+  "requesting-code-review",
+  "run-tests",
+  "systematic-debugging",
+  "tanstack-intent",
+  "test-driven-development",
+  "deliver-plan",
+  "using-superpowers",
+  "verification-before-completion",
+  "writing-plans",
+  "writing-skills",
+  "claude-review",
+]
+
+agents = [
+  "quality-gatekeeper",
+  "ui-stitch-builder",
+  "plan-orchestrator",
+]
+
+hooks = [
+  "pre-tool-guard.ps1",
+]
+
+scripts = [
+  "audit_ui_runtime.mjs",
+  "Invoke-PlanRunner.ps1",
+  "Invoke-PlanSupervisor.ps1",
+  "task-contract.md",
+  "Convert-PlanToIntake.ps1",
+  "PROMPT_BUILD_INTAKE.md",
+]
+

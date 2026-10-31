@@ -10,6 +10,7 @@ import {
   CardMetadataExtractor,
   FormattedCopyPopover,
   getCardLadderDate,
+  getNextNonEmptyCell,
   renderInlineQuickLinks,
 } from "../src/modules/cardNameFormatter.js";
 
@@ -1083,4 +1084,208 @@ test("CardMetadataExtractor.extract: cardFormatterTagReplacer replaces matching 
   Config.global.cardFormatterIgnoredTags = "ASR, LL, TC, CL";
   Config.global.cardFormatterTagSeparator = "";
   Config.global.cardFormatterTagReplacer = "";
+});
+
+test("getNextNonEmptyCell: skips empty cells, whitespace, non-breaking spaces, and stale quick-link containers", () => {
+  const dom = new JSDOM(`
+    <table>
+      <tr>
+        <td id="c0">Card</td>
+        <td id="c1">   </td>
+        <td id="c2">&nbsp;</td>
+        <td id="c3"><div class="tk-player-quick-links-inline"><button>Copy</button></div></td>
+        <td id="c4">Real Subject</td>
+        <td id="c5">&nbsp;</td>
+        <td id="c6">Real Team</td>
+      </tr>
+    </table>
+  `);
+  const doc = dom.window.document;
+  const c0 = doc.querySelector("#c0");
+  const c4 = doc.querySelector("#c4");
+  const c6 = doc.querySelector("#c6");
+
+  assert.equal(getNextNonEmptyCell(null), null);
+  assert.equal(getNextNonEmptyCell(c0), c4, "Should skip c1, c2, c3 and return c4");
+  assert.equal(getNextNonEmptyCell(c4), c6, "Should skip c5 and return c6");
+  assert.equal(getNextNonEmptyCell(c6), null, "Should return null when no more non-empty cells exist");
+});
+
+test("CardMetadataExtractor.extract: resolves plain-text subject and team across spacer cells", () => {
+  const dom = new JSDOM(`
+    <!DOCTYPE html>
+    <html>
+    <head><title>1991 Pro Set Desert Storm Non-Sport Checklist | Trading Card Database</title></head>
+    <body>
+      <div id="setname-content">
+        <h1>1991 Pro Set Desert Storm</h1>
+      </div>
+      <div id="main-content-area">
+        <table>
+          <tr id="test-row-plain">
+            <td><a href="ViewCard.cfm/sid/72980/cid/5260711">65</a></td>
+            <td>&nbsp;</td>
+            <td>Republic of Yemen</td>
+            <td>&nbsp;</td>
+            <td><a href="Team.cfm/tid/0">Multiple</a></td>
+          </tr>
+        </table>
+      </div>
+    </body>
+    </html>
+  `);
+  const mockDoc = dom.window.document;
+  const row = mockDoc.querySelector("#test-row-plain");
+  const link = row.querySelector('a[href*="ViewCard.cfm"]');
+
+  const selection = {
+    isCollapsed: false,
+    anchorNode: link.firstChild,
+    toString: () => "65",
+  };
+
+  const tokens = CardMetadataExtractor.extract(selection, mockDoc);
+  assert.notEqual(tokens, null);
+  assert.equal(tokens.CardNo, "65");
+  assert.equal(tokens.PlayerName, "Republic of Yemen");
+  assert.equal(tokens.PlayerTeam, "Multiple");
+
+  const compiled = CardMetadataExtractor.compile(
+    "{PlayerName} - {Year} {SetName} #{CardNo}",
+    tokens,
+  );
+  assert.equal(
+    compiled,
+    "Republic of Yemen - 1991 Pro Set Desert Storm #65",
+  );
+});
+
+test("renderInlineQuickLinks: places inline buttons inside subject cell instead of spacer cell on plain-text rows", () => {
+  const dom = new JSDOM(`
+    <!DOCTYPE html>
+    <html>
+    <head><title>1991 Pro Set Desert Storm Non-Sport Checklist | Trading Card Database</title></head>
+    <body>
+      <div id="setname-content">
+        <h1>1991 Pro Set Desert Storm</h1>
+      </div>
+      <div id="main-content-area">
+        <table>
+          <tr id="test-row-plain">
+            <td id="td-card"><a href="ViewCard.cfm/sid/72980/cid/5260711">65</a></td>
+            <td id="td-spacer">&nbsp;</td>
+            <td id="td-subject">Republic of Yemen</td>
+            <td id="td-spacer2">&nbsp;</td>
+            <td id="td-team"><a href="Team.cfm/tid/0">Multiple</a></td>
+          </tr>
+        </table>
+      </div>
+    </body>
+    </html>
+  `);
+  const mockDoc = dom.window.document;
+
+  let writtenText = null;
+  Object.defineProperty(dom.window.navigator, "clipboard", {
+    value: {
+      writeText: async (txt) => {
+        writtenText = txt;
+      },
+    },
+    configurable: true,
+    writable: true,
+  });
+
+  renderInlineQuickLinks(mockDoc);
+
+  const container = mockDoc.querySelector(".tk-player-quick-links-inline");
+  assert.notEqual(container, null, "Inline container must be created");
+
+  const parentTd = container.parentElement;
+  assert.equal(
+    parentTd.id,
+    "td-subject",
+    "Inline quick links container must be appended into the subject cell, not the spacer cell",
+  );
+
+  const buttons = container.querySelectorAll("button.sctk-inline-btn");
+  assert.equal(buttons.length, 5);
+
+  const copyBtn = buttons[0];
+  copyBtn.click();
+  assert.equal(
+    writtenText,
+    "Republic of Yemen - 1991 Pro Set Desert Storm #65",
+    "Copied text must include subject name, not card number",
+  );
+
+  const tsvBtn = buttons[1];
+  tsvBtn.click();
+  assert.ok(
+    writtenText.includes("\tRepublic of Yemen\t"),
+    "TSV output must include plain-text subject name",
+  );
+});
+
+test("renderInlineQuickLinks: validates placement and extraction on scratch/20261031 fixtures if present", async () => {
+  const scratchDir = path.join(process.cwd(), "scratch/20261031");
+  const files = [
+    {
+      file: "1991 Pro Set Desert Storm Non-Sport Checklist _ Trading Card Database.html",
+      url: "https://www.tcdb.com/Checklist.cfm/sid/72980",
+      expectedSubject: "Republic of Afghanistan",
+      expectedCardNo: "1",
+    },
+    {
+      file: "1991 Impel Star Trek 25th Anniversary - Holograms Non-Sport Checklist _ Trading Card Database.html",
+      url: "https://www.tcdb.com/Checklist.cfm/sid/100566",
+      expectedSubject: "Birth of a Legend",
+      expectedCardNo: "H1",
+    },
+  ];
+
+  for (const { file, url, expectedSubject, expectedCardNo } of files) {
+    const filePath = path.join(scratchDir, file);
+    if (!fs.existsSync(filePath)) continue;
+
+    const html = fs.readFileSync(filePath, "utf8");
+    const dom = new JSDOM(html, { url });
+    const mockDoc = dom.window.document;
+
+    let writtenText = null;
+    dom.window.navigator.clipboard = {
+      writeText: async (t) => {
+        writtenText = t;
+      },
+    };
+
+    renderInlineQuickLinks(mockDoc);
+
+    const rows = Array.from(mockDoc.querySelectorAll("tr")).filter((r) =>
+      r.querySelector('a[href*="ViewCard.cfm"]'),
+    );
+    assert.ok(rows.length > 0);
+
+    const r0 = rows[0];
+    const container = r0.querySelector(".tk-player-quick-links-inline");
+    assert.notEqual(container, null, `${file}: container should be injected`);
+
+    const parentTd = container.parentElement;
+    assert.ok(
+      parentTd.textContent.includes(expectedSubject),
+      `${file}: container should be inside subject cell (${expectedSubject}), got cell text: ${parentTd.textContent.trim()}`,
+    );
+
+    const copyBtn = container.querySelector("button.sctk-inline-btn");
+    assert.notEqual(copyBtn, null);
+    await copyBtn.click();
+    assert.ok(
+      writtenText.includes(expectedSubject),
+      `${file}: copied text should contain subject name '${expectedSubject}', got: '${writtenText}'`,
+    );
+    assert.ok(
+      writtenText.includes(`#${expectedCardNo}`),
+      `${file}: copied text should contain card number '#${expectedCardNo}', got: '${writtenText}'`,
+    );
+  }
 });

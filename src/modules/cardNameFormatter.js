@@ -164,6 +164,33 @@ function getCleanCellText(cell) {
 }
 
 /**
+ * Advance past empty / whitespace / &nbsp; layout spacer cells.
+ * @param {Element|null} startTd
+ * @returns {Element|null}
+ */
+export function getNextNonEmptyCell(startTd) {
+  let cell = startTd ? startTd.nextElementSibling : null;
+  while (cell) {
+    const raw = cell.textContent.replace(/\u00a0/g, "").trim();
+    if (raw) {
+      if (cell.querySelector(".tk-player-quick-links-inline")) {
+        const clone = cell.cloneNode(true);
+        clone
+          .querySelectorAll(".tk-player-quick-links-inline")
+          .forEach((el) => el.remove());
+        if (clone.textContent.replace(/\u00a0/g, "").trim()) {
+          return cell;
+        }
+      } else {
+        return cell;
+      }
+    }
+    cell = cell.nextElementSibling;
+  }
+  return null;
+}
+
+/**
  * Contextual Metadata Extractor and Compiler.
  */
 export const CardMetadataExtractor = {
@@ -291,11 +318,19 @@ export const CardMetadataExtractor = {
         });
     }
 
+    const cardNoTd = cardLink
+      ? cardLink.closest("td")
+      : cardNo
+        ? row.querySelector("td")
+        : null;
+
     const subjectTd = personLink
       ? personLink.closest("td")
-      : cardLink
-        ? cardLink.closest("td")?.nextElementSibling
-        : null;
+      : cardLinks.length >= 2
+        ? cardLinks[1].closest("td")
+        : cardNoTd
+          ? getNextNonEmptyCell(cardNoTd)
+          : null;
 
     if (subjectTd) {
       const rawSubject = getCleanCellText(subjectTd);
@@ -378,13 +413,15 @@ export const CardMetadataExtractor = {
       if (thirdText && thirdText !== cardNo) {
         playerTeam = thirdText;
       }
-    } else if (subjectTd && subjectTd.nextElementSibling) {
-      const nextTd = subjectTd.nextElementSibling;
-      const linkInNext = nextTd.querySelector("a");
-      if (linkInNext) {
-        playerTeam = linkInNext.textContent.trim();
-      } else {
-        playerTeam = getCleanCellText(nextTd);
+    } else if (subjectTd) {
+      const nextTd = getNextNonEmptyCell(subjectTd);
+      if (nextTd) {
+        const linkInNext = nextTd.querySelector("a");
+        if (linkInNext) {
+          playerTeam = linkInNext.textContent.trim();
+        } else {
+          playerTeam = getCleanCellText(nextTd);
+        }
       }
     }
 
@@ -749,6 +786,12 @@ export function renderInlineQuickLinks(doc = document) {
     )
       return;
 
+    // Purge any misaligned, duplicate, or stale containers in this row
+    const existingContainers = row.querySelectorAll(
+      ".tk-player-quick-links-inline",
+    );
+    existingContainers.forEach((c) => c.remove());
+
     const personLink = row.querySelector('a[href*="Person.cfm"]');
     const cardLinks = Array.from(
       row.querySelectorAll(
@@ -773,13 +816,16 @@ export function renderInlineQuickLinks(doc = document) {
       targetCell = cardLinks[1].closest("td");
     } else if (cardLinks.length === 1) {
       const cardNoTd = cardLinks[0].closest("td");
+      const nextCell = getNextNonEmptyCell(cardNoTd);
       if (
-        cardNoTd &&
-        cardNoTd.nextElementSibling &&
-        !cardNoTd.nextElementSibling.querySelector('a[href*="Team.cfm"]')
+        nextCell &&
+        !nextCell.querySelector('a[href*="Team.cfm"]')
       ) {
-        targetCell = cardNoTd.nextElementSibling;
-        targetNode = targetCell.querySelector("a") || cardLinks[0];
+        targetCell = nextCell;
+        targetNode =
+          Array.from(targetCell.querySelectorAll("a")).find(
+            (a) => !isActionLink(a),
+          ) || targetCell;
       } else {
         targetNode = cardLinks[0];
         targetCell = cardNoTd;
@@ -787,12 +833,6 @@ export function renderInlineQuickLinks(doc = document) {
     }
 
     if (!targetCell) return;
-
-    // Purge any misaligned, duplicate, or stale containers in this row
-    const existingContainers = row.querySelectorAll(
-      ".tk-player-quick-links-inline",
-    );
-    existingContainers.forEach((c) => c.remove());
 
     const evalNode = targetNode || targetCell;
     const fakeSelection = {

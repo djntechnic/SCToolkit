@@ -32,14 +32,15 @@ desktop.ini
 *.key
 
 # ==============================================================================
-# 4. AI AGENTS & AUTOMATION RUNTIMES
+# 4. AI AGENTS, TOOLING HOOKS & DEPLOYED READ-ONLY HARNESSES
 # ==============================================================================
 .antigravity/
 .playwright-mcp/
-
-# Agent hook runtime state (must remain untracked to avoid false dirty-tree triggers)
-.claude/state/
-.claude/worktrees/
+.superpowers/
+.claude/
+.agents/
+scripts/maintenance/platform/
+scratch/runner/
 
 # ==============================================================================
 # 5. JAVASCRIPT / NODE & RUNTIME LOGS

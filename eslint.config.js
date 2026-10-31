@@ -5,7 +5,16 @@ export default [
   {
     // dist/ is generated, but the built .user.js is still linted below — its
     // metadata block is what users install against.
-    ignores: ['node_modules/**', 'legacy/**', 'test/fixtures/**', 'dist/**', '!dist/*.user.js']
+    ignores: [
+      'node_modules/**',
+      'legacy/**',
+      'test/fixtures/**',
+      'dist/**',
+      '!dist/*.user.js',
+      '.agents/**',
+      '.claude/**',
+      'scripts/maintenance/**'
+    ]
   },
   js.configs.recommended,
   {
