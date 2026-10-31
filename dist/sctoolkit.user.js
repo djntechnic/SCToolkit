@@ -3991,6 +3991,25 @@ button.tk-add-btn {
     }
     return clone.textContent.replace(/\s+/g, " ").trim();
   }
+  function getNextNonEmptyCell(startTd) {
+    let cell = startTd ? startTd.nextElementSibling : null;
+    while (cell) {
+      const raw = cell.textContent.replace(/\u00a0/g, "").trim();
+      if (raw) {
+        if (cell.querySelector(".tk-player-quick-links-inline")) {
+          const clone = cell.cloneNode(true);
+          clone.querySelectorAll(".tk-player-quick-links-inline").forEach((el) => el.remove());
+          if (clone.textContent.replace(/\u00a0/g, "").trim()) {
+            return cell;
+          }
+        } else {
+          return cell;
+        }
+      }
+      cell = cell.nextElementSibling;
+    }
+    return null;
+  }
   var CardMetadataExtractor = {
     /**
      * Extract token values for a given window Selection
@@ -4079,7 +4098,8 @@ button.tk-add-btn {
           }
         });
       }
-      const subjectTd = personLink ? personLink.closest("td") : cardLink ? cardLink.closest("td")?.nextElementSibling : null;
+      const cardNoTd = cardLink ? cardLink.closest("td") : cardNo ? row.querySelector("td") : null;
+      const subjectTd = personLink ? personLink.closest("td") : cardLinks.length >= 2 ? cardLinks[1].closest("td") : cardNoTd ? getNextNonEmptyCell(cardNoTd) : null;
       if (subjectTd) {
         const rawSubject = getCleanCellText(subjectTd);
         const tokens = rawSubject.split(" ");
@@ -4150,13 +4170,15 @@ button.tk-add-btn {
         if (thirdText && thirdText !== cardNo) {
           playerTeam = thirdText;
         }
-      } else if (subjectTd && subjectTd.nextElementSibling) {
-        const nextTd = subjectTd.nextElementSibling;
-        const linkInNext = nextTd.querySelector("a");
-        if (linkInNext) {
-          playerTeam = linkInNext.textContent.trim();
-        } else {
-          playerTeam = getCleanCellText(nextTd);
+      } else if (subjectTd) {
+        const nextTd = getNextNonEmptyCell(subjectTd);
+        if (nextTd) {
+          const linkInNext = nextTd.querySelector("a");
+          if (linkInNext) {
+            playerTeam = linkInNext.textContent.trim();
+          } else {
+            playerTeam = getCleanCellText(nextTd);
+          }
         }
       }
       return {
@@ -4438,6 +4460,10 @@ button.tk-add-btn {
         ".col-md-3, .col-md-4, nav, #topnav, #sctk-toolbar, .menu-linksV, .dropdown-menu, .modal"
       ))
         return;
+      const existingContainers = row.querySelectorAll(
+        ".tk-player-quick-links-inline"
+      );
+      existingContainers.forEach((c) => c.remove());
       const personLink = row.querySelector('a[href*="Person.cfm"]');
       const cardLinks = Array.from(
         row.querySelectorAll(
@@ -4456,19 +4482,18 @@ button.tk-add-btn {
         targetCell = cardLinks[1].closest("td");
       } else if (cardLinks.length === 1) {
         const cardNoTd = cardLinks[0].closest("td");
-        if (cardNoTd && cardNoTd.nextElementSibling && !cardNoTd.nextElementSibling.querySelector('a[href*="Team.cfm"]')) {
-          targetCell = cardNoTd.nextElementSibling;
-          targetNode = targetCell.querySelector("a") || cardLinks[0];
+        const nextCell = getNextNonEmptyCell(cardNoTd);
+        if (nextCell && !nextCell.querySelector('a[href*="Team.cfm"]')) {
+          targetCell = nextCell;
+          targetNode = Array.from(targetCell.querySelectorAll("a")).find(
+            (a) => !isActionLink(a)
+          ) || targetCell;
         } else {
           targetNode = cardLinks[0];
           targetCell = cardNoTd;
         }
       }
       if (!targetCell) return;
-      const existingContainers = row.querySelectorAll(
-        ".tk-player-quick-links-inline"
-      );
-      existingContainers.forEach((c) => c.remove());
       const evalNode = targetNode || targetCell;
       const fakeSelection = {
         isCollapsed: false,
