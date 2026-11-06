@@ -24,6 +24,8 @@ skills = [
   "writing-plans",
   "writing-skills",
   "claude-review",
+  "doc-create",
+  "doc-update",
 ]
 
 agents = [
