@@ -1,7 +1,37 @@
-# Normalize to LF in the repository. The built userscript is compared against a
-# fresh build in CI (Linux), so line endings must not depend on the committer's
-# platform.
+# Canonical Ecosystem Line Ending Normalization
 * text=auto eol=lf
+
+# Explicit text file types
+*.md text eol=lf
+*.json text eol=lf
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.php text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.cs text eol=lf
+*.xaml text eol=lf
+
+# Windows-specific execution scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=lf
+
+# Binary assets
 *.png binary
 *.jpg binary
+*.jpeg binary
 *.gif binary
+*.ico binary
+*.sqlite3 binary
+*.db binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
