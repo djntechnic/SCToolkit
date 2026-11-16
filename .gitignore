@@ -36,10 +36,9 @@ desktop.ini
 # ==============================================================================
 .antigravity/
 .playwright-mcp/
-.superpowers/
 .claude/
 .agents/
-scripts/maintenance/platform/
+scripts/maintenance/managed/
 scratch/runner/
 
 # ==============================================================================
@@ -58,6 +57,7 @@ pnpm-debug.log*
 coverage/
 *.tmp
 *.temp
+.issues/
 scratch/
 
 # ==============================================================================
