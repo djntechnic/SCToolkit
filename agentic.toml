@@ -4,6 +4,8 @@ profile = "vanilla"
 
 skills = [
   "anti-ui-slop",
+  "app-command",
+  "audit-ui-runtime",
   "brainstorming",
   "deliver-task",
   "finalize-pr",
@@ -30,6 +32,7 @@ skills = [
 
 agents = [
   "quality-gatekeeper",
+  "ui-sentinel",
   "ui-stitch-builder",
   "plan-orchestrator",
 ]
@@ -39,7 +42,10 @@ hooks = [
 ]
 
 scripts = [
+  "audit_site.mjs",
   "audit_ui_runtime.mjs",
+  "models.json",
+  "Resolve-AgenticModel.ps1",
   "Invoke-PlanRunner.ps1",
   "Invoke-PlanSupervisor.ps1",
   "task-contract.md",
